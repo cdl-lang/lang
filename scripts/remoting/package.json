@@ -1,0 +1,12 @@
+{
+  "name": "persistence-server",
+  "version": "1.0.0",
+  "description": "Dependencies for the persistence server",
+  "dependencies": {
+    "email-addresses": "^3.0.1",
+    "mongojs": "^2.4.1",
+    "node-redshift": "^0.1.5",
+    "websocket": "^1.0.25"
+  },
+  "engine": "node >= 8.9.1"
+}

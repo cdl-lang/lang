@@ -1,0 +1,45 @@
+[{
+	"name": "traffic measurements per location",
+	"id": "redshift test traffic measurements loc",
+	"type": "redshift",
+	"hostname": "mondriatech-testing.cecqp6xade58.us-west-2.redshift.amazonaws.com",
+	"database": "trafficdata1",
+	"credentials": {
+        "username": "awsuser",
+        "password": "_O5ZOfnbm-jE"
+    },
+	"query": "SELECT * FROM public.measurements WHERE locationdescription = $1",
+	"queryParameters": [{
+		"id": "location",
+		"description": "Location/direction",
+		"type": "string",
+        "discreteValues": ["N198.31_I","N198.31_II","N199.15_I","N199.15_II","N199.15_III","N199.15_IV","N199.15_V","N201.11_I","N201.11_II","N201.23_I","N201.23_II","N201.33_I","N201.33_II","N204.03_I","N204.03_II","N210.07_I","N210.07_II","N210.37_I","N210.37_II","N212.15_I","N212.15_II","N221.15_I","N221.15_II","N221.15_III","N221.15_IV","N223.39_I","N223.39_II","N224.11_I","N224.11_II","N225.05_I","N225.05_II","N225.35_I","N225.35_II","N226.31_I","N226.31_II","N226.39_I","N226.39_II","N227.01_I","N227.01_II","N227.31_I","N227.31_II","N228.13_I","N228.13_II","N228.27_I","N228.27_II","N229.13_I","N229.13_II","N233.29_I","N233.29_II","N234.15_I","N234.15_II","N237.31_I","N237.31_II","N238.03_I","N238.03_II","N401.03_I","N401.03_II","N402.13_I","N402.13_II","N405.03_I","N405.03_II","N408.05_I","N408.05_II","N408.05_III","N408.05_IV","N408.05_V","N408.05_VI","N408.05_VII","N409.07_I","N409.07_II","N411.07_I","N411.07_II","N412.05_I","N412.05_II","N412.05_III","N413.15_I","N413.15_II","N415.05_I","N415.05_II","N416.03_I","N416.03_II","N458.01_I","N458.01_II","N484.01_I","N484.01_II"]
+    }],
+	"attributes": [
+        {"name": "classid", "type": "integer", "typeCount": [], "min": 0, "max": 3, "uniqueValues": [0,1,2,3] },
+        {"name": "length", "type": "integer", "typeCount": [], "min": 0, "max": 30},
+        {"name": "speed", "type": "integer", "typeCount": [], "min": 0, "max": 150},
+        {"name": "gaptime", "type": "integer", "typeCount": [], "min": 0, "max": 999},
+        {"name": "chassisheight", "type": "string", "typeCount": [], "uniqueValues": ["L","H","M","VL"]},
+        {"name": "locationdescription", "type": "string", "uniqueValues": ["N198.31_I","N198.31_II","N199.15_I","N199.15_II","N199.15_III","N199.15_IV","N199.15_V","N201.11_I","N201.11_II","N201.23_I","N201.23_II","N201.33_I","N201.33_II","N204.03_I","N204.03_II","N210.07_I","N210.07_II","N210.37_I","N210.37_II","N212.15_I","N212.15_II","N221.15_I","N221.15_II","N221.15_III","N221.15_IV","N223.39_I","N223.39_II","N224.11_I","N224.11_II","N225.05_I","N225.05_II","N225.35_I","N225.35_II","N226.31_I","N226.31_II","N226.39_I","N226.39_II","N227.01_I","N227.01_II","N227.31_I","N227.31_II","N228.13_I","N228.13_II","N228.27_I","N228.27_II","N229.13_I","N229.13_II","N233.29_I","N233.29_II","N234.15_I","N234.15_II","N237.31_I","N237.31_II","N238.03_I","N238.03_II","N401.03_I","N401.03_II","N402.13_I","N402.13_II","N405.03_I","N405.03_II","N408.05_I","N408.05_II","N408.05_III","N408.05_IV","N408.05_V","N408.05_VI","N408.05_VII","N409.07_I","N409.07_II","N411.07_I","N411.07_II","N412.05_I","N412.05_II","N412.05_III","N413.15_I","N413.15_II","N415.05_I","N415.05_II","N416.03_I","N416.03_II","N458.01_I","N458.01_II","N484.01_I","N484.01_II"]},
+        {"name": "passagetime", "type": "integer", "typeCount": [], "min": 0, "max": 999}
+    ]
+}, {
+	"name": "traffic measurements per week day and hour",
+	"id": "redshift test traffic measurements dowhr",
+	"type": "redshift",
+	"hostname": "mondriatech-testing.cecqp6xade58.us-west-2.redshift.amazonaws.com",
+	"database": "trafficdata1",
+	"credentials": {
+        "username": "awsuser",
+        "password": "_O5ZOfnbm-jE"
+    },
+	"query": "SELECT locationdescription, date_part(dow, passagetime) AS day_of_week, date_part(h, passagetime) AS hour, COUNT(*) AS nr, AVG(speed) AS avg_speed FROM public.measurements GROUP BY locationdescription, day_of_week, hour",
+	"attributes": [
+        {"name": "locationdescription", "type": "string", "uniqueValues": ["N198.31_I","N198.31_II","N199.15_I","N199.15_II","N199.15_III","N199.15_IV","N199.15_V","N201.11_I","N201.11_II","N201.23_I","N201.23_II","N201.33_I","N201.33_II","N204.03_I","N204.03_II","N210.07_I","N210.07_II","N210.37_I","N210.37_II","N212.15_I","N212.15_II","N221.15_I","N221.15_II","N221.15_III","N221.15_IV","N223.39_I","N223.39_II","N224.11_I","N224.11_II","N225.05_I","N225.05_II","N225.35_I","N225.35_II","N226.31_I","N226.31_II","N226.39_I","N226.39_II","N227.01_I","N227.01_II","N227.31_I","N227.31_II","N228.13_I","N228.13_II","N228.27_I","N228.27_II","N229.13_I","N229.13_II","N233.29_I","N233.29_II","N234.15_I","N234.15_II","N237.31_I","N237.31_II","N238.03_I","N238.03_II","N401.03_I","N401.03_II","N402.13_I","N402.13_II","N405.03_I","N405.03_II","N408.05_I","N408.05_II","N408.05_III","N408.05_IV","N408.05_V","N408.05_VI","N408.05_VII","N409.07_I","N409.07_II","N411.07_I","N411.07_II","N412.05_I","N412.05_II","N412.05_III","N413.15_I","N413.15_II","N415.05_I","N415.05_II","N416.03_I","N416.03_II","N458.01_I","N458.01_II","N484.01_I","N484.01_II"]},
+        {"name": "day_of_week", "type": "integer", "typeCount": [], "min": 0, "max": 6, "uniqueValues": [0,1,2,3,4,5,6]},
+        {"name": "hour", "type": "integer", "typeCount": [], "min": 0, "max": 23},
+        {"name": "nr", "type": "integer", "typeCount": [], "min": 0, "max": 9999},
+        {"name": "avg_speed", "type": "number", "typeCount": [], "min": 0, "max": 150}
+    ]
+}]

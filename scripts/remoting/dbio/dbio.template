@@ -1,0 +1,30 @@
+// %%include%%: <scripts/feg/systemEvents.js>
+
+// %%include%%: <scripts/utils/inheritance.js>
+// %%include%%: <scripts/feg/pathFunctions.js>
+// %%include%%: <scripts/utils/environment.js>
+// %%include%%: <scripts/utils/argParse.js>
+// %%include%%: <scripts/utils/binsearch.js>
+
+// %%include%%: <scripts/feg/utilities.js>
+// %%include%%: <scripts/feg/cdl.js>
+// %%include%%: <scripts/feg/elementReference.js>
+// %%include%%: <scripts/feg/paidMgr.js>
+// %%include%%: <scripts/feg/xdr.js>
+// %%include%%: <scripts/feg/stringparser.js>
+// %%include%%: <scripts/feg/remotePaidInterface.js>
+// %%include%%: <scripts/feg/watcherProducer.js>
+
+// %%include%%: <scripts/remoting/serverRuntime.js>
+// %%include%%: <scripts/remoting/remotingLog.js>
+// %%include%%: <scripts/remoting/wsAuth.js>
+// %%include%%: <scripts/remoting/networkConnection.js>
+// %%include%%: <scripts/remoting/networkClient.js>
+// %%include%%: <scripts/remoting/remoteMgr.js>
+// %%include%%: <scripts/remoting/cmdClient/appStateCmdClient.js>
+// %%include%%: <scripts/remoting/cmdClient/singleElementCmdClient.js>
+// %%include%%: <scripts/remoting/memoryXdr.js>
+
+// %%include%%: <scripts/feg/js/utils/testMode.js>
+
+// %%include%%: source

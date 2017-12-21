@@ -1,0 +1,13 @@
+The following external libraries are currently in use
+
+dom-to-image: converts HTML to png or svg
+version: 2.6.0
+source: https://github.com/tsayen/dom-to-image
+license: MIT
+install command: bower install dom-to-image
+
+FileSaver: a file-save-as function that is compatible with many browsers
+version: 1.3.3
+source: https://github.com/eligrey/FileSaver.js
+license: MIT
+install command: bower install FileSaver

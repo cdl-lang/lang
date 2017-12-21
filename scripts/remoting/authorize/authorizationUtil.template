@@ -1,0 +1,11 @@
+// %%include%%: <scripts/feg/systemEvents.js>
+
+// %%include%%: <scripts/utils/inheritance.js>
+// %%include%%: <scripts/feg/pathFunctions.js>
+// %%include%%: <scripts/utils/argParse.js>
+// %%include%%: <scripts/utils/environment.js>
+// %%include%%: "authorization.js"
+// %%include%%: "../wsAuth.js"
+// %%include%%: "../remotingLog.js"
+
+// %%include%%: source

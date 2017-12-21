@@ -1,0 +1,85 @@
+<!DOCTYPE PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<!--
+    <?xml version="1.0"?>
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:svg="http://www.w3.org/2000/svg">  
+   <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+-->
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width, user-scalable=no" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <style type="text/css">
+    body {
+      margin: 0px;
+      padding: 0px;
+    }
+  </style>
+  <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto">
+  %%include%%: fonturls
+
+  <!-- if these are replaced with concrete values (e.g. during installation),
+         they override the default values -->
+  <script type="text/javascript">
+      var remoteServerPort_repl = "!PERSISTENCE_SERVER_PORT!";
+      var wwwBaseUrlPath_repl = "!WWW_BASE_URL_PATH!";
+      var appStateOwner_repl = "!PROFILE_MGT_OWNER!";
+      var profileParameters_str = "!PROFILE_APP_PARAMETERS!";
+      var packageParameters_str = "!PACKAGE_APP_PARAMETERS!";
+
+      var wwwBaseUrlPath = typeof(wwwBaseUrlPath_repl) === "string" &&
+                           wwwBaseUrlPath_repl[0] != "!" ?
+                           wwwBaseUrlPath_repl: undefined;
+      var remoteServerPath = undefined;
+      if (remoteServerPort_repl[0] === "@" && wwwBaseUrlPath !== undefined) {
+          remoteServerPath = wwwBaseUrlPath + "/pserver/";
+          remoteServerPort_repl = remoteServerPort_repl.slice(1);
+      }
+      var remoteServerPort = (isNaN(remoteServerPort_repl)) ? undefined :
+                                Number(remoteServerPort_repl);
+      var appStateOwner = ((typeof(appStateOwner_repl) === "string") &&
+                            (appStateOwner_repl[0] != "!")) ?
+                             appStateOwner_repl : undefined;
+      var mondriaStartDate = new Date();
+    </script>
+
+  <title>%%title:()%%</title>
+
+</head>
+
+<body style="overflow: hidden;">
+
+  <div id="mondriaSplashScreenBackground" style="background-color:#efefde; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000002;">
+    <div id="mondriaSplashScreenDiv" style="position: absolute; margin: auto; top: 0; right: 0; bottom: 0; left: 0; z-index:2000000002; width:250px; height: 250px; text-align: center;">
+      <img id="mondriaSplashScreenLogo" src="%%image:(MondriaLogoAlphaNoCircle.svg)%%" style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%;">        
+      <span id="mondriaSplashScreenText" style="font-family:Roboto; color:darkgray; position:absolute; top:65%; transform: translateX(-50%);">Initializing</span>
+      <img id="mondriaSplashScreenDots" src="%%image:(three_dots_animation/three_dots_0.svg)%%" style="position: absolute; top: 60%; transform: translateX(-50%); width: 20%; height: 20%;">    
+    </div>
+  </div>
+  
+  <div id="mondriaTaskRunningDiv" hidden=true style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000001; background-color: #e0e0e8; transition: opacity 4s;">
+    <img id="mondriaTaskSpinnerElt" src="%%image:(hourglass.svg)%%" style="position: absolute; top: 45%; left: 45%; width: 50px; height: 50px;">
+  </div>
+
+  <!-- <div id="mondriaRootDiv" style="overflow: hidden;"></div> -->
+  <div id="mondriaRootDiv" hidden=true style="overflow: hidden; transition: opacity 4s;"></div>
+
+  <div id="progress" hidden=true style="position: absolute; top: 50%; left: 20%; width: 60%; height: 20px; z-index:2000000001; border: solid grey 2px; border-radius: 9px; font-size: 18px;font-family: sans-serif; text-align: right;">
+    <div id="progressBar" style="position: absolute; top: 0px; left: 0px; width: 1%; height: 20px; background: black; border-radius: 8px; opacity: 0.3; ">
+    </div>
+  </div>
+
+  %%include%%: source
+  %%include%%: foreign
+
+  <script type="text/javascript">
+    mondriaOnLoadDate = new Date();
+    console.log('Time to onload=' + (mondriaOnLoadDate.getTime() - mondriaStartDate.getTime()) + 'ms');
+    initializeModeDetection();
+    main();
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,13 @@
+// %%include%%: <../utils/argParse.js>
+// %%include%%: <utilities.js>
+// %%include%%: <cdl.js>
+// %%include%%: <elementReference.js>
+// %%include%%: <areaTemplate.js>
+// %%include%%: <functionNode.js>
+// %%include%%: <buildFunctionNode.js>
+// %%include%%: <functionGraph.js>
+// %%include%%: source
+var includedClassConf = [
+    ___CLASSFILE___
+];
+// %%include%%: <functionGraph.postlude.js>
