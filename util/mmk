@@ -16,40 +16,21 @@
 #
 # make file template
 
-
-NONE= #
 ECHO=/bin/echo
-SED=sed
 AWKF=gawk -f
 MKDIR=mkdir
 
-UTIL=$(ROOTDIR)/util
+LANGDIR=$(ROOTDIR)/lang
+UTIL=$(LANGDIR)/util
 
-CDLDIR ?= $(ROOTDIR)/cdl
+FEGTEMPLATEDIR = $(LANGDIR)/scripts/feg/templates
+COMPTEMPLATE = $(FEGTEMPLATEDIR)/compile.template.js
+COMPHTMLTEMPLATE = $(FEGTEMPLATEDIR)/comptemplate.html
+COMPHTMLPPTEMPLATE = $(FEGTEMPLATEDIR)/comp_html_pp_template.js
 
-COREDIR ?= $(CDLDIR)/core
-COREAPPDIR ?= $(COREDIR)/app
-COREFUNCDIR ?= $(COREDIR)/func
-COREDESIGNDIR ?= $(COREDIR)/design
-COREIMAGEDIR ?= $(COREDESIGNDIR)/img
-ifdef AUTOMATEDTESTING
-COREAUTOMATEDDIR ?= $(COREDIR)/automated
-endif
-
-# CUSTOMERDIR - defined by Makefile
-CUSTOMERFUNCDIR ?= $(CUSTOMERDIR)/func
-CUSTOMERDESIGNDIR ?= $(CUSTOMERDIR)/design
-CUSTOMERDATADIR ?= $(CUSTOMERDIR)/data
-CUSTOMERIMAGEDIR ?= $(CUSTOMERDESIGNDIR)/img
-
-FEGDIR = $(ROOTDIR)/scripts/feg/templates
-COMPTEMPLATE = $(FEGDIR)/compile.template.js
-COMPHTMLTEMPLATE = $(FEGDIR)/comptemplate.html
-COMPHTMLPPTEMPLATE = $(FEGDIR)/comp_html_pp_template.js
-
-FEGSRCDIR = $(ROOTDIR)/scripts/feg
-REMOTINGSRCDIR = $(ROOTDIR)/scripts/remoting
-FOREIGNINTERFACEDIR = $(ROOTDIR)/external/foreignInterface
+FEGSRCDIR = $(LANGDIR)/scripts/feg
+REMOTINGSRCDIR = $(LANGDIR)/scripts/remoting
+FOREIGNINTERFACEDIR = $(LANGDIR)/external/foreignInterface
 ifeq ($(FEGDEBUGINFO),)
   FEGDEBUGINFO := 1
   FEGDEBUGINFOMIN := 0
@@ -58,22 +39,6 @@ else
   FEGDEBUGINFOMIN := $(TEST)
 endif
 FEGERRORSTATUS ?= ""
-
-PRODUCTIONCLASSFILEPATH=$(CUSTOMERFUNCDIR);$(CUSTOMERDESIGNDIR);$(COREAPPDIR);$(COREFUNCDIR);$(COREDESIGNDIR)
-
-PRODUCTIONINCLUDEPATH=$(ROOTDIR)
-
-ifndef AUTOMATEDTESTING
-CLASSFILEPATH=$(PRODUCTIONCLASSFILEPATH)
-INCLUDEPATH=$(PRODUCTIONINCLUDEPATH)
-else
-CLASSFILEPATH=$(PRODUCTIONCLASSFILEPATH);$(COREAUTOMATEDDIR)
-INCLUDEPATH=$(PRODUCTIONINCLUDEPATH);$(COREAUTOMATEDDIR)
-endif
-
-CONSTANTFILEPATH=$(CLASSFILEPATH)
-DATAFILEPATH=$(CUSTOMERDATADIR)
-IMAGEPATH=$(CUSTOMERIMAGEDIR);$(COREIMAGEDIR)
 
 # target path
 COMMON_IMAGE_DIR=image
@@ -99,19 +64,19 @@ INCJSTEMPLATE_NAME=node.template.js
 endif
 
 ifndef HTML_TEMPLATE_FILE
-HTML_TEMPLATE_FILE=$(FEGDIR)/$(HTML_TEMPLATE_NAME)
+HTML_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(HTML_TEMPLATE_NAME)
 endif
 
 ifndef SFHTML_TEMPLATE_FILE
-SFHTML_TEMPLATE_FILE=$(FEGDIR)/$(SFHTML_TEMPLATE_NAME)
+SFHTML_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(SFHTML_TEMPLATE_NAME)
 endif
 
 ifndef NODEJS_TEMPLATE_FILE
-NODEJS_TEMPLATE_FILE=$(FEGDIR)/$(INCJSTEMPLATE_NAME)
+NODEJS_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(INCJSTEMPLATE_NAME)
 endif
 
 ifndef SFJS_TEMPLATE_FILE
-SFJS_TEMPLATE_FILE=$(FEGDIR)/$(SFJS_TEMPLATE_NAME)
+SFJS_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(SFJS_TEMPLATE_NAME)
 endif
 
 GENINCJS=$(UTIL)/genIncJS.py
@@ -121,7 +86,6 @@ JS_SOURCES += $(NODETEST)
 HTML=$(JS_SOURCES:%.js=%.html)
 MIN_HTML=$(HTML:%.html=%.min.html)
 
-JS_DEPENDENCIES = $(JS_SOURCES:%.js=%.fegcomp.mki)
 COMP_JS=$(JS_SOURCES:%.js=$(INTERMEDIATE)/%.comp.js)
 RUN_JS=$(JS_SOURCES:%.js=$(INTERMEDIATE)/%.run.js)
 NODETEST_JS=$(NODETEST:%.js=%.node.js)
@@ -137,7 +101,7 @@ SUBDIRS_test=$(SUBDIRS:%=%_test_)
 .PHONY: all jsinc nodetest_jsinc programs subdirs_all  \
 	clean_programs clean_html  \
 	clean_incjs $(SUBDIRS_ALL) clean_subdirs $(SUBDIRS_clean) \
-	clean clean_deps test fulltest test_subdirs $(SUBDIRS_test) \
+	clean test fulltest test_subdirs $(SUBDIRS_test) \
 	tsc tscmin
 
 all: html nodetest_jsinc programs subdirs_all
@@ -170,7 +134,7 @@ $(HTML_TEMPLATE_FILE): ;
 $(INTERMEDIATE):
 	-@$(MKDIR) $(INTERMEDIATE)
 
-RUN_INCJS_COMMON=$(GENINCJS) --out_file="$@" --sourcedir=. --rootdir="$(ROOTDIR)"
+RUN_INCJS_COMMON=$(GENINCJS) "--out_file=$@" "--sourcedir=." "--cdldir=$(CDLDIR)" "--langdir=$(LANGDIR)"
 
 %.html: $(INTERMEDIATE)/%.run.js
 	$(RUN_INCJS_COMMON) \
@@ -191,7 +155,7 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 	$(UGLIFY) $(INTERMEDIATE)/common_runtime.js -c -m > $@
 	echo "" >> $@
 	egrep -v '^// ' $< >> $@
-	$(UGLIFY) $(ROOTDIR)/scripts/feg/minbuild/feg/functionExecute.postlude.js -c -m >> $@
+	$(UGLIFY) $(LANGDIR)/scripts/feg/minbuild/feg/functionExecute.postlude.js -c -m >> $@
 
 # resulting .min.js file must be placed in javascript directory
 %.min.html: $(INTERMEDIATE)/%.min.js
@@ -207,6 +171,7 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 	@date
 
 %.node.js: $(INTERMEDIATE)/%.run.js
+	(cd "$(CDLDIR)"; npm install)
 	$(RUN_INCJS_COMMON) \
 		"--template=$(NODEJS_TEMPLATE_FILE)" \
 		"--resourceUseFile=$(INTERMEDIATE)/$*.res" \
@@ -218,20 +183,20 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 
 $(INTERMEDIATE)/%.run.js: $(INTERMEDIATE)/%.comp.js
 	@date
-	time bash ${ROOTDIR}/util/fegcompile.sh $(ROOTDIR) $< $@ $(FEGDEBUGINFO) "$(FEGERRORSTATUS)"
+	time bash "${UTIL}/fegcompile.sh" "$<" "$@" $(FEGDEBUGINFO) "$(FEGERRORSTATUS)"
 	@date
 
 $(INTERMEDIATE)/%.sfrun.js: $(INTERMEDIATE)/%.sfcomp.js
-	bash ${ROOTDIR}/util/fegcompile.sh $(ROOTDIR) $< $@ $(FEGDEBUGINFOMIN) "$(FEGERRORSTATUS)"
+	bash "${UTIL}/fegcompile.sh" "$<" "$@" $(FEGDEBUGINFOMIN) "$(FEGERRORSTATUS)"
 
 COMP_INCJS_COMMON = \
 	$(GENINCJS) \
-		"--rootdir=$(ROOTDIR)" \
-		"--libConf=lib.conf" \
-		"--datadir=$(DATADIR)"
+		"--cdldir=$(CDLDIR)" \
+		"--langdir=$(LANGDIR)" \
+		"--libConf=lib.conf"
 
 BUILDINFO_CMD = \
-	@bash ${ROOTDIR}/util/buildInfo.sh ${ROOTDIR} $@.buildInfo ; \
+	@bash ${UTIL}/buildInfo.sh ${ROOTDIR} > $@.buildInfo ; \
 	cat $@.buildInfo $@.tmp > $@ ; \
 	$(RM) $@.buildInfo $@.tmp
 
@@ -274,7 +239,7 @@ $(INTERMEDIATE)/%.comp_pp.js: %.js tsc
 
 $(INTERMEDIATE)/%.buildInfo.js: force
 	@-mkdir intermediate
-	@bash $(ROOTDIR)/util/buildInfo.sh $(ROOTDIR) $@
+	@bash $(UTIL)/buildInfo.sh $(LANGDIR) > $@
 
 
 $(INTERMEDIATE)/%.dmp: $(INTERMEDIATE)/%.comp.js
@@ -302,10 +267,7 @@ $(SUBDIRS_clean): force
 force:
 	@true
 
-clean: clean_html clean_incjs clean_programs clean_subdirs clean_deps
-
-clean_deps: force
-	-$(RM) $(JS_DEPENDENCIES)
+clean: clean_html clean_incjs clean_programs clean_subdirs
 
 test: $(NODETEST:%.js=%.__test__) test_subdirs
 
@@ -319,39 +281,6 @@ $(SUBDIRS_test): force
 
 %.__test__: %.inc.js
 	$(NODEJS) $< testlen=$(TESTLEN)
-
-# ----------------------------------------
-# an mjshint variant
-#  requires a matching shell function to be usable:
-#
-# .bashrc:
-#  function mjshint { make mjshint_g INCJS_FILE=$*; }
-#
-# Usage: mjshint xx.inc.js
-#
-#
-define MJSH_G_PREFIX
-"use strict";
-var console, process, window, document;
-var classes, screenArea, mondriaOnloadInitializations;
-function require(pkg) { return null; }
-function setInterval(f, d) { return null;}
-function setTimeout(f, d) { return null;}
-function clearInterval(id) { }
-function clearTimeout(id) { }
-function WebSocket(url) { return null; }
-endef
-export MJSH_G_PREFIX
-
-MJSH_G_TEMP:=$(shell echo /tmp/mjsh_g_$$$$.js)
-mjshint_g: force
-	@$(MAKE) -s $(MFLAGS) $(INCJS_FILE)
-	@$(ECHO) "$$MJSH_G_PREFIX" > $(MJSH_G_TEMP)
-	@$(SED) -e '/["]use strict["];/d' < $(INCJS_FILE) >> $(MJSH_G_TEMP)
-	@jshint $(MJSH_G_TEMP) |\
-	   $(AWKF) $(ROOTDIR)/util/toSrc.awk -v jsfile=$(MJSH_G_TEMP)
-	@$(RM) $(MJSH_G_TEMP)
-
 
 # cancel some rules we don't need
 .SUFFIXES:
@@ -370,5 +299,3 @@ mjshint_g: force
 (%): %
 
 %.out: %
-
--include $(JS_DEPENDENCIES)

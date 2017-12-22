@@ -14,15 +14,16 @@
 
 # File must be called via source from app directory
 
-if [ -z "$ROOTDIR" -o -z "$CDLDIR" -o -z "$DATADIR" ]; then
+if [ -z "$ROOTDIR" -o -z "$CDLDIR" ]; then
     echo not all variables set
     exit 1
 fi
 
-SCRIPTSDIR="$ROOTDIR/scripts"
+LANGDIR="$ROOTDIR/lang"
+SCRIPTSDIR="$LANGDIR/scripts"
 FEGDIR="$SCRIPTSDIR/feg"
 TEMPLATEDIR="$FEGDIR/templates"
-UTIL="$ROOTDIR/util"
+UTIL="$LANGDIR/util"
 OPTIMIZE=true
 VERBOSE=0
 FORCE=0
@@ -40,9 +41,9 @@ function make_comp_file()
 {
     if [ -f lib.conf ]; then
         "$UTIL/genIncJS.py" \
-            "--rootdir=$ROOTDIR" \
+            "--langdir=$LANGDIR" \
+            "--cdldir=$CDLDIR" \
             "--libConf=lib.conf" \
-            "--datadir=$DATADIR" \
             "--resourceOutFile=intermediate/$APP.res" \
             "--out_file=$COMPJS.tmp" \
             "--template=$TEMPLATEDIR/compile.template.js" \
@@ -50,8 +51,8 @@ function make_comp_file()
             "$APP.js"
     else
         "$UTIL/genIncJS.py" \
-            "--rootdir=$ROOTDIR" \
-            "--datadir=$DATADIR" \
+            "--langdir=$LANGDIR" \
+            "--cdldir=$CDLDIR" \
             "--resourceOutFile=intermediate/$APP.res" \
             "--out_file=$COMPJS.tmp" \
             "--template=$TEMPLATEDIR/compile.template.js" \
@@ -61,8 +62,8 @@ function make_comp_file()
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    bash "$ROOTDIR/util/buildInfo.sh" "$ROOTDIR" intermediate/buildInfo
-    cat intermediate/buildInfo "$COMPJS.tmp" > "$COMPJS"
+    bash "$UTIL/buildInfo.sh" "$ROOTDIR" > "$COMPJS"
+    cat "$COMPJS.tmp" >> "$COMPJS"
     /bin/rm "$COMPJS.tmp"
 }
 
@@ -106,7 +107,7 @@ function check_runjs()
 
         time \
             (node --max-old-space-size=4000 ${COMPJS} mode=js debugInfo=${FEGDEBUGINFO-1} "errors=${FEGERRORSTATUS-}" optimize=${OPTIMIZE} >| "$RUNJS.tmp") 2>&1 | \
-            gawk -f ${ROOTDIR}/util/toSrc.awk -v jsfile=${COMPJS}
+            gawk -f "$UTIL/toSrc.awk" -v jsfile=${COMPJS}
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -152,7 +153,8 @@ function check_template() # $1=target $2=input template $3=source file $4=mode
         "$UTIL/genIncJS.py" \
 	    "--out_file=$1.tmp" \
 	    "--resourceUseFile=intermediate/$APP.res" \
-	    "--rootdir=$ROOTDIR" \
+        "--langdir=$LANGDIR" \
+        "--cdldir=$CDLDIR" \
 	    "--template=$2" \
 	    "--title=$APP" \
 	    "--mode=$4" \
@@ -174,8 +176,7 @@ function check_html()
     check_template "$HTML" "$HTMLTEMPLATE" "$RUNJS" html
 }
 
-UGLIFY="node --max-old-space-size=4000 --stack_size=4000 \
-	$ROOTDIR/node_modules/uglifyjs/bin/uglifyjs"
+UGLIFY="uglifyjs --max-old-space-size=4000 --stack_size=4000"
 
 # First build the html file, then derive the min.html
 function check_minhtml()
@@ -196,17 +197,18 @@ function check_minhtml()
     # Concat the .run.js file
     egrep -v '^// ' "$RUNJS" >> "$MINJS"
     # Concat the uglified postlude
-    $UGLIFY "$ROOTDIR/scripts/feg/minbuild/feg/functionExecute.postlude.js" -c -m >> "$MINJS"
+    $UGLIFY "$FEGDIR/minbuild/feg/functionExecute.postlude.js" -c -m >> "$MINJS"
     # Generate the .min.html file
     "$UTIL/genIncJS.py" \
-	"--out_file=$MINHTML" \
-	"--rootdir=$ROOTDIR" \
-	"--resourceUseFile=intermediate/$APP.res" \
-	"--commonImageDir=image" \
-	"--title=$APP" \
-	"--template=$MINHTMLTEMPLATE" \
-	"--mode=html" \
-	"$MINJS"
+        "--out_file=$MINHTML" \
+        "--langdir=$LANGDIR" \
+        "--cdldir=$CDLDIR" \
+        "--resourceUseFile=intermediate/$APP.res" \
+        "--commonImageDir=image" \
+        "--title=$APP" \
+        "--template=$MINHTMLTEMPLATE" \
+        "--mode=html" \
+        "$MINJS"
 }
 
 # Rebuild the node.js file when the template, include list or any source file
@@ -228,7 +230,7 @@ function build()
     fi
 
     # Get all cdl files the app depends on
-    CDL_FILES=`"$UTIL/genIncJS.py" --template="$TEMPLATEDIR/compile.check.js" --mode=incl --out_file=/dev/null --rootdir="$ROOTDIR" --libConf=lib.conf "$APP.js"`
+    CDL_FILES=`"$UTIL/genIncJS.py" --template="$TEMPLATEDIR/compile.check.js" --mode=incl --out_file=/dev/null --langdir="$LANGDIR" --cdldir="$CDLDIR" --libConf=lib.conf "$APP.js"`
 
     # Build .comp.js file
     COMPJS=intermediate/"$APP.comp.js"

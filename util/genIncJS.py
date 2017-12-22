@@ -120,8 +120,10 @@
 # --datadir - add the argument to the list of directories in which data files
 #      (encountered in %%datafile%%: directives) are searched for
 #
-# --rootdir - set the argument as the root directory. it is added to all search
-#      paths (include/classfile/datafile/image/constantfile)
+# --langdir - set the argument as the root directory for scripts. it is added
+#      to all search paths (include/classfile/datafile/image/constantfile)
+#
+# --cdldir -- like langdir, but for cdl
 #
 # -c/--libConf - the argument is a libConf file, detailing a hierarchy of
 #      confLibs and their paths
@@ -312,7 +314,9 @@ def gen_parser():
     parser.add_argument('--datadir', help='data directory',
                         action='append')
 
-    parser.add_argument('--rootdir', help='root directory')
+    parser.add_argument('--langdir', help='root of the lang directory')
+
+    parser.add_argument('--cdldir', help='root of the cdl apps and classes directory')
 
     parser.add_argument('--referencedir', help='set reference directory; by default cwd')
 
@@ -396,7 +400,7 @@ def set_last_file_name(dtype, fn):
     global last_file_name
     last_file_name[dtype] = fn
 
-def set_root_path(path):
+def append_root_path(path):
     global path_per_dtype
     if (path != None):
         path_per_dtype['include'].append(path)
@@ -786,13 +790,13 @@ def process_image_macro(macro_name, macro_args):
     if common_image_dir == None:
         return image_src_path
     else:
-        image_out_path = os.path.join(common_image_dir, macro_args[0])
+        image_out_path = os.path.join(common_image_dir, os.path.basename(macro_args[0]))
         if not os.path.exists(image_src_path):
             print("image does not exist: {0}".format(image_src_path), file=sys.stderr)
             return image_out_path
         use_compression = use_compression_for(macro_args[0])
         if image_out_path == image_src_path:
-            return # In case someone puts the images in the common_image_dir
+            return image_out_path # In case someone puts the images in the common_image_dir
         if copy_image_files:
             target_path = image_out_path
             if use_compression:
@@ -1099,7 +1103,8 @@ def main():
     set_mode(mode)
 
     set_source_dir(args.sourcedir)
-    set_root_path(args.rootdir)
+    append_root_path(args.langdir)
+    append_root_path(args.cdldir)
     set_include_path(args.includedir)
     set_data_path(args.datadir)
     set_dep_file(args.dep_file)

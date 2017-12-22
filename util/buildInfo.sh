@@ -17,46 +17,30 @@
 set -u -e
 
 ROOTDIR=$1
-OUTFILE=$2
 
-function getSvnRev
-{
-    dir=${1}
+function getRev {
+    local REV
 
-    local SVNINFO=$(svn info ${dir} | grep Revision 2>/dev/null)
-    local REV=${SVNINFO/Revision: /}
-
+    pushd "$1" > /dev/null
+    REV=$(git rev-parse HEAD)
     if [ "x${REV}" == "x" ]; then
         REV=unknown
     fi
-
+    popd > /dev/null
     echo ${REV}
 }
 
-ROOTVER="$(getSvnRev ${ROOTDIR})"
-SCRIPTVER="$(getSvnRev ${ROOTDIR}/scripts)"
-CDLVER="$(getSvnRev ${ROOTDIR}/cdl)"
-
-if [[ "$PWD" == */bug[0-9]*  ]]
-then
-    echo -n "Specify cdl revision [${CDLVER}]: "
-    read CDLVER2
-    if [ "x${CDLVER2}" != "x" ]
-    then
-        CDLVER=$CDLVER2
-    fi
-fi
+SCRIPTVER=$(getRev "${ROOTDIR}/lang")
+CDLVER=$(getRev "${ROOTDIR}/cdl-classes-and-applications")
 
 DATE="$(date)"
 HOST="$(hostname)"
 
-echo "\"use strict\";" > ${OUTFILE}
-echo "var buildInfo = {" >> ${OUTFILE}
-echo "  date: \"${DATE}\"," >> ${OUTFILE}
-echo "  rootRevision: \"${ROOTVER}\"," >> ${OUTFILE}
-echo "  scriptRevision: \"${SCRIPTVER}\"," >> ${OUTFILE}
-echo "  cdlRevision: \"${CDLVER}\"," >> ${OUTFILE}
-echo "  host: \"${HOST}\"" >> ${OUTFILE}
-echo "};" >> ${OUTFILE}
+echo "var buildInfo = {"
+echo "  date: \"${DATE}\","
+echo "  scriptRevision: \"${SCRIPTVER}\","
+echo "  cdlRevision: \"${CDLVER}\","
+echo "  host: \"${HOST}\""
+echo "};"
 
 exit 0

@@ -30,18 +30,18 @@ while getopts "p:" OPT ; do
 done
 shift $((OPTIND-1))
 
-ROOTDIR=$1
-COMPFILE=$2
-OUTFILE=$3
-FEGDEBUGINFO=$4
-FEGERRORSTATUS=$5
+CURDIR=`dirname $0`
+COMPFILE=$1
+OUTFILE=$2
+FEGDEBUGINFO=$3
+FEGERRORSTATUS=$4
 
 TEMPOUT=${OUTFILE}.temp
 
-((node --max-old-space-size=8192 ${COMPFILE} mode=js debugInfo=${FEGDEBUGINFO} "errors=$FEGERRORSTATUS" $FLAGS >| ${TEMPOUT} ) 2>&1 ) |\
-gawk -f ${ROOTDIR}/util/toSrc.awk -v jsfile=${COMPFILE}
-if ! egrep '^// error: ' ${TEMPOUT}; then
-    mv ${TEMPOUT} ${OUTFILE}
+((node --max-old-space-size=4096 "${COMPFILE}" mode=js debugInfo=${FEGDEBUGINFO} "errors=$FEGERRORSTATUS" $FLAGS >| "${TEMPOUT}" ) 2>&1 ) |\
+gawk -f "${CURDIR}/toSrc.awk" -v "jsfile=${COMPFILE}"
+if ! egrep '^// error: ' "${TEMPOUT}"; then
+    mv "${TEMPOUT}" "${OUTFILE}"
     exit 0
 fi
 
