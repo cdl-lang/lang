@@ -1664,8 +1664,30 @@ function interpretedQuery(q: any, v: any): any {
             }
             if (q instanceof NonAV) {
                 if (q instanceof Negation) {
-                    return interpretedBoolMatch(q, v)?
-                        {sel: true, res: v}: undefined;
+                    var complement: any = interpretedQuery(q.queries, v);
+                    if (v instanceof Array) {
+                        if (complement.length === v.length) {
+                            return {sel: false, res: []};
+                        }
+                        var i: number = 0, j: number = 0;
+                        var neg: any[] = [];
+                        while (i < complement.length && j < v.length) {
+                            if (complement[i] === v[j]) {
+                                i++;
+                            } else {
+                                neg.push(v[j]);
+                            }
+                            j++;
+                        }
+                        while (j < v.length) {
+                            neg.push(v[j]);
+                            j++;
+                        }
+                        return {sel: true, res: neg}
+                    } else {
+                        return isFalse(complement)? 
+                               {sel: true, res: v}: undefined;
+                    }
                 }
                 return q.match(v)? {sel: true, res: v}: undefined;
             }

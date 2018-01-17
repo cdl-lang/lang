@@ -608,6 +608,12 @@ function simpleValueMatchInOS(data: any[], comp: SimpleValue): boolean {
     });
 }
 
+function onlySimpleValueInOS(data: any[], comp: SimpleValue): boolean {
+    return data !== undefined && data.every(function(d: any): boolean {
+        return d === comp || (d instanceof RangeValue && d.match(comp));
+    });
+}
+
 class SimpleValueSelection implements SimpleQuery {
     comp: SimpleValue;
 
@@ -1163,7 +1169,7 @@ class SingleAttributeSimpleValueInvSelection implements SimpleQuery {
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
-                  !simpleValueMatchInOS(data_i[this.attr], comp)) {
+                  !onlySimpleValueInOS(data_i[this.attr], comp)) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
@@ -1178,7 +1184,7 @@ class SingleAttributeSimpleValueInvSelection implements SimpleQuery {
 
     testSingle(data: any): boolean {
         return typeof(data) === "object" && this.attr in data &&
-               !simpleValueMatchInOS(data[this.attr], this.comp);
+               !onlySimpleValueInOS(data[this.attr], this.comp);
     }
 
     testOS(data: any[]): boolean {
@@ -1187,7 +1193,7 @@ class SingleAttributeSimpleValueInvSelection implements SimpleQuery {
             for (var i: number = 0; i < data.length; i++) {
                 var data_i: any = data[i];
                 if (typeof(data_i) === "object" && this.attr in data_i &&
-                      !simpleValueMatchInOS(data_i[this.attr], comp)) {
+                      !onlySimpleValueInOS(data_i[this.attr], comp)) {
                     return true;
                 }
             }
@@ -1247,7 +1253,7 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
-                  !data_i[this.attr].some(function (v: any): boolean {
+                  !data_i[this.attr].every(function (v: any): boolean {
                       return v in comp ||
                              (v instanceof RangeValue &&
                               compOS.some(function(c: any): boolean {
@@ -1275,7 +1281,7 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
             comp = this.comp;
         }
         return typeof(data) === "object" && this.attr in data &&
-               !data[this.attr].some(function (v: any): boolean {
+               !data[this.attr].every(function (v: any): boolean {
                    return v in comp ||
                           (v instanceof RangeValue &&
                            compOS.some(function(c: any): boolean {
@@ -1295,7 +1301,7 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
             for (var i: number = 0; i < data.length; i++) {
                 var data_i: any = data[i];
                 if (typeof(data_i) === "object" && this.attr in data_i &&
-                      !data_i[this.attr].some(function (v: any): boolean {
+                      !data_i[this.attr].every(function (v: any): boolean {
                           return v in comp ||
                                  (v instanceof RangeValue &&
                                   compOS.some(function(c: any): boolean {
