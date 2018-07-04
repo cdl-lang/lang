@@ -1,8 +1,8 @@
-ROOTDIR=../../..
+LANGDIR=../../..
 
 PROGRAMS=persistenceServer.node.js
 
-include $(ROOTDIR)/util/mmk
+include $(LANGDIR)/util/mmk
 
 test: persistenceServer
 	node persistenceServer.node.js localMode=true
@@ -21,7 +21,7 @@ persistenceServer.node.js: force
 	npm update
 	$(GENINCJS) \
 		"--mode=js" \
-		"--rootdir=$(ROOTDIR)" \
+		"--langdir=$(LANGDIR)" \
 		"--out_file=$@" \
 		"--template=persistenceServer.template" \
 		persistenceServer.js

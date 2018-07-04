@@ -116,11 +116,29 @@ function ContentDisplay() {
     this.prevProperties = undefined;
     this.prevDisplayType = undefined;
     this.displayType = undefined;
+    this.displaySubType = undefined;
     this.displayElement = undefined;
     this.showEmbedding = true;
+    this.nrTextNodes = 0;
 
+    // The following attributes concern the placing of the canvas.
+    // lineFrameOffset: when true, the embedded div must be placed at the
+    // contentPos because there's no real border to push the div in its place;
+    // when false, the embedded div is at the displayDivPos.
+    this.lineFrameOffset = true;
+    // extraWidth: nr extra pixels needed in the width for shadow or line caps
     this.extraWidth = 0;
+    // extraHeight: nr extra pixels needed in the height for shadow or line caps
     this.extraHeight = 0;
+    // negativeShiftLeft: nr pixels the canvas is shifted to the left (also for
+    // shadow or line caps)
+    this.negativeShiftLeft = 0;
+    // negativeShiftTop: nr pixels the canvas is shifted above the top (also for
+    // shadow or line caps)
+    this.negativeShiftTop = 0;
+
+    // Tracks whether display is in zero offset positioning mode
+    this.inZeroOffsetPosMode = false;
 }
 
 // --------------------------------------------------------------------------
@@ -128,6 +146,9 @@ function ContentDisplay() {
 //
 ContentDisplay.prototype.destroy = function() {
     this.destroyDisplayElement("displayDiv");
+    if (this.hasLinePositioningOffsets) {
+        this.unregisterLinePositioningOffsets();
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -156,14 +177,43 @@ ContentDisplay.prototype.removeDisplayElement = function() {
     } 
 }
 
+// Places the embedding div at the content position: if there is independent
+// content positioning or a border, the embedding div is shifted to that place.
+// The display div can be put in another position if there is a border, since
+// the border grows outwards. E.g., if the border to the top is 2px, the
+// displayDiv is 2px higher than the embedding div, so they align.
+// If there is no real border on the display, and the content offset is
+// triggered by another display element (currently only display:line:, in order
+// to allow rendering the line caps without clipping), the display div is
+// also positioned according to the content pos.
+
 ContentDisplay.prototype.updatePos = function(contentPos, displayPos) {
-    updateElementPos(this.displayDiv, displayPos);
-    updateElementPos(this.embeddingDiv, contentPos);
+    if (this.displayDiv) {
+        updateElementPos(this.displayDiv,
+                         this.lineFrameOffset? contentPos: displayPos);
+    }
+    if (this.embeddingDiv) {
+        updateElementPos(this.embeddingDiv, contentPos);
+    }
+    this.inZeroOffsetPosMode = false;
 }
 
 ContentDisplay.prototype.updateZeroOffsetPos = function(relative) {
-    updateZeroOffsetElementPos(this.displayDiv, relative);
-    updateZeroOffsetElementPos(this.embeddingDiv, relative);
+    if (!this.inZeroOffsetPosMode) {
+        if (this.displayDiv) {
+            setZeroOffsetElementPos(this.displayDiv);
+        }
+        if (this.embeddingDiv) {
+            setZeroOffsetElementPos(this.embeddingDiv);
+        }
+        this.inZeroOffsetPosMode = true;
+    }
+    if (this.displayDiv) {
+        updateZeroOffsetElementPos(this.displayDiv, relative);
+    }
+    if (this.embeddingDiv) {
+        updateZeroOffsetElementPos(this.embeddingDiv, relative);
+    }
 }
 
 ContentDisplay.prototype.getRotation = function() {
@@ -223,11 +273,16 @@ ContentDisplay.prototype.applyTransitionProperties = function(transitions) {
 ContentDisplay.displayTypes = {
     text: {value: true, input: true},
     foreign: {value: true},
-    image: {src: true},
+    image: {src: true, svg: true},
     iframe: {src: true},
     html: {value: true},
     triangle: true,
+    line: true,
     arc: true
+};
+
+ContentDisplay.displaySubTypes = {
+    text: {preformatted: true}
 };
 
 // --------------------------------------------------------------------------
@@ -250,15 +305,16 @@ ContentDisplay.prototype.displayContentRefresh = function(newContent, applyChang
     
     var newDisplayElement;
 
-    var displayTypeFound = ContentDisplay.getDisplayType(display);
+    var displayType = ContentDisplay.getDisplayType(display);
 
-    if (displayTypeFound !== this.displayType) {
-        this.setNewDisplayElement(display, displayTypeFound);
+    if (displayType.type !== this.displayType ||
+          displayType.subType !== this.displaySubType) {
+        this.setNewDisplayElement(display, displayType);
     }
     this.applyDisplayProperties(display, applyChange, applyTransition);
     if (applyChange) {
         this.setDisplayElementPos();
-        this.refreshDisplayContentForType(display, displayTypeFound, newContent);
+        this.refreshDisplayContentForType(display, displayType.type, newContent);
     }
 }
 
@@ -266,7 +322,8 @@ ContentDisplay.prototype.displayContentRefresh = function(newContent, applyChang
 // getDisplayType (static)
 //
 ContentDisplay.getDisplayType = function(displayDescription) {
-    var displayTypeFound = "empty";
+    var type = "empty";
+    var subType = undefined;
 
     function wellDefined(v) {
         return v !== undefined && !(v instanceof Array && v.length === 0);
@@ -276,22 +333,30 @@ ContentDisplay.getDisplayType = function(displayDescription) {
         var reqSubAttr = ContentDisplay.displayTypes[displayType];
         if (displayDescription[displayType]) {
             if (reqSubAttr === true) {
-                displayTypeFound = displayType;
+                type = displayType;
             } else if (displayDescription[displayType] instanceof Object) {
                 for (var attr in reqSubAttr) {
                     if (wellDefined(displayDescription[displayType][attr])) {
-                        displayTypeFound = displayType;
+                        type = displayType;
                         break;
                     }
                 }
             }
-            if (displayTypeFound !== "empty") {
+            if (type !== "empty") {
                 break;
             }
         }
     }
-
-    return displayTypeFound;
+    if (displayType in ContentDisplay.displaySubTypes) {
+        var subTypeAttr = ContentDisplay.displaySubTypes[displayType];
+        for (var attr in subTypeAttr) {
+            if (isTrue(displayDescription[displayType][attr])) {
+                subType = attr;
+                break;
+            }
+        }
+    }
+    return { type: type, subType: subType };
 }
 
 // --------------------------------------------------------------------------
@@ -305,6 +370,9 @@ ContentDisplay.getDisplayType = function(displayDescription) {
 // element object with this new object. This includes removing the old
 // display element from the displayDiv and inserting the new display element
 // instead.
+//   When a line display is created, registerVerticalPositioningPoints() adds
+// offsets for labels "y0" and "y1" to the absolute pos manager, or
+// removes them when the display type no longer is a line.
 //   This function also copies properties to the element after adding it to
 // the DOM, since setting those properties before adding doesn't always work.
 //
@@ -315,6 +383,7 @@ ContentDisplay.prototype.setNewDisplayElement = function(display, displayType) {
     
     this.displayElement =
         this.createDisplayContentForType(display, displayType);
+    this.checkLinePositioningOffsets();
 
     var attr;
     if (this.displayElement !== undefined) {
@@ -334,6 +403,7 @@ ContentDisplay.prototype.setNewDisplayElement = function(display, displayType) {
             delete this.prevProperties[attr];
         }
     }
+    this.previousPositions = undefined;
 }
 
 // --------------------------------------------------------------------------
@@ -355,6 +425,7 @@ ContentDisplay.prototype.createDisplayDiv = function(idstr) {
     }
     
     this.displayDiv = createDiv(idstr);
+    this.inZeroOffsetPosMode = false;
     return true;
 }
 
@@ -414,6 +485,10 @@ ContentDisplay.prototype.applyDisplayProperties =
 
     // store the properties (after the processing above) for later use
     this.displayProperties = displayProperties;
+    // Mark whether there is no content offset as a result of a line or not.
+    // See updatePos() for usage.
+    this.lineFrameOffset = displayProperties && isAV(displayProperties.line) &&
+                           getDeOSedValue(displayProperties.line.width) > 1;
 
     if (this.prevProperties !== undefined) {
         // reset properties that are no longer set
@@ -496,10 +571,12 @@ ContentDisplay.prototype.applyDisplayElementProperties =
 
 ContentDisplay.prototype.createDisplayContentForType =
   function(displayDesc, type) {
-    this.displayType = type;
-    switch (type) {
+    var oldSubType = this.displaySubType;
+    this.displayType = type.type;
+    this.displaySubType = type.subType;
+    switch (type.type) {
       case "text":
-        return this.textContentDisplay(displayDesc);
+        return this.textContentDisplay(displayDesc, oldSubType, type.subType);
       case "foreign":
         return this.foreignContentDisplay(displayDesc);
       case "html":
@@ -511,8 +588,8 @@ ContentDisplay.prototype.createDisplayContentForType =
         return this.iframeContentDisplay(displayDesc);
       case "triangle":
       case "arc":
-        return this.canvasContentDisplay(displayDesc, type);
-      case "empty":
+      case "line":
+        return this.canvasContentDisplay(displayDesc, type.type);
       default:
         return undefined;
     }
@@ -551,6 +628,10 @@ ContentDisplay.prototype.refreshDisplayContentForType =
         this.refreshArc(displayDesc,
                         this.getContentWidth(), this.getContentHeight());
         break;
+      case "line":
+        this.refreshLine(displayDesc,
+                         this.getContentWidth(), this.getContentHeight());
+        break;
     }
 }
 
@@ -572,10 +653,14 @@ ContentDisplay.prototype.getContentHeight = function() {
 // textContentDisplay
 //
 // Create (or refresh) the display element for text display. This consists
-// of a table with a single cell, in order to allow vertical alignment.
+// of a span inside a div, with table-cell display for the span to allow
+// horizontal and vertical centering.
 //
-ContentDisplay.prototype.textContentDisplay = function(displayDesc) {
-    if (displayDesc && displayDesc.text && isTrue(displayDesc.text.input)) {
+// Note that a SurveyDisplay doesn't generate an input element
+ContentDisplay.prototype.textContentDisplay =
+  function(displayDesc, oldSubType, newSubType) {
+    if (displayDesc && displayDesc.text && isTrue(displayDesc.text.input) &&
+          this instanceof Display) {
         if (this.displayElement) {
             // Removes the div's content
             this.setText(this.displayElement, undefined);
@@ -583,23 +668,30 @@ ContentDisplay.prototype.textContentDisplay = function(displayDesc) {
         return this.createInputCell(displayDesc);
     }
 
-    var span = document.createElement("span");
-    span.style.display = "table-cell";
-    span.style.verticalAlign = "middle";
-    span.style.textAlign = "center";
-    span.style.overflow = "hidden";
-    span.style.width = "100%";
-    span.style.height = "100%";
+    var innerTag = newSubType === "preformatted"? "pre": "span";
+    var innerElt = document.createElement(innerTag);
+    if (this instanceof Display) {
+        // A SurveyDisplay doesn't need centering in order to measure. It is
+        // even counter-productive: it causes wrong sizes for italics (at
+        // least in Chrome) and interferes with baseline alignment.
+        innerElt.style.display = "table-cell";
+        innerElt.style.verticalAlign = "middle";
+        innerElt.style.textAlign = "center";
+    }
+    innerElt.style.overflow = "hidden";
+    innerElt.style.width = "100%";
+    innerElt.style.height = "100%";
     var div = document.createElement("div");
     div.style.display = "table";
     div.style.position = "absolute";
     div.style.left = '0px';
     div.style.top = '0px';
-    div.appendChild(span);
+    div.appendChild(innerElt);
+    this.nrTextNodes = 0;
     return {
         root: div,
         format: div,
-        content: span,
+        content: innerElt,
         type: "text",
         value: undefined
     };
@@ -608,27 +700,47 @@ ContentDisplay.prototype.textContentDisplay = function(displayDesc) {
 // --------------------------------------------------------------------------
 // setText
 //
-// Removes all children from the div and replaces them with text nodes
-// needed to display parameter text.
+// Sets text nodes under the element needed to display parameter text. There is
+// a text node for each line plus a <br> element in between. The nodes are
+// added/removed when needed; the text of existing nodes is replaced.
 //
 ContentDisplay.prototype.setText = function(displayElement, text) {
-    var div = displayElement.content;
+    var element = displayElement.content;
+    var textLines = text === undefined? []: text.split("\n");
+    var nrLines = textLines.length;
+    var i = 0;
+    var childNodes = element.childNodes;
 
-    while (div.firstChild) {
-        div.removeChild(div.firstChild);
-    }
-    var textNode;
-    if (text !== undefined && text.search(/\n/) >= 0) {
-        var textLine = text.split('\n');
-        for (var i = 0; i < textLine.length; i++) {
-            textNode = document.createTextNode(textLine[i]);
-            div.appendChild(textNode);
-            div.appendChild(document.createElement("br"));
+    // assert(Math.max(2 * this.nrTextNodes - 1, 0) === childNodes.length);
+    // Remove superfluous nodes
+    while (nrLines < this.nrTextNodes) {
+        // Remove last text line
+        element.removeChild(element.lastChild);
+        if (this.nrTextNodes > 1) {
+            // Remove the <br> element
+            element.removeChild(element.lastChild);
         }
-    } else if (text !== undefined) {
-        textNode = document.createTextNode(text);
-        div.appendChild(textNode);
+        this.nrTextNodes--;
     }
+    // nrLines >= this.nrTextNodes
+    // Now update text in existing text nodes; note that we skip the <br>
+    // elements at the odd positions
+    while (2 * i < childNodes.length) {
+        childNodes[2 * i].data = textLines[i];
+        i++;
+    }
+    // Add text nodes when needed
+    while (i < nrLines) {
+        if (i > 0) {
+            // Separate with a <br> element
+            element.appendChild(document.createElement("br"));
+        }
+        element.appendChild(document.createTextNode(textLines[i]));
+        this.nrTextNodes++;
+        i++;
+    }
+    // assert(Math.max(2 * this.nrTextNodes - 1, 0) === childNodes.length);
+    // assert(this.nrTextNodes === nrLines);
 }
 
 var copyInputCellAttributes = {
@@ -653,6 +765,7 @@ ContentDisplay.prototype.createInputCell = function(displayDescr) {
     var inputElement;
     var initialValue = "text" in displayDescr? displayDescr.text.value:
           undefined;
+    var extraAttributes = {};
 
     if (initialValue instanceof Array) {
         initialValue = initialValue[0];
@@ -674,6 +787,8 @@ ContentDisplay.prototype.createInputCell = function(displayDescr) {
         }
         if (getDeOSedValue(inputDescr.multiLine) === true) {
             inputElementType = "textarea";
+            extraAttributes.overflow = "scroll";
+            extraAttributes.resize = "none";
         }
         break;
       case "password":
@@ -711,6 +826,9 @@ ContentDisplay.prototype.createInputCell = function(displayDescr) {
     inputElement.style.border = 'none';
     inputElement.style.outline = 'none';
     inputElement.style.padding = '0px';
+    for (var attr in extraAttributes) {
+        inputElement.style[attr] = extraAttributes[attr];
+    }
 
     return {
         root: inputElement,
@@ -728,23 +846,29 @@ ContentDisplay.prototype.createInputCell = function(displayDescr) {
 ContentDisplay.prototype.refreshText = function(displayDesc) {
     var textSection = displayDesc && displayDesc.text;
     var value = textSection && textSection.value;
+    var displayType = {
+        type: "text",
+        subType: textSection && isTrue(textSection.preformatted)?
+                 "preformatted": undefined
+    };
     var text;
 
-    if (textSection && isTrue(textSection.input)) {
+    if (textSection && isTrue(textSection.input) && this instanceof Display) {
         if (this.displayElement.type !== "input" ||
               (this.prevProperties !== undefined &&
                this.prevProperties.text !== undefined &&
                this.prevProperties.text.input !== undefined &&
                this.prevProperties.text.input.multiLine !==
                textSection.input.multiLine)) {
-            this.setNewDisplayElement(displayDesc, "text");
+            this.setNewDisplayElement(displayDesc, displayType);
             this.applyDisplayProperties(displayDesc, true, false);
             this.setDisplayElementPos();
         }
         // else leave input untouched
         return;
-    } else if (this.displayElement.type !== "text") {
-        this.setNewDisplayElement(displayDesc, "text");
+    } else if (this.displayElement.type !== "text" ||
+               this.displaySubType !== displayType.subType) {
+        this.setNewDisplayElement(displayDesc, displayType);
         this.applyDisplayProperties(displayDesc, true, false);
         this.setDisplayElementPos();
     }
@@ -1020,14 +1144,24 @@ ContentDisplay.prototype.htmlContentDisplay = function(displayDesc) {
         return {};
     }
 
+    var innerElt = document.createElement("span");
+    if (this instanceof Display) {
+        // A SurveyDisplay doesn't need centering in order to measure. It is
+        // even counter-productive: it causes wrong sizes for italics (at
+        // least in Chrome) and interferes with baseline alignment.
+        innerElt.style.display = "table-cell";
+        innerElt.style.verticalAlign = "middle";
+        innerElt.style.textAlign = "center";
+    }
     var div = createDiv(this.displayDiv.id + ":html");
-
+    div.style.display = "table";
     div.style.left = '0px'; // default, will be overridden later
     div.style.top = '0px'; // default, will be overridden later
+    div.appendChild(innerElt);
     return {
         root: div,
         format: div,
-        content: div,
+        content: innerElt,
         type: "html",
         value: undefined
     };
@@ -1070,7 +1204,35 @@ ContentDisplay.prototype.canvasContentDisplay = function(displayDesc, type) {
     
     this.context = "getContext" in div? div.getContext("2d"): undefined;
     this.canvas = div;
+    this.canvas.style.position = "absolute";
     return { root: div, format: div, content: div, type: type };
+}
+
+/// Relative coordinates of the three points of the triangle specified
+/// either by baseSide or rightAngle.
+var relativeTrianglePoints = {
+    baseSide: {
+          leftBottom: [[0.5,1], [1,0], [0,0.5]],
+          left: [[0,0], [1,0.5], [0,1]],
+          leftTop: [[0,0.5], [1,1], [0.5,0]],
+          top: [[0,0], [0.5,1], [1,0]],
+          rightTop: [[0.5,0], [0,1], [1,0.5]],
+          right: [[1,0], [0,0.5], [1,1]],
+          rightBottom: [[0.5, 1], [0,0], [1,0.5]],
+          bottom: [[0, 1], [0.5,0], [1,1]]
+    },
+    rightAngle: {
+          leftBottom: [[0,1], [0,0], [1,1]],
+          leftTop: [[0,0], [1,0], [0,1]],
+          rightTop: [[1,0], [1,1], [0,0]],
+          rightBottom: [[1, 1], [0,1], [1,0]]
+    }
+};
+
+function getTrianglePoints(baseSide, rightAngle) {
+    return typeof(baseSide) === "string"?
+            relativeTrianglePoints.baseSide[baseSide]:
+            relativeTrianglePoints.rightAngle[rightAngle];
 }
 
 // --------------------------------------------------------------------------
@@ -1080,25 +1242,15 @@ ContentDisplay.prototype.refreshTriangle =
   function(displayDesc, width, height) {
     var triangle = displayDesc.triangle;
     var baseSide = getDeOSedValue(triangle.baseSide); // default bottom
+    var rightAngle = getDeOSedValue(triangle.rightAngle); // default bottom
     var ctx = this.context;
-
     var w = width;
     var h = height;
     var shadow = getDeOSedValue(triangle.shadow);
-    var points;
+    var points = getTrianglePoints(baseSide, rightAngle); // array of relative coordinates along horizontal and vertical edge
 
-    if (ctx === undefined) {
+    if (ctx === undefined || points === undefined) {
         return;
-    }
-    switch (baseSide) {
-      case "leftBottom": points = [[0.5,1], [1,0], [0,0.5]]; break;
-      case "left": points = [[0,0], [1,0.5], [0,1]]; break;
-      case "leftTop": points = [[0,0.5], [1,1], [0.5,0]]; break;
-      case "top": points = [[0,0], [0.5,1], [1,0]]; break;
-      case "rightTop": points = [[0.5,0], [0,1], [1,0.5]]; break;
-      case "right": points = [[1,0], [0,0.5], [1,1]]; break;
-      case "rightBottom": points = [[0.5, 1], [0,0], [1,0.5]]; break;
-      default: points = [[0, 1], [0.5,0], [1,1]]; break; // default bottom
     }
     ctx.save();
     ctx.beginPath();
@@ -1133,6 +1285,27 @@ ContentDisplay.prototype.refreshTriangle =
     ctx.restore();
 }
 
+ContentDisplay.prototype.checkTriangleHit = function(dispConf, relativePoint) {
+    var triangle = dispConf.triangle;
+    var baseSide = getDeOSedValue(triangle.baseSide);
+    var rightAngle = getDeOSedValue(triangle.rightAngle);
+    var pts = getTrianglePoints(baseSide, rightAngle);
+
+    // Copied from https://stackoverflow.com/a/9755252
+    function intpoint_inside_trigon(s, a, b, c) {
+        var as_x = s[0] - a[0];
+        var as_y = s[1] - a[1];
+        var s_ab = (b[0] - a[0]) * as_y - (b[1] - a[1]) * as_x > 0;
+
+        if (((c[0] - a[0]) * as_y - (c[1] - a[1]) * as_x > 0) === s_ab) return false;
+        if (((c[0] - b[0]) * (s[1] - b[1]) - (c[1] - b[1]) * (s[0] - b[0]) > 0) !== s_ab) return false;
+        return true;
+    }
+
+    return pts !== undefined &&
+           intpoint_inside_trigon(relativePoint, pts[0], pts[1], pts[2]);
+}
+
 // --------------------------------------------------------------------------
 // refreshArc
 //
@@ -1143,6 +1316,7 @@ ContentDisplay.prototype.refreshArc = function(displayDesc, width, height) {
     var x = ensureOS(arc.x);
     var y = ensureOS(arc.y);
     var radius = ensureOS(arc.radius);
+    var relativeRadius = ensureOS(arc.relativeRadius);
     var start = ensureOS(arc.start);
     var range = ensureOS(arc.range);
     var end = ensureOS(arc.end);
@@ -1150,6 +1324,10 @@ ContentDisplay.prototype.refreshArc = function(displayDesc, width, height) {
     var inset = ensureOS(arc.inset);
     var ctx = this.context;
     var twoPI = Math.PI * 2;
+    if (relativeRadius.length > 0 && radius.length === 0) {
+        var normRadius = Math.min(w, h) / 2;
+        radius = relativeRadius.map(val => val * normRadius);
+    }
     var nr = radius.length === 0 || color.length === 0? 0: // no defaults
              end.length !== 0? end.length: // pick end over range
              range.length !== 0? range.length: 0;
@@ -1158,9 +1336,9 @@ ContentDisplay.prototype.refreshArc = function(displayDesc, width, height) {
         return;
     }
     for (var i = 0; i < nr; i++) {
-        var start_i = (start[i] - 0.25) * twoPI;
-        var end_i = end.length !== 0? (end[i] - 0.25) * twoPI:
-                    range[i] * twoPI + start_i;
+        var start_i = (start[i % start.length] - 0.25) * twoPI;
+        var end_i = end.length !== 0? (end[i % end.length] - 0.25) * twoPI:
+                    range[i % range.length] * twoPI + start_i;
         var x_i = x.length !== 0? x[i % x.length]: w / 2;
         var y_i = y.length !== 0? y[i % y.length]: h / 2;
         var inset_i = inset.length !== 0? inset[i % inset.length]: 0;
@@ -1171,6 +1349,209 @@ ContentDisplay.prototype.refreshArc = function(displayDesc, width, height) {
         radius_i -= (radius_i - inset_i) / 2;
         ctx.arc(x_i, y_i, radius_i, start_i, end_i);
         ctx.stroke();
+    }
+}
+
+ContentDisplay.prototype.checkArcHit = function(displayDesc, px, width, py, height) {
+    var w = width;
+    var h = height;
+    var arc = displayDesc.arc;
+    var x = ensureOS(arc.x);
+    var y = ensureOS(arc.y);
+    var radius = ensureOS(arc.radius);
+    var relativeRadius = ensureOS(arc.relativeRadius);
+    var start = ensureOS(arc.start);
+    var range = ensureOS(arc.range);
+    var end = ensureOS(arc.end);
+    var color = ensureOS(arc.color);
+    var inset = ensureOS(arc.inset);
+    var twoPI = Math.PI * 2;
+    if (relativeRadius.length > 0 && radius.length === 0) {
+        var normRadius = Math.min(w, h) / 2;
+        radius = relativeRadius.map(val => val * normRadius);
+    }
+    var nr = radius.length === 0 || color.length === 0? 0: // no defaults
+             end.length !== 0? end.length: // pick end over range
+             range.length !== 0? range.length: 0;
+
+    for (var i = 0; i < nr; i++) {
+        var start_i = (start[i % start.length] - 0.25) * twoPI;
+        var end_i = end.length !== 0? (end[i % end.length] - 0.25) * twoPI:
+                    range[i % range.length] * twoPI + start_i;
+        var x_i = x.length !== 0? x[i % x.length]: w / 2;
+        var y_i = y.length !== 0? y[i % y.length]: h / 2;
+        var inset_i = inset.length !== 0? inset[i % inset.length]: 0;
+        var radius_i = radius[i % radius.length];
+        var distance2 = (px - x_i) * (px - x_i) + (py - y_i) * (py - y_i);
+        // At this point we draw have a circle segment: inside radius of circle
+        // is inset_i, outside radius is radius_i
+        if (inset_i * inset_i <= distance2 && distance2 <= radius_i * radius_i) {
+            // Point falls inside circle, now check if it falls between start/end
+            // get rid of negative values, shift circle to make start on top
+            // and fold back to [0,2π) for comparison.
+            var angle = (Math.atan2(py - y_i, px - x_i) + twoPI) % twoPI;
+            var startK = Math.floor(start_i / twoPI);
+            start_i -= startK * twoPI;
+            end_i -= startK * twoPI;
+            if (end_i - start_i >= twoPI) {
+                return true;
+            }
+            if (start_i <= end_i) {
+                if (start_i <= angle && angle <= end_i) {
+                    return true;
+                }
+            } else {
+                if (!(end_i < angle && angle < start_i)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// --------------------------------------------------------------------------
+// refreshTriangle
+//
+ContentDisplay.prototype.refreshLine = function(displayDesc, width, height) {
+    var line = displayDesc.line;
+    var direction = ensureOS(line.direction);
+    var displayDivPos = this.baseArea.displayDivPos;
+    var contentPos = this.baseArea.contentPos;
+    var leftOffset = contentPos? contentPos.left - displayDivPos.left: 0;
+    var topOffset = contentPos? contentPos.top - displayDivPos.top: 0;
+    var linePos = this.baseArea.linePos;
+    var dash = ensureOS(line.dash);
+    var dashOffset = getDeOSedValue(line.dashOffset);
+    var lineWidth = getDeOSedValue(line.width);
+    var lineCap = getDeOSedValue(line.cap);
+    var clip = isTrue(line.clip);
+    var ctx = this.context;
+    var shadow = getDeOSedValue(line.shadow);
+    var x0, y0, x1, y1;
+
+    this.registerChangedPositioningOffsets();
+    if (ctx === undefined) {
+        return;
+    }
+    if (typeof(lineWidth) !== "number") {
+        lineWidth = 1;
+    }
+    ctx.save();
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = typeof(lineCap) === "string"? lineCap: "round";
+    ctx.beginPath();
+    if (dash.length > 0) {
+        ctx.setLineDash(dash.filter(v => typeof(v) === "number"));
+        if (typeof(dashOffset) === "number") {
+            ctx.lineDashOffset = dashOffset;
+        }
+    }
+    if (linePos === undefined || !("x0" in linePos)) {
+        if (direction.indexOf("left-right") >= 0) {
+            x0 = leftOffset; x1 = width + leftOffset;
+        } else if (direction.indexOf("right-left") >= 0) {
+            x1 = leftOffset; x0 = width + leftOffset;
+        }
+    } else {
+        x0 = linePos.x0; x1 = linePos.x1;
+    }
+    if (linePos === undefined || !("y0" in linePos)) {
+        if (direction.indexOf("top-bottom") >= 0) {
+            y0 = topOffset; y1 = height + topOffset;
+        } else if (direction.indexOf("bottom-top") >= 0) {
+            y1 = topOffset; y0 = height + topOffset;
+        }
+    } else {
+        y0 = linePos.y0; y1 = linePos.y1;
+    }
+    if (x0 === undefined || x1 === undefined ||
+          y0 === undefined || y1 === undefined) {
+        return;
+    }
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    if (shadow instanceof Object && !(shadow instanceof Array)) {
+        ctx.save();
+        ctx.shadowBlur = getValueForCSSStyle(shadow.blurRadius);
+        ctx.shadowColor = getValueForCSSStyle(shadow.color);
+        ctx.shadowOffsetX = getValueForCSSStyle(shadow.horizontal);
+        ctx.shadowOffsetY = getValueForCSSStyle(shadow.vertical);
+        if ("color" in line) {
+            ctx.strokeStyle = getValueForCSSStyle(line.color);
+        } else {
+            ctx.strokeStyle = shadowColor;
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+    ctx.strokeStyle = "color" in line? getValueForCSSStyle(line.color): "black";
+    ctx.stroke();
+    ctx.restore();
+}
+
+ContentDisplay.prototype.checkLineHit =
+  function(displayDesc, x, width, y, height) {
+    var line = displayDesc.line;
+    var direction = ensureOS(line.direction);
+    var displayDivPos = this.baseArea.displayDivPos;
+    var contentPos = this.baseArea.contentPos;
+    var leftOffset = contentPos? contentPos.left - displayDivPos.left: 0;
+    var topOffset = contentPos? contentPos.top - displayDivPos.top: 0;
+    var linePos = this.baseArea.linePos;
+    var lineWidth = getDeOSedValue(line.width);
+    var x0, y0, x1, y1, dist, xlen, ylen;
+
+    // Determine the two end points of the line
+    x -= leftOffset; y -= topOffset;
+    if (linePos === undefined || !("x0" in linePos)) {
+        if (direction.indexOf("left-right") >= 0) {
+            x0 = leftOffset; x1 = width + leftOffset;
+        } else if (direction.indexOf("right-left") >= 0) {
+            x1 = leftOffset; x0 = width + leftOffset;
+        }
+    } else {
+        x0 = linePos.x0; x1 = linePos.x1;
+    }
+    if (linePos === undefined || !("y0" in linePos)) {
+        if (direction.indexOf("top-bottom") >= 0) {
+            y0 = topOffset; y1 = height + topOffset;
+        } else if (direction.indexOf("bottom-top") >= 0) {
+            y1 = topOffset; y0 = height + topOffset;
+        }
+    } else {
+        y0 = linePos.y0; y1 = linePos.y1;
+    }
+    if (x0 === undefined || x1 === undefined ||
+          y0 === undefined || y1 === undefined) {
+        return;
+    }
+    // distance from (x,y) to line through (x0,y0),(x1,y1)
+    // from: https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+    xlen = x1 - x0;
+    if (xlen === 0) {
+        // It's a vertical line
+        dist = Math.abs(x - x0);
+    } else {
+        ylen = y1 - y0;
+        dist = Math.abs(ylen * x - xlen * y + x1 * y0 - x0 * y1) /
+                    Math.sqrt(xlen * xlen + ylen * ylen);
+    }
+    if (dist > (typeof(lineWidth) === "number"? Math.max(1, lineWidth / 2): 1)) {
+        return false;
+    }
+    // We still have to check if the point is beyond the start and end points
+    if (xlen === 0) {
+        const yLow = Math.min(y0, y1) - lineWidth / 2;
+        const yHigh = Math.max(y0, y1) + lineWidth / 2;
+        return yLow <= y && y <= yHigh;
+    } else {
+        // This formula does not deal with distance from the end points correctly
+        // but the difference with the correct distance is small, unless the
+        // line width is really high.
+        const xLow = Math.min(x0, x1) - lineWidth / 2;
+        const xHigh = Math.max(x0, x1) + lineWidth / 2;
+        return xLow <= x && x <= xHigh;
     }
 }
 
@@ -1187,7 +1568,9 @@ ContentDisplay.imageMondriaProperties = {'size': 1};
 // Returnes an image, not a div with image
 //
 ContentDisplay.prototype.imageContentDisplay = function(displayDesc) {
-    var img = document.createElement("img");
+    var imageDesc = displayDesc.image;
+    var innerEltType = "src" in imageDesc? "img": "span";
+    var img = document.createElement(innerEltType);
 
     // store this display object so that it is accessible in the 'onload'
     // event handler.
@@ -1208,6 +1591,19 @@ ContentDisplay.prototype.refreshImage = function(displayDesc) {
     var img = this.displayElement.content;
     var self = this;
 
+    if (this.prevProperties !== undefined) {
+        var prevImageDesc = this.prevProperties.image;
+        if (prevImageDesc !== undefined) {
+            var curInnerEltType = "src" in imageDesc? "img": "span";
+            var prevInnerEltType = "src" in prevImageDesc? "img": "span";
+            if (curInnerEltType !== prevInnerEltType) {
+                this.displayDiv.removeChild(this.displayElement.root);
+                this.displayElement = this.imageContentDisplay(displayDesc);
+                this.displayDiv.appendChild(this.displayElement.root);
+                img = this.displayElement.content;
+            }
+        }
+    }
     for (var i in imageDesc) {
         if (ContentDisplay.imageCSSProperties[i]) {
             img.setAttribute(i, imageDesc[i]);
@@ -1217,6 +1613,9 @@ ContentDisplay.prototype.refreshImage = function(displayDesc) {
         var img = arg.currentTarget;
         self.imageUpdateHeightWidth(img);
     };
+    if ("svg" in imageDesc) {
+        img.innerHTML = imageDesc.svg;
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -1273,8 +1672,12 @@ ContentDisplay.prototype.imageUpdateHeightWidth = function(img) {
     // Based on the parent dimensions and img dimensions and conf
     //  calculate the desired width, height, top, left
     // The image is always centralized
-    var naturalWidth = img.naturalWidth;
-    var naturalHeight = img.naturalHeight;
+    // Note that resizing svg is not supported.
+    var naturalWidth, naturalHeight;
+    if ("src" in imageDescr) {
+        naturalWidth = img.naturalWidth;
+        naturalHeight = img.naturalHeight;
+    }
     if (!naturalWidth || !naturalHeight) {
         return;
     }
@@ -1424,8 +1827,8 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
     var width = this.getContentWidth();
     var height = this.getContentHeight();
 
-    var ewidth = isNaN(width) ? 0 : (width + this.extraWidth);
-    var eheight = isNaN(height) ? 0 : (height + this.extraHeight);
+    var ewidth = isNaN(width) ? 0 : (width + this.extraWidth + this.negativeShiftLeft);
+    var eheight = isNaN(height) ? 0 : (height + this.extraHeight + this.negativeShiftTop);
 
     switch(this.displayType) {
       case "image":
@@ -1434,12 +1837,15 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
         break;
       case "arc":
       case "triangle":
+      case "line":
         this.canvas.width = ewidth;
         this.canvas.height = eheight;
         root.style.width = ewidth + "px";
         root.style.height = eheight + "px";
-        root.style.top = (this.paddingTop ? this.paddingTop : 0) + "px";
-        root.style.left = (this.paddingLeft ? this.paddingLeft : 0) + "px";
+        root.style.top = ((this.paddingTop? this.paddingTop: 0) -
+                          this.negativeShiftTop) + "px";
+        root.style.left = ((this.paddingLeft? this.paddingLeft: 0) -
+                           this.negativeShiftLeft) + "px";
         break;
       case "text":
         root.style.width = ewidth + "px";
@@ -1512,23 +1918,37 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
 //   Shadows are currently only supported on triangles.
 //
 ContentDisplay.prototype.updateSizeRequirements = function() {
+    this.extraWidth = 0;
+    this.extraHeight = 0;
+    this.negativeShiftLeft = 0;
+    this.negativeShiftTop = 0;
     switch (this.displayElement.type) {
+      case "line":
+        var line = this.descriptionDisplay.line;
+        var lineWidth = getDeOSedValue(line.width);
+        var clip = line.clip;
+        if (lineWidth > 1 && isFalse(clip)) {
+            var frameWidth = Math.floor((lineWidth + 1) / 2);
+            this.extraWidth += frameWidth;
+            this.extraHeight += frameWidth;
+            this.negativeShiftLeft += frameWidth;
+            this.negativeShiftTop += frameWidth;
+        }
+        // fall through: shadow for triangle and line are treated identically
       case "triangle":
-        var shadow = getDeOSedValue(this.descriptionDisplay.triangle.shadow);
+        var shadow = "triangle" in this.descriptionDisplay?
+                     getDeOSedValue(this.descriptionDisplay.triangle.shadow):
+                     getDeOSedValue(this.descriptionDisplay.line.shadow);
         if (shadow instanceof Object && !(shadow instanceof Array)) {
             var shadowBlur = getNumberForCSSStyle(shadow.blurRadius);
             var shadowOffsetX = getNumberForCSSStyle(shadow.horizontal);
             var shadowOffsetY = getNumberForCSSStyle(shadow.vertical);
-            this.extraWidth = Math.max(shadowOffsetX + shadowBlur, 0);
-            this.extraHeight = Math.max(shadowOffsetY + shadowBlur, 0);
-        } else {
-            this.extraWidth = 0;
-            this.extraHeight = 0;
+            this.extraWidth += Math.max(shadowOffsetX + shadowBlur, 0);
+            this.extraHeight += Math.max(shadowOffsetY + shadowBlur, 0);
+            this.negativeShiftLeft += Math.min(shadowOffsetX + shadowBlur, 0);
+            this.negativeShiftTop += Math.min(shadowOffsetY + shadowBlur, 0);
         }
         break;
-      default:
-        this.extraWidth = 0;
-        this.extraHeight = 0;
     }
 }
 
@@ -1544,6 +1964,99 @@ ContentDisplay.prototype.setForeignElement= function(foreignElement) {
 
 ContentDisplay.prototype.setShowEmbedding = function(showEmbedding) {
     this.showEmbedding = !!showEmbedding;
+}
+
+ContentDisplay.prototype.checkLinePositioningOffsets = function() {
+    var needsLinePositioningOffsets = this.displayType === "line";
+
+    if (needsLinePositioningOffsets) {
+        this.registerChangedPositioningOffsets();
+    } else if (!needsLinePositioningOffsets && this.hasLinePositioningOffsets) {
+        this.unregisterLinePositioningOffsets();
+    }
+}
+
+ContentDisplay.prototype.registerChangedPositioningOffsets = function() {
+    var line = this.descriptionDisplay.line;
+    var direction = ensureOS(line.direction);
+    var needsLinePositioningOffsets = {
+        horizontal: !direction.some(function(dir) {
+            return dir === "top-bottom" || dir === "bottom-top";
+        }),
+        vertical: !direction.some(function(dir) {
+            return dir === "left-right" || dir === "right-left";
+        })
+    };
+    var area = this.baseArea;
+    var linePos = area.linePos;
+
+    if (this.hasLinePositioningOffsets === undefined) {
+        this.hasLinePositioningOffsets = {
+            horizontal: false,
+            vertical: false
+        };
+    }
+    if (needsLinePositioningOffsets.horizontal &&
+          !this.hasLinePositioningOffsets.horizontal) {
+        globalAbsolutePosManager.addOffset(topLabel(area, false),
+                                           linePointLabel(area, "y0"),
+                                           area.areaId, "y0", false);
+        globalAbsolutePosManager.addOffset(topLabel(area, false),
+                                           linePointLabel(area, "y1"),
+                                           area.areaId, "y1", false);
+    } else if (!needsLinePositioningOffsets.horizontal &&
+               this.hasLinePositioningOffsets.horizontal) {
+        globalAbsolutePosManager.removeOffset(topLabel(area, false),
+                                              linePointLabel(area, "y0"));
+        globalAbsolutePosManager.removeOffset(topLabel(area, false),
+                                              linePointLabel(area, "y1"));
+        if (linePos !== undefined) {
+            delete linePos.y0;
+            delete linePos.y1;
+        }
+    }
+    if (needsLinePositioningOffsets.vertical &&
+          !this.hasLinePositioningOffsets.vertical) {
+        globalAbsolutePosManager.addOffset(leftLabel(area, false),
+                                           linePointLabel(area, "x0"),
+                                           area.areaId, "x0", false);
+        globalAbsolutePosManager.addOffset(leftLabel(area, false),
+                                           linePointLabel(area, "x1"),
+                                       area.areaId, "x1", false);
+    } else if (!needsLinePositioningOffsets.vertical &&
+               this.hasLinePositioningOffsets.vertical) {
+        globalAbsolutePosManager.removeOffset(leftLabel(area, false),
+                                              linePointLabel(area, "x0"));
+        globalAbsolutePosManager.removeOffset(leftLabel(area, false),
+                                              linePointLabel(area, "x1"));
+        if (linePos !== undefined) {
+            delete linePos.x0;
+            delete linePos.x1;
+        }
+    }
+    this.hasLinePositioningOffsets = needsLinePositioningOffsets;
+}
+
+// Remove the offsets between area's frame and the line offsets when needed.
+ContentDisplay.prototype.unregisterLinePositioningOffsets = function() {
+    var area = this.baseArea;
+
+    if (this.hasLinePositioningOffsets.horizontal) {
+        globalAbsolutePosManager.removeOffset(topLabel(area, false),
+                                              linePointLabel(area, "y0"));
+        globalAbsolutePosManager.removeOffset(topLabel(area, false),
+                                              linePointLabel(area, "y1"));
+    }
+    if (this.hasLinePositioningOffsets.vertical) {
+        globalAbsolutePosManager.removeOffset(leftLabel(area, false),
+                                              linePointLabel(area, "x0"));
+        globalAbsolutePosManager.removeOffset(leftLabel(area, false),
+                                              linePointLabel(area, "x1"));
+    }
+    if (area.linePos !== undefined) {
+        area.linePos = undefined;
+    }
+    this.hasLinePositioningOffsets = undefined;
 }
 
 inherit(Display, ContentDisplay);
@@ -1572,6 +2085,7 @@ Display.prototype.destroy = function() {
 Display.prototype.getEmbeddingDiv = function() {
     if (this.embeddingDiv === null) {
         this.embeddingDiv = createDiv(this.baseArea.areaId + ":embedding");
+        this.inZeroOffsetPosMode = false;
         if (this.showEmbedding) {
             if (this.baseArea.contentPos) {
                 embedElementAtPos(this.embeddingDiv, this.baseArea.contentPos,
@@ -1634,7 +2148,8 @@ Display.prototype.contentOffsetModeChange =
 // this positioning change.
 
 Display.prototype.refreshPos = function() {
-    if(this.displayType == "triangle" || this.displayType === "arc")
+    if (this.displayType === "triangle" || this.displayType === "arc" ||
+          this.displayType === "line")
         this.displayContentRefresh(false, true, false);
     else
         this.setDisplayElementPos();
@@ -1670,9 +2185,6 @@ Display.prototype.getContentHeight = function() {
     return contentSize.height;
 }
 
-
-
-
 /**** Transformation properties ****/
 
 Display.prototype.getScaleX = function() {
@@ -1705,7 +2217,8 @@ Display.prototype.getScaleY = function() {
 
 var selectableInputElementTypes = {
     text: true,
-    password: true
+    password: true,
+    textarea: true
 };
 
 // Creates the input cell and initializes it with display:text:value:.
@@ -1720,12 +2233,14 @@ Display.prototype.createInputCell = function(displayDescr) {
     var initialValue = "text" in displayDescr? displayDescr.text.value:
           undefined;
     var currentValue = initialValue;
+    var baseArea = this.baseArea;
 
     if (initialValue instanceof Array) {
         initialValue = initialValue[0];
     }
 
     var inputElement = res.root;
+    inputElement.style.background = "transparent";
 
     if (inputDescr.type in selectableInputElementTypes && inputElement &&
           typeof(inputElement) === "object") {
@@ -1734,7 +2249,7 @@ Display.prototype.createInputCell = function(displayDescr) {
             selectionEnd: inputElement.selectionEnd,
             selectionDirection: inputElement.selectionDirection,
             value: initialValue === ""? constEmptyOS: initialValue
-        });
+        }, inputElement);
     }
 
     // Attach listeners for user input and other changes
@@ -1764,10 +2279,10 @@ Display.prototype.createInputCell = function(displayDescr) {
         }
     }, false);
     inputElement.addEventListener("focus", function (e) {
-        callbackObject.onfocus(true);
+        callbackObject.onfocus(true, inputElement);
     }, false);
     inputElement.addEventListener("blur", function (e) {
-        callbackObject.onfocus(false);
+        callbackObject.onfocus(false, inputElement);
     }, false);
     switch (inputDescr.type) {
       case "text":
@@ -1776,6 +2291,11 @@ Display.prototype.createInputCell = function(displayDescr) {
         // These listeners relay key events to gDomEvent and blocks them
         inputElement.addEventListener("keydown", function (e) {
             postKeyEvent(e, recipient);
+            postInputParamChangeEvent(baseArea, true, {
+                selectionStart: inputElement.selectionStart,
+                selectionEnd: inputElement.selectionEnd,
+                selectionDirection: inputElement.selectionDirection
+            }, inputElement);
         }, false);
         inputElement.addEventListener("keyup", function (e) {
             postKeyEvent(e, recipient);
@@ -1871,19 +2391,19 @@ Display.prototype.oninput = function(domEvent, element) {
             selectionStart: element.selectionStart,
             selectionEnd: element.selectionEnd,
             selectionDirection: element.selectionDirection
-        });
+        }, element);
     } else if (element.type === "file") {
         gDomEvent.pickFile(domEvent, this.baseArea, element.files)
     } else {
         var value = element.value === ""? constEmptyOS: element.value;
-        postInputParamChangeEvent(this.baseArea, true, {value: value});
+        postInputParamChangeEvent(this.baseArea, true, {value: value}, element);
     }
 }
 
 // Sends the current focus state of the input element to the area's param:input:
-Display.prototype.onfocus = function(newValue) {
+Display.prototype.onfocus = function(newValue, element) {
     gDomEvent.recordComment("focus " + newValue + " on " + this.baseArea.areaId);
-    postInputParamChangeEvent(this.baseArea, true, {focus: newValue});
+    postInputParamChangeEvent(this.baseArea, true, {focus: newValue}, element);
 }
 
 Display.prototype.applyHTMLTransform = function(value) {
@@ -1924,13 +2444,27 @@ Display.prototype.hasFocus = function() {
 
 Display.prototype.releaseFocus = function() {
     gDomEvent.recordComment("releaseFocus " + this.baseArea.areaId);
-    gDomEvent.setNextFocussedArea(undefined);
+    gDomEvent.setNextFocussedArea(this.baseArea, false);
 }
 
 Display.prototype.willHandleClick = function() {
     return this.descriptionDisplay !== undefined &&
            this.descriptionDisplay.html !== undefined &&
            isTrue(this.descriptionDisplay.html.handleClick);
+}
+
+Display.prototype.getInputChanges = function() {
+    if (this.displayElement !== undefined &&
+          this.displayElement.type === "input") {
+        var element = this.displayElement.content;
+        return [{
+            selectionStart: [element.selectionStart],
+            selectionEnd: [element.selectionEnd],
+            selectionDirection: [element.selectionDirection]
+        }];
+    } else {
+        return undefined;
+    }
 }
 
 // Changes the content and state of the input element.
@@ -1946,7 +2480,11 @@ Display.prototype.setInputState = function(attrib, value) {
             value = value.toString();
         }
         if (!isSimpleType(value)) {
-            return false;
+            if (isEmptyOS(value)) {
+                value = "";
+            } else {
+                return false;
+            }
         }
         if (inputElement.type in selectableInputElementTypes) {
             // Changing the value should preserve selection start, end and
@@ -1976,7 +2514,7 @@ Display.prototype.setInputState = function(attrib, value) {
         }
         break;
       case "focus":
-        gDomEvent.setNextFocussedArea(isTrue(value)? this.baseArea: undefined);
+        gDomEvent.setNextFocussedArea(this.baseArea, isTrue(value));
         break;
       case "selectionStart":
         if (inputElement.type in selectableInputElementTypes && value >= 0) {
@@ -2021,7 +2559,7 @@ Display.prototype.postAddActions = function() {
         for (var attr in this.displayElement.postAddAction) {
             if (attr === "focus") {
                 if (this.displayElement.postAddAction.focus) {
-                    gDomEvent.setNextFocussedArea(this.baseArea);
+                    gDomEvent.setNextFocussedArea(this.baseArea, true);
                 }
             } else {
                 this.displayElement.root[attr] =
@@ -2108,7 +2646,8 @@ var frameResetProperties = {
     paddingTop: "",
     paddingBottom: "",
     overflow: "",
-    transform: ""
+    transform: "",
+    filter: ""
 };
 
 // Properties which have to be reset on the inner element when they are missing
@@ -2216,19 +2755,93 @@ Display.prototype.setZIndex = function(frameZ, displayZ) {
 // or if it is not explicitly configured as 'pointerOpaque: false', and does
 //  have a 'background'
 //
-Display.prototype.isOpaque = function() {
+// Outdated
+// Display.prototype.isOpaque = function() {
+//     var displayConfiguration = this.descriptionDisplay;
+
+//     throw "do not call";
+//     return displayConfiguration !== undefined &&
+//           (displayConfiguration.pointerOpaque !== undefined?
+//            displayConfiguration.pointerOpaque:
+//            displayConfiguration.background !== undefined ||
+//            (displayConfiguration.image !== undefined &&
+//             displayConfiguration.image.src !== undefined) ||
+//            (displayConfiguration.triangle !== undefined &&
+//             displayConfiguration.triangle.color !== undefined) ||
+//            (displayConfiguration.arc !== undefined &&
+//             displayConfiguration.arc.color !== undefined));
+// }
+
+// A display is opaque for positions x,y if there is a background or text at
+// that position. This function determines pointer and event propagation.
+Display.prototype.isOpaquePosition = function(x, y) {
     var displayConfiguration = this.descriptionDisplay;
 
-    return displayConfiguration !== undefined &&
-          (displayConfiguration.pointerOpaque !== undefined?
-           displayConfiguration.pointerOpaque:
-           displayConfiguration.background !== undefined ||
-           (displayConfiguration.image !== undefined &&
-            displayConfiguration.image.src !== undefined) ||
-           (displayConfiguration.triangle !== undefined &&
-            displayConfiguration.triangle.color !== undefined) ||
-           (displayConfiguration.arc !== undefined &&
-            displayConfiguration.arc.color !== undefined));
+    function getRadius(xSide, ySize) {
+        var attr = "border" + xSide + ySide + "Radius";
+        var cornerRadius = displayConfiguration[attr];
+
+        return cornerRadius === undefined? displayConfiguration.borderRadius:
+                                           cornerRadius;
+    }
+
+    if (displayConfiguration === undefined) {
+        return false;
+    }
+    // pointerOpaque overrides display definition
+    if (displayConfiguration.pointerOpaque !== undefined) {
+        return displayConfiguration.pointerOpaque;
+    }
+    // Check if point is outside the borderRadius
+    var pos = this.hasVisibleBorder()? this.baseArea.getPos():
+                this.baseArea.getPosCorrectedForOffset();
+    var xCenter = pos.width / 2;
+    var yCenter = pos.height / 2;
+    var xSide = x < xCenter? "Left": "Right";
+    var ySide = y < yCenter? "Top": "Bottom";
+    var cornerRadius = getRadius(xSide, ySide);
+    if (typeof(cornerRadius) === "string" && cornerRadius.endsWith("%")) {
+        cornerRadius = parseFloat(cornerRadius) * Math.min(xCenter, yCenter) / 100;
+    }
+    // We only handle a single radius at this moment.
+    if (!isNaN(cornerRadius)) {
+        // Limit to minimum of 0.5 * width and 0.5 * height
+        cornerRadius = Math.min(cornerRadius, Math.min(xCenter, yCenter));
+        // Map to distance from center to make all 4 quadrants behave the same
+        var xDistFromCenter = Math.abs(x - xCenter);
+        var yDistFromCenter = Math.abs(y - yCenter);
+        // Determine distance from center of radius terminates
+        var xDistFromCorner = xDistFromCenter - xCenter + cornerRadius;
+        var yDistFromCorner = yDistFromCenter - yCenter + cornerRadius;
+        if (xDistFromCorner >= 0 && yDistFromCorner >= 0 &&
+              (xDistFromCorner * xDistFromCorner +
+                yDistFromCorner * yDistFromCorner >
+                cornerRadius * cornerRadius)) {
+            // Point is in the part where there is a radius, and falls
+            // falls outside the circle
+            return false;
+        }
+    }
+    // Within the border and radius
+    if (displayConfiguration.background !== undefined) {
+        // When there's a background, it's a hit, even if the color is
+        // completely transparent.
+        return true;
+    }
+
+    switch (this.displayType) {
+      case "empty":
+        return false;
+      case "triangle":
+        return this.checkTriangleHit(displayConfiguration, [x / pos.width, y / pos.height]);
+      case "arc":
+        return this.checkArcHit(displayConfiguration, x, pos.width, y, pos.height);
+      case "line":
+        return this.checkLineHit(displayConfiguration, x, pos.width, y, pos.height);
+    }
+    // text, image, iframe, html are considered opaque
+    // empty is also considered opaque
+    return true;
 }
 
 // --------------------------------------------------------------------------
@@ -2307,6 +2920,7 @@ function SurveyDisplay(areaId, surveyor) {
     this.surveyor = surveyor;
     this.swidth = undefined;
     this.sheight = undefined;
+    this.nrTextNodes = 0;
 }
 
 SurveyDisplay.embeddingDiv = undefined;
@@ -2318,12 +2932,11 @@ SurveyDisplay.embeddingDiv = undefined;
 //  of the survey divs
 //
 SurveyDisplay.getEmbeddingDiv = function() {
-    if (typeof(SurveyDisplay.embeddingDiv) === "undefined") {
+    if (SurveyDisplay.embeddingDiv === undefined) {
         var sdDiv = createDiv("surveyDivContainer");
         sdDiv.style.position = "absolute";
         sdDiv.style.left = 0;
         sdDiv.style.top = 0;
-        sdDiv.style.width = "100000px";
         sdDiv.style.width = "100000px";
 
         document.body.appendChild(sdDiv);
@@ -2331,6 +2944,24 @@ SurveyDisplay.getEmbeddingDiv = function() {
         SurveyDisplay.embeddingDiv = sdDiv;
     }
     return SurveyDisplay.embeddingDiv;
+}
+
+// Inserts a span with font size 0 to the element in the display div to measure
+// the baseline. The offsetTop of the span is the baseline height for the
+// span containing the text.
+SurveyDisplay.prototype.setNewDisplayElement = function(display, displayType) {
+    this.ContentDisplay_setNewDisplayElement(display, displayType);
+    if (this.displayElement !== undefined) {
+        if (this.displayElement.type === "text" || this.displayElement.type === "html") {
+            var zeroHeightDiv = document.createElement("span");
+            zeroHeightDiv.style.fontSize = "0";
+            zeroHeightDiv.style.visibility = "hidden";
+            zeroHeightDiv.style.background = "red";
+            zeroHeightDiv.innerText = "a";
+            this.displayElement.root.insertBefore(zeroHeightDiv,
+                                                this.displayElement.content);
+        }
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -2388,10 +3019,6 @@ SurveyDisplay.prototype.createDisplayDiv = function() {
         this.displayDiv.style.width = "inherit";
         this.displayDiv.style.height = "inherit";
         this.displayDiv.style.visibility = "hidden";
-        var areaid = this.areaId;
-        this.displayDiv.onload = function() {
-            console.log("loaded div", areaid);
-        }
     }
 }
 
@@ -2478,7 +3105,8 @@ SurveyDisplay.prototype.getSize = function() {
             var bcr = rootElem.getBoundingClientRect();
             var bcrHeight = bcr.bottom - bcr.top;
             var bcrWidth = bcr.right - bcr.left;
-            return [Math.ceil(bcrWidth), Math.ceil(bcrHeight)];
+            var baseLine = this.displayElement.root.firstChild.offsetTop;
+            return [Math.ceil(bcrWidth), Math.ceil(bcrHeight), Math.ceil(baseLine)];
         }
     }
 }

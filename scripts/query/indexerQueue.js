@@ -56,7 +56,7 @@
 
 // %%include%%: <scripts/utils/heap.js>
 
-function IndexerQueue()
+function IndexerQueue(scheduleFunc)
 {
     this.pathNodeQueue = new Heap(this.comparator);
     this.queuedIndexers = new Map();
@@ -65,6 +65,7 @@ function IndexerQueue()
     this.compCalcQueue = [];
     this.completeIncrementalUpdateTasks = [];
     this.queuedDataElements = new Map();
+    this.scheduleFunc = scheduleFunc;
 }  
 
 // Currently, ordering is by path ID only. Longer paths are scehduled
@@ -86,6 +87,10 @@ function indexerQueueSchedulePathNode(pathNode)
 {
     if(pathNode.scheduled)
         return;
+
+    if (this.pathNodeQueue.isEmpty() && this.scheduleFunc !== undefined) {
+        this.scheduleFunc();
+    }
 
     pathNode.scheduled = true;
     this.pathNodeQueue.addSingle(pathNode);

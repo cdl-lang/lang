@@ -820,7 +820,7 @@ class SetChildController extends ChildController
                                         new Result([areaIdentifier]);
                         childArea.updateSetData(paramAttr, areaSetContent);
                         childArea.updateSetPosition(this.dataEval, j);
-                        globalEventQueue.clearPtrInArea(childArea);
+                        // globalEventQueue.clearPtrInArea(childArea);
                     }
                     areaRelationMonitor.addRelation(childArea.areaId, "index", [j]);
                     if (prev === undefined) {
@@ -832,6 +832,9 @@ class SetChildController extends ChildController
                     elements.push(childArea.areaReference);
                     prev = childArea;
                     j++;
+                } else {
+                    childArea = this.identifier2area.get(areaIdentifier);
+                    childArea.addSetDataSameId(v);
                 }
             }
         } finally {
@@ -1955,7 +1958,7 @@ implements
     // Children
     children: {[childName: string]: ChildController} = {};
     childAreaWatchers: {[childName: string]: WatcherMap};
-    isReferredOf: {[expressionAreaId: string]: {[childName: string]: SetChildController}};
+    isReferredOf?: {[expressionAreaId: string]: {[childName: string]: SetChildController}};
 
     // EvaluationEnvironment
     evaluationNodes: EvaluationNode[][];
@@ -2423,6 +2426,8 @@ implements
 
     abstract willHandleClick(): boolean;
 
+    abstract getInputChanges(): {[attr: string]: any}|undefined;
+
     abstract updateParamInput(changes: {[attr: string]: any}, userInitiated: boolean,
                               checkExistence: boolean): void;
 
@@ -2598,6 +2603,12 @@ implements
 
         this.param.position = position;
         paramNode.setSource(src, position);
+    }
+
+    addSetDataSameId(value: any): void {
+        var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
+
+        paramNode.pushToAreaSetContent(value);
     }
 
     getAreaParam(): Result {
@@ -2963,7 +2974,7 @@ implements
         return tp;
     }
 
-    isOpaque(): boolean {
+    isOpaquePosition(x: number, y: number): boolean {
         return true;
     }
 
@@ -2983,7 +2994,7 @@ implements
         return this;
     }
 
-    watchers: WatcherMap;
+    watchers?: WatcherMap;
 
     addWatcher(watcher: Watcher, pos: any, forceFirstUpdate: boolean, conditionallyActivate: boolean, dataSourceAware: boolean): void {
         if (!("watchers" in this)) {
@@ -3135,6 +3146,10 @@ class CalculationArea extends CoreArea {
         return false;
     }
 
+    getInputChanges(): {[attr: string]: any}|undefined {
+        return undefined;
+    }
+
     updateParamInput(changes: {[attr: string]: any;}, userInitiated: boolean, checkExistence: boolean): void {
     }
 
@@ -3151,7 +3166,12 @@ class CalculationArea extends CoreArea {
     }
 }
 
-var gDontSetPosition: boolean = false; // TODO: REMOVE!!!
+interface LinePositionInformation {
+    y0?: number;
+    y1?: number;
+    x0?: number;
+    x1?: number;
+}
 
 class DisplayArea extends CoreArea {
     // Interface to the rendering
@@ -3166,7 +3186,7 @@ class DisplayArea extends CoreArea {
     displayEvaluationNode: EvaluationNode;
     foreignInterfaceEvaluationNode: EvaluationNode;
     display: Display;
-    initDisplayConfigValue: any = undefined;
+    initDisplayConfigValue?: any = undefined;
     independentContentPosition: EvaluationNode;
     propagatePointerInAreaNode: EvaluationNode;
     visualUpdates: { display: any; position: boolean; frameZ: number; displayZ: number } = undefined;
@@ -3180,8 +3200,9 @@ class DisplayArea extends CoreArea {
     embeddedReferred: {[areaId: string]: CoreArea};
 
     // Interface to the rendering
-    contentPos: ContentPos;
-    displayDivPos: any;
+    contentPos?: ContentPos;
+    displayDivPos?: DisplayDivPos;
+    linePos: LinePositionInformation;
     zArea: ZArea = undefined;
 
     constructor(template: AreaTemplate, controller: ChildController,
@@ -3255,7 +3276,7 @@ class DisplayArea extends CoreArea {
                 if (this.renderingForeignDisplay !== undefined) {
                     this.renderingForeignDisplay.addChildArea(
                         this.areaId, result, this.controller);
-                    allAreaMonitor.requestVisualUpdate(this);
+                    allAreaMonitor.requestVisualUpdate(this.renderingForeignDisplay.displayOfArea);
                 } else {
                     this.setDisplay(result.value);
                 }
@@ -3436,8 +3457,14 @@ class DisplayArea extends CoreArea {
                 // explanation for their positioning at the top of this file.
                 if (this.contentPos !== undefined) { // content positioned separately
                     this.display.updatePos(this.contentPos, this.displayDivPos);
+                    if (this.foreignDisplay !== undefined) {
+                        this.foreignDisplay.setSize(this.displayDivPos.width, this.displayDivPos.height);
+                    }
                 } else { // content positioned at offset zero from frame (on all sides)
                     this.display.updateZeroOffsetPos(this.relative);
+                    if (this.foreignDisplay !== undefined) {
+                        this.foreignDisplay.setSize(this.relative.width, this.relative.height);
+                    }
                 }
                 this.display.refreshPos();  // Notify the area's display
                 // embed the frame in the frame of the embedding area
@@ -3509,9 +3536,6 @@ class DisplayArea extends CoreArea {
 
     setPosition(name: string, value: any): void {
         var deps: string[];
-
-        if (gDontSetPosition)
-            return;
 
         if (logValues && logPrototypes === undefined) {
             gSimpleLog.log("area", this.areaId,
@@ -3741,25 +3765,25 @@ class DisplayArea extends CoreArea {
         delete this.embeddedReferred[area.areaId];
     }
 
-    registerContentOffsets(css: any, modify: boolean): any {
+    registerContentOffsets(displayDescr: any, modify: boolean): any {
         var offsets: any = {};
         var propsSet: any = {}; // properties set by this function
         var hasDefinedValues: boolean = false;
         var edge: string;
 
-        if (css !== undefined) {
+        if (displayDescr !== undefined) {
             for (var cssDefaultProp in contentOffsetCSSProperties) {
                 var defaultValue =
-                    this.getAndConvertCssOffsetProperty(cssDefaultProp, css);
+                    this.getAndConvertCssOffsetProperty(cssDefaultProp, displayDescr);
                 var specificProperties: any = contentOffsetCSSProperties[cssDefaultProp];
                 if (modify) {
-                    // remove the default css property from the css, it will be
+                    // remove the default property from the css, it will be
                     // replaced by the specific properties below.
-                    delete css[cssDefaultProp];
+                    delete displayDescr[cssDefaultProp];
                 }
                 for (edge in specificProperties) {
                     var specificProp: any = specificProperties[edge];
-                    var value: number = this.getAndConvertCssOffsetProperty(specificProp, css);
+                    var value: number = this.getAndConvertCssOffsetProperty(specificProp, displayDescr);
                     if (value === undefined) {
                         value = defaultValue;
                     }
@@ -3770,10 +3794,26 @@ class DisplayArea extends CoreArea {
                     }
                     propsSet[specificProp] = value;
                     if (modify) {
-                        css[specificProp] = value + "px";
+                        displayDescr[specificProp] = value + "px";
                     }
                     offsets[edge] = offsets[edge]? offsets[edge] + value: value;
                 }
+            }
+        }
+        if (!hasDefinedValues && isAV(displayDescr.line)) {
+            // When there is a line, increase the offsets for all edges with
+            // half the line-width, to allow rendering the line endings.
+            var lineWidth: any = getDeOSedValue(displayDescr.line.width);
+            var clip: any = displayDescr.line.clip;
+            if (lineWidth > 1 && isFalse(clip)) {
+                var frameWidth: number = Math.floor((lineWidth + 1) / 2);
+                offsets = {
+                    top: offsets.top? offsets.top + frameWidth: frameWidth,
+                    left: offsets.left? offsets.left + frameWidth: frameWidth,
+                    bottom: offsets.bottom? offsets.bottom + frameWidth: frameWidth,
+                    right: offsets.right? offsets.right + frameWidth: frameWidth
+                }
+                hasDefinedValues = true;
             }
         }
         var needToScheduleGeometryTask: boolean = false;
@@ -3859,7 +3899,8 @@ class DisplayArea extends CoreArea {
         var pos: Relative = this.getPos();
         var offsets: EdgeRect = this.getOffsets();
         var display: Display = this.display;
-        return  pos === undefined || offsets === undefined || !("left" in offsets)? pos:
+        return  display === undefined || pos === undefined || offsets === undefined ||
+                !("left" in offsets) || display.displayType === "line"? pos:
                 {
                     left: pos.left + offsets.left - display.paddingLeft,
                     top: pos.top + offsets.top - display.paddingTop,
@@ -4036,7 +4077,7 @@ class DisplayArea extends CoreArea {
         }
 
         function visible(r: Rect): boolean {
-            return r.height > 0 && r.top > 0;
+            return r.height > 0 && r.top >= 0;
         }
 
         while (ptr.embedding !== undefined) {
@@ -4162,6 +4203,11 @@ class DisplayArea extends CoreArea {
         return this.display !== undefined && this.display.willHandleClick();
     }
 
+    getInputChanges(): {[attr: string]: any}|undefined {
+        return this.display !== undefined?
+               this.display.getInputChanges(): undefined;
+    }
+
     paramInputDefined(): boolean {
         var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
         var currParamValue: any = paramNode.result.value[0];
@@ -4236,8 +4282,8 @@ class DisplayArea extends CoreArea {
         return this.zArea.getZ();
     }
 
-    isOpaque(): boolean {
-        return this.display !== undefined && this.display.isOpaque();
+    isOpaquePosition(x: number, y: number): boolean {
+        return this.display !== undefined && this.display.isOpaquePosition(x, y);
     }
 
     hasVisibleBorder(): boolean {

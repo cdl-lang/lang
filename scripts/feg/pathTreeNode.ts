@@ -2898,7 +2898,40 @@ function convertClass(node: PathTreeNode, classReference: any, path: string[],
                                         "' "  + inheritStr(inheritInfo, path));
     }
 }
-    
+
+function replaceClassArgumentsInAttributes(obj: any, classArguments: any): any {
+    var repl: any = obj;
+
+    for (var origAttr in obj) {
+        var attr: string = origAttr;
+        if (attr.length > 1 && attr[0] === "$") {
+            if (attr[1] === "$") {
+                attr = attr.slice(1);
+            } else {
+                var templateArg = classArguments === undefined? undefined:
+                                  classArguments[attr.slice(1)];
+                if (templateArg === undefined) {
+                    Utilities.syntaxError("undefined template argument for " + attr);
+                } else if (typeof(templateArg) !== "string") {
+                    Utilities.syntaxError("template argument for attribute " +
+                                            attr + " is not a string");
+                } else {
+                    attr = templateArg;
+                }
+            }
+        }
+        if (attr !== origAttr) {
+            if (repl === obj) {
+                repl = shallowCopyMinus(obj, origAttr);
+            } else {
+                delete repl[origAttr];
+            }
+            repl[attr] = obj[origAttr];
+        }
+    }
+    return repl;
+}
+
 function convertVariants(node: PathTreeNode, def: any, path: string[],
                          qualifiers: CDLQualifierTerm[], childLevel: number,
                          inheritInfo: InheritInfo[],
@@ -2912,18 +2945,20 @@ function convertVariants(node: PathTreeNode, def: any, path: string[],
 
     for (var i: number = 0; i !== os.length; i++) {
         var elt: any = os[i];
-        var qualifier: any;
-        var variant: any;
+        var qualifier: any = undefined;
+        var variant: any = undefined;
         if (elt instanceof Object && "qualifier" in elt) {
-            qualifier = elt.qualifier;
-            if (qualifier !== "!" && qualifier !== undefined &&
-                    getCdlExpressionType(qualifier) !== 
-                    ExpressionType.attributeValue) {
+            if (getCdlExpressionType(elt.qualifier) === ExpressionType.attributeValue) {
+                qualifier = classArguments === undefined? elt.qualifier:
+                    replaceClassArgumentsInAttributes(elt.qualifier, classArguments);
+            } else if (elt.qualifier !== "!" && elt.qualifier !== undefined) {
                 Utilities.error("unexpected qualifier: " +
                                 convertValueToString(qualifier, ""));
+            } else {
+                qualifier = elt.qualifier;
             }
             variant = "variant" in elt? elt.variant:
-                        shallowCopyMinus(elt, "qualifier");
+                      shallowCopyMinus(elt, "qualifier");
         } else if (elt instanceof Object && "variant" in elt) {
             qualifier = undefined;
             variant = elt.variant;

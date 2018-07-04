@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // This class provides another layer in the indexer class hierarchy.
 // This specific class takes care of managing identities: receiving 
 // updates from the identification function, registering
@@ -258,7 +257,7 @@
 //     }
 //
 //     pendingRemoveAll: <Map>{
-//         <identification ID>: true,
+//         <identification ID>: true|false // don't send notifications
 //         ......
 //     }
 //
@@ -300,7 +299,7 @@
 //    which a request to remove all explicit identities has been received.
 //    These requests are queued and not carried out immediately if there
 //    are indexers which need to be sent notifications of identity
-//    changes for thi identification. Since such a 'remove all' is
+//    changes for this identification. Since such a 'remove all' is
 //    received during clean-up operation, we wait a little to give the
 //    indexer a chance to remove the relevant nodes (if the nodes are removed,
 //    there is no need to send a notification for the idnetity of that node).
@@ -750,19 +749,24 @@ function identityIndexerNotifyOfAddedIdentities(elementIds, identifiedPathId,
 
 // queue the removal of all identities from the additional identity with
 // the given identification. The removal is queued so as to allow the
-// nodes to be removed (in which case there is no need to send notifications
-// of the change). However, if an update for the identification arrives
-// before the all identities are removed, such a removal will take place
+// nodes to be removed (in which case one still needs access to their old
+// identities). However, if an update for the identification arrives
+// before all identities are removed, such a removal will take place
 // before the update is processed.
+// The flag 'noQueuedNotifications' indicates whether there is need to
+// send a notification of this removal (when it takes place). If the
+// identified nodes are (about to be) removed, there is no need to send
+// notifications.
 
 IdentityIndexer.prototype.queueRemoveAllIdentities =
     identityIndexerQueueRemoveAllIdentities;
 
-function identityIndexerQueueRemoveAllIdentities(identificationId)
+function identityIndexerQueueRemoveAllIdentities(identificationId,
+                                                 noQueuedNotification)
 {
     if(this.pendingRemoveAll === undefined)
         this.pendingRemoveAll = new Map();
-    this.pendingRemoveAll.set(identificationId, true);
+    this.pendingRemoveAll.set(identificationId, !!noQueuedNotification);
 
     if(!this.identityUpdatesScheduled)
         this.qcm.scheduleIdentityUpdate(this);
@@ -792,45 +796,55 @@ function identityIndexerNotifyRemoveAllIdentities(identificationId,
     if(this.pendingRemoveAll === undefined ||
        !this.pendingRemoveAll.has(identificationId))
         return;
-    
+
+    // does this removal require notifications to be sent to indexers
+    // which have this as their source identification.
+    var noNotification = this.pendingRemoveAll.get(identificationId);
     this.pendingRemoveAll.delete(identificationId);
 
     var additional = this.additionalIdentities.get(identificationId);
     if(additional === undefined)
         return; // removed since queued
 
-    var toIgnore; // list of elements to ignore, as object
+    var identifiedPathId = this.getIdentifiedPathId(identificationId);
 
-    if(ignoreElementIds) {
-        toIgnore = new Map();
-        for(var i = 0, l = ignoreElementIds.length ; i < l ; ++i)
-            toIgnore.set(ignoreElementIds[i]);
-    }
+    if(!noNotification ||
+       (this.requiresTargetIdentification !== undefined &&
+        this.requiresTargetIdentification(identifiedPathId, identificationId))){
     
-    // for those element IDs which still exist, create a notification
-    // replacing the current identity with the base identity
+        var toIgnore; // list of elements to ignore, as object
 
-    var elementIds = [];
-    var identities = [];
-
-    var _self = this;
+        if(ignoreElementIds) {
+            toIgnore = new Map();
+            for(var i = 0, l = ignoreElementIds.length ; i < l ; ++i)
+                toIgnore.set(ignoreElementIds[i]);
+        }
     
-    additional.forEach(function(identity, elementId) {
+        // for those element IDs which still exist, create a notification
+        // replacing the current identity with the base identity
 
-        if(toIgnore !== undefined && toIgnore.has(elementId))
-            return; // don't remove this one
-        
-        if(!_self.dataElements.hasEntry(elementId))
-            return; // element was deleted
-        
-        elementIds.push(elementId);
-        identities.push(_self.dataElements.getBaseIdentity(elementId));
-    });
+        var elementIds = [];
+        var identities = [];
 
-    if(elementIds.length > 0) {
-        var identifiedPathId = this.getIdentifiedPathId(identificationId);
-        this.notifyOfAddedIdentities(elementIds, identifiedPathId,
-                                     identities, identificationId);
+        var _self = this;
+    
+        additional.forEach(function(identity, elementId) {
+
+            if(toIgnore !== undefined && toIgnore.has(elementId))
+                return; // don't remove this one
+        
+            if(!_self.dataElements.hasEntry(elementId))
+                return; // element was deleted
+        
+            elementIds.push(elementId);
+            identities.push(_self.dataElements.getBaseIdentity(elementId));
+        });
+
+        if(elementIds.length > 0) {
+            this.notifyOfAddedIdentities(elementIds, identifiedPathId,
+                                         identities, identificationId,
+                                         noNotification);
+        }
     }
 
     // clear the explicit additional identities (including the ones in the
@@ -1508,18 +1522,23 @@ function identityIndexerRemoveIdentities(elementIds, identificationId,
 // with the given identification ID. If notifications need to be sent for
 // changes in this additional identification, the request is queued
 // (to allow time for the identified nodes to be removed, in which case
-// there is no longer need to send a notification). If no notification
+// they may need access to their old identities). If no notification
 // needs to be sent, the additional identities table is simply cleared.
+// The flag 'noQueuedNotifications' indicates whether in the case that
+// the removal is queued, there is need to send a notification of this removal
+// (when it takes place). If the identified nodes are (about to be) removed,
+// there is no need to send notifications.
 
 IdentityIndexer.prototype.removeAllIdentities = 
     identityIndexerRemoveAllIdentities;
 
-function identityIndexerRemoveAllIdentities(identificationId)
+function identityIndexerRemoveAllIdentities(identificationId,
+                                            noQueuedNotification)
 {
     var identifiedPathId = this.getIdentifiedPathId(identificationId);
 
     if(this.notificationRequired(identifiedPathId, identificationId)) {
-        this.queueRemoveAllIdentities(identificationId);
+        this.queueRemoveAllIdentities(identificationId, noQueuedNotification);
         return;
     }
 

@@ -1,10 +1,10 @@
 TSC=tsc --noImplicitAny --noImplicitReturns -t es2015
 
-ROOTDIR=../../..
+LANGDIR=../../..
 
 PROGRAMS=dbio.node.js
 
-include $(ROOTDIR)/util/mmk
+include $(LANGDIR)/util/mmk
 
 test: dbio
 
@@ -16,7 +16,7 @@ dbio.node.js: force
 	npm update
 	$(GENINCJS) \
 		"--mode=js" \
-		"--rootdir=$(ROOTDIR)" \
+		"--langdir=$(LANGDIR)" \
 		"--out_file=$@" \
 		"--template=dbio.template" \
 		dbio.js

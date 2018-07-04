@@ -31,7 +31,7 @@ function initPosConstraintSynchronizer() {
 class PosConstraintSynchronizer {
     buffer: any[][] = [];
     count: number = 0;
-    log: any[][][];
+    log?: any[][][];
 
     addSegment(point1: string, point2: string, constraintId: string,
                priority: number, extremum1: number, extremum2: number,

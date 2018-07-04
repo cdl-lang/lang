@@ -149,5 +149,6 @@
 // %%include%%: <scripts/feg/functionExecute.js>
 // %%include%%: <scripts/feg/cdlDebugger.js>
 // %%include%%: <scripts/feg/debugInterpret.js>
+// %%include%%: <scripts/feg/foreignJavascriptFunctions.js>
 
 // %%include%%: <scripts/feg/js/event/replayEventHistory.js>

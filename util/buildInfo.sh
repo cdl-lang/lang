@@ -16,8 +16,6 @@
 
 set -u -e
 
-ROOTDIR=$1
-
 function getRev {
     local REV
 
@@ -30,8 +28,18 @@ function getRev {
     echo ${REV}
 }
 
-SCRIPTVER=$(getRev "${ROOTDIR}/lang")
-CDLVER=$(getRev "${ROOTDIR}/cdl-classes-and-applications")
+if [ $# -ge 1 -a "x$1" != "x" ];
+then
+    SCRIPTVER=$(getRev "$1")
+else
+    SCRIPTVER=unknown
+fi
+if git rev-parse HEAD > /dev/null
+then
+    CDLVER=$(getRev .)
+else
+    CDLVER=unknown
+fi
 
 DATE="$(date)"
 HOST="$(hostname)"

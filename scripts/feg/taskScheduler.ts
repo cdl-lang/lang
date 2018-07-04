@@ -281,6 +281,14 @@ var globalNextMessageTask: ScheduledTask = new ScheduledTask(
     }
 );
 
+var globalExecutePathNodeQueue: ScheduledTask = new ScheduledTask(
+    "executePathNodeQueue", TaskQueue.executePathNodeQueuePriority, true,
+    function(taskQueue: TaskQueue): boolean {
+        globalInternalQCM.executeScheduled();
+        return true;
+    }
+);
+
 var globalDebuggerTask: ScheduledTask = new ScheduledTask(
     "debugger", TaskQueue.debuggerPriority, false,
     function(taskQueue: TaskQueue): boolean {
@@ -328,7 +336,7 @@ class PrintTask extends ScheduledTask{
             };
             queueEvent(new ImpersonatedDomEvent("print"), message, undefined,
                        constEmptyOS, undefined, constEmptyOS, constEmptyOS,
-                       undefined, undefined, undefined);
+                       undefined, undefined, undefined, undefined, undefined);
             return;
         }
         if (!this.printWindow) {
@@ -346,7 +354,7 @@ class PrintTask extends ScheduledTask{
 
         for (var i = 0; i < this.printJobs.length; i++) {
             var embeddingRect = this.printJobs[i].getEmbeddingRect();
-            let areaHTML = this.printJobs[i].getHTMLRepr();
+            var areaHTML = this.printJobs[i].getHTMLRepr();
             if (areaHTML !== undefined) {
                 allHTML += '<div style="position: absolute; top: ' + 
                                 (embeddingRect.top - minTopLeft.top) +

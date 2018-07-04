@@ -62,26 +62,31 @@ class DOMElement {
         this.type = type;
         this.style = new DOMStyle();
         this.parentNode = null;
-        this.children = [];
+        this.childNodes = [];
+        this.lastChild = undefined;
     }
 
     insertBefore(element, beforeElement) {
-        var index = this.children.indexOf(element);
+        var index = this.childNodes.indexOf(element);
 
         if (index !== -1) {
-            this.children.splice(index, 0, element);
+            this.childNodes.splice(index, 0, element);
         } else {
-            this.children.push(element);
+            this.childNodes.push(element);
+            this.lastChild = element;
         }
         element.parentNode = this;
         nrDOMElementsInDocument++;
     }
 
     removeChild(element) {
-        var index = this.children.indexOf(element);
+        var index = this.childNodes.indexOf(element);
 
         if (index !== -1) {
-            this.children.splice(index, 1);
+            this.childNodes.splice(index, 1);
+            if (element === this.lastChild) {
+                this.lastChild = this.childNodes[this.childNodes.length - 1];
+            }
         }
         element.parentNode = undefined;
         if (element.id !== undefined && element.id !== "") {
@@ -91,7 +96,8 @@ class DOMElement {
     }
 
     appendChild(element) {
-        this.children.push(element);
+        this.childNodes.push(element);
+        this.lastChild = element;
         element.parentNode = this;
         nrDOMElementsInDocument++;
     }
@@ -121,20 +127,21 @@ class DOMElement {
             str += ' id="' + this.id + '"';
         }
         for (var attribute in this) {
-            if (this.hasOwnProperty(attribute) && attribute !== "id" &&
-                  attribute !== "childNodes" && attribute !== "parentNode" &&
-                  attribute !== "mondriaDisplay" && attribute !== "type" &&
+            if (this.hasOwnProperty(attribute) &&
+                  !(attribute in DOMElement.otherFields) &&
                   typeof(this[attribute]) !== "function") {
-                var avStr = this[attribute].toString();
-                if (avStr !== "") {
-                    str += ' ' + attribute + '="' + avStr + '"';
+                if (this[attribute] !== undefined) {
+                    var avStr = this[attribute].toString();
+                    if (avStr !== "") {
+                        str += ' ' + attribute + '="' + avStr + '"';
+                    }
                 }
             }
         }
         // str += '>\n';
         console.log(str + '>');
-        for (var i = 0; i !== this.children.length; i++) {
-            str += this.children[i].toHTML(indent + "  ");
+        for (var i = 0; i !== this.childNodes.length; i++) {
+            str += this.childNodes[i].toHTML(indent + "  ");
         }
         // str += indent + '</' + this.type + '>\n';
         console.log(indent + '</' + this.type + '>');
@@ -146,6 +153,16 @@ class DOMElement {
 
     dispatchEvent(evt) {
     }
+}
+
+DOMElement.otherFields = {
+    id: true,
+    childNodes: true,
+    parentNode: true,
+    mondriaDisplay: true,
+    type: true,
+    lastChild: true,
+    innerHTML: true
 }
 
 class HTMLElement extends DOMElement {
@@ -187,18 +204,24 @@ class HTMLInputElement extends HTMLElement {
     }
 }
 
+// Basic input element; no functionality
+class HTMLTextAreaElement extends HTMLElement {
+    constructor() {
+        super("textarea");
+    }
+}
+
 // Basic text node: no functionality
 class DOMTextNode extends HTMLElement {
     constructor(text) { 
         super("textnode");
-        this.text = text;
+        this.data = text;
     }
     
+    // Should convert this.data to HTML entities
     toHTML(indent) {
-        // Should convert this.text to HTML entities, and perhaps surround it
-        // with <p>...</p>.
-        console.log(indent + this.text);
-        // return indent + this.text + '\n';
+        console.log(indent + this.data);
+        // return indent + this.data + '\n';
     }
 }
 
@@ -216,9 +239,9 @@ class DOMDocument {
 
     createElement(type) {
         switch (type) {
-        case "input": return new HTMLInputElement();
-        case "a": return new HTMLAnchorElement();
-        default: return new HTMLElement(type);
+          case "input": return new HTMLInputElement();
+          case "a": return new HTMLAnchorElement();
+          default: return new HTMLElement(type);
         }
     }
 
@@ -256,7 +279,7 @@ class DOMWindow {
 }
 
 // Creates the basics needed to run the tests: a document with a body and
-// a div with id "mondriaRootDiv".
+// a div with id "cdlRootDiv".
 function createBasicMondriaDocument() {
     var rootDiv;
 
@@ -265,7 +288,7 @@ function createBasicMondriaDocument() {
     nrDOMElementsInDocument = 1;
     rootDiv = new HTMLElement("div");
     document.body.appendChild(rootDiv);
-    rootDiv.setAttribute("id", "mondriaRootDiv");
+    rootDiv.setAttribute("id", "cdlRootDiv");
 }
 
 // new MouseEvent("click", domEvent) returns an ImpersonatedMouseDomEvent with

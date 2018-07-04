@@ -121,7 +121,7 @@ function readExternalDataSourceConfig(fileName: string): ExternalDataSourceSpeci
     return config;
 }
 
-function main(): void {
+function persistenceServerMain(): void {
     var server: RemotingServer = undefined;
     var resourceMgr: ResourceMgr = undefined;
     var addedLocalServerParam: ServerOptions = undefined;
@@ -270,4 +270,4 @@ function main(): void {
     startServer();
 }
 
-main();
+persistenceServerMain();

@@ -1,3 +1,4 @@
+// Copyright 2018 Yoav Seginer, Theo Vosse
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,65 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-var splashScreenRefreshRateCheck = 750;
-var splashScreenRefreshRateAnimation = 750;
-
 function SplashScreenController()
 {
     this.showing = true; // cleared once splash screen is hidden
-    this.timeoutId = undefined;
     this.showText = true;
-    this.currentAnimationIndex = 0;
-    this.initializationTime = Date.now();
-    this.lastSplashUpdate = Date.now();
-    this.firstSplash = this.lastSplashUpdate;
-    this.timeoutId = setTimeout(refreshSplashScreen, splashScreenRefreshRateCheck);
-}
-
-SplashScreenController.prototype.refresh = splashScreenControllerRefresh;
-function splashScreenControllerRefresh() {
-    this.timeoutId = setTimeout(refreshSplashScreen, splashScreenRefreshRateCheck);
-
-    var currentTime = Date.now();    
-    var removeText = this.showText && currentTime - this.initializationTime > 3000;
-
-    if (removeText) {
-        this.showText = false;
-        var gSplashTxt = document.getElementById("mondriaSplashScreenText");
-        if (gSplashTxt !== null) {
-            gSplashTxt.hidden = true;
-        }
-    }
-
-    var ellapsedSinceLastUpdate = currentTime - this.lastSplashUpdate;
-    nextAnimationFrame = !this.showText &&
-                    ellapsedSinceLastUpdate >= splashScreenRefreshRateAnimation;
-
-    if (nextAnimationFrame) {    
-        this.lastSplashUpdate = currentTime;
-        var gSplashImg = document.getElementById("mondriaSplashScreenDots");
-        if (gSplashImg !== null) {
-            src = gSplashImg.src;
-            dir_name = src.substring(0, src.lastIndexOf('/') + 1);        
-            frameIndexStr = this.currentAnimationIndex.toString();
-            gSplashImg.src = dir_name + 'three_dots_' + frameIndexStr + '.svg';
-        }
-        this.currentAnimationIndex += 1;
-        if (this.currentAnimationIndex == 4) {
-            this.currentAnimationIndex = 1;
-        }
-    }    
-    
+    this.firstSplash = Date.now();
 }
 
 SplashScreenController.prototype.hide = splashScreenControllerHide;
 function splashScreenControllerHide() {
-    if(this.timeoutId !== undefined) {
-        clearTimeout(this.timeoutId);
-        this.timeoutId = undefined;
-    }
-
     if(!this.showing)
         return; // nothing showing, so nothing to hide
     
@@ -82,46 +33,55 @@ function splashScreenControllerHide() {
 }
 
 /**
- * Replaces the animation with a static text, which can be used to give feedback
- * to the user. When txt is "", the text is removed and animation resumes.
+ * Place a static text on the splash screen, which can be used to give feedback
+ * to the user (e.g., in case of error). When text is undefined, the text 
+ * is removed.
+ * This assumes that the splash screen contains a DIV with ID 
+ * "cdlSystemMessage" which can display the text. If such a DIV 
+ * does not exist, nothing is displayed. When the text is set on the DIV,
+ * the class "cdlShowSystemMessage" is also set on the DIV. This allows 
+ * the CSS of the splash screen to style the message when it is set.
  * 
- * @param {any} txt 
+ * @param {any} text 
  * @memberof {SplashScreenController}
  */
 SplashScreenController.prototype.feedback = splashScreenControllerFeedback;
-function splashScreenControllerFeedback(txt) {
-    var gSplashTxt = document.getElementById("mondriaSplashScreenText");
-    var gSplashImg = document.getElementById("mondriaSplashScreenDots");
+function splashScreenControllerFeedback(text) {
+    // get the document object of the splash screen
+    var splashIFrame = document.getElementById("cdlSplashScreenFrame");
+    if(!splashIFrame || !splashIFrame.contentDocument)
+        return;
+    
+    var splashText =
+        splashIFrame.contentDocument.getElementById("cdlSystemMessage")
 
-    if (gSplashTxt !== null) {
-        gSplashTxt.innerText = txt;
-        gSplashTxt.hidden = txt === undefined;
-        this.showText = txt === undefined;
+    if (splashText) {
+        if(text) {
+            splashText.innerText = text;
+            splashText.classList.add("cdlShowSystemMessage");
+        } else {
+            splashText.innerText = "";
+            splashText.classList.remove("cdlShowSystemMessage");
+        }
+        this.showText = text === undefined;
     }
-    if (gSplashImg !== null) {
-        gSplashImg.hidden = txt !== undefined;
-    }
-}
-
-function refreshSplashScreen() {
-    gSplashScreenController.refresh();
 }
 
 function hideSplashScreen() {
-    var gSplashDiv = document.getElementById("mondriaSplashScreenBackground");
+    var gSplashDiv = document.getElementById("cdlSplashScreenBackground");
 
     if (gSplashDiv !== null) {
         gSplashDiv.remove();
-        unhideMondriaRootDiv();
+        unhideCdlRootDiv();
         gSplashScreenController.hide();
-        gDomEvent.updateFocus();
+        globalSetFocusTask.schedule();
     }
 }
 
 var gSplashScreenController = new SplashScreenController();
 
 globalSystemEvents.addHandler("connection error", function() {
-    gSplashScreenController.feedback("Connection error");
+    gSplashScreenController.feedback("Connection error (reconnecting)");
 });
 
 globalSystemEvents.addHandler("connection error cleared", function() {

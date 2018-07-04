@@ -250,6 +250,8 @@ function orderServiceDeactivated()
     // remove all elements still stored in the order tree (but no notifications
     // need to be sent).
     this.orderTree.removeAllElements();
+    // remove pending updates
+    this.pendingMatchUpdates = undefined;
 
     // perform standard deactivation (propagation to the data object).
     this.FuncResult_deactivated();

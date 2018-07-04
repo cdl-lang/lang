@@ -911,6 +911,7 @@ var globalIdentifiers: {[name: string]: boolean} = {
     timestamp: true,
     displayWidth: true,
     displayHeight: true,
+    baseLineHeight: true,
     dateToNum: true,
     numToDate: true,
     stringToNumber: true,

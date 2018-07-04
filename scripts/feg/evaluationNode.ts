@@ -513,9 +513,9 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
     /// result cannot be a data source.
     dataSourceResultMode: boolean;
 
-    // NOTE: activeWatchers, and the src argument to activate and deactivate
-    // are for debugging only! [DEBUG]
-    // activeWatchers: {[id: number]: {watcher: Watcher; count: number;}} = {};
+    // NOTE: activeWatchersCount, and the src argument to activate and
+    // deactivate are for debugging only [DEBUG]
+    // activeWatchersCount: {[id: number]: {watcher: Watcher; count: number;}} = {};
 
     // Performance info for development
     nrCallsToUpdate: number = 0;
@@ -625,7 +625,7 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
         return this.scheduledAtPosition !== -1;
     }
 
-   // called by scheduler (which must check this.isScheduled)
+    // called by scheduler (which must check this.isScheduled)
     updateOutput(): void {
         assert(!this.isBeingInitialized, "no eval during initialization");
         assert(!this.deferred, "cannot evaluate deferred nodes");
@@ -752,6 +752,17 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
     // to generate any updates.
     isConstant(): boolean {
         return false;
+    }
+
+    // Call when changing an evaluation node from not constant to constant.
+    // It suffices to remove the watchers object. If there is a forcedUpdate
+    // pending, it will be cleared after the scheduled call to updateOutput().
+    // Note that updateOutput()'s call to eval() should return false.
+    becomesConstant(): void {
+        assert(!this.deferred, "cannot be deferred");
+        this.watchers = undefined;
+        this.nrActiveWatchers = 0;
+        this.deactivateInputs();
     }
 
     // Returns true when the result of the function is only applicable at this
@@ -889,10 +900,10 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
     activate(src: Watcher, dataSourceAware: boolean): void {
         if (this.isBeingInitialized) console.log(this.watcherId + " did not complete initialization before activation");
         if (!this.isConstant()) {
-            // if (src.watcherId in this.activeWatchers) {
-            //     this.activeWatchers[src.watcherId].count++;
+            // if (src.watcherId in this.activeWatchersCount) {
+            //     this.activeWatchersCount[src.watcherId].count++;
             // } else {
-            //     this.activeWatchers[src.watcherId] = {
+            //     this.activeWatchersCount[src.watcherId] = {
             //         watcher: src,
             //         count: 1
             //     };
@@ -958,10 +969,10 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
         if (!this.isConstant()) {
             assert(this.nrActiveWatchers > 0, "too many deactivates");
             this.nrActiveWatchers--;
-            // assert(src.watcherId in this.activeWatchers, "not an active watcher");
-            // this.activeWatchers[src.watcherId].count--;
-            // if (this.activeWatchers[src.watcherId].count === 0) {
-            //     delete this.activeWatchers[src.watcherId];
+            // assert(src.watcherId in this.activeWatchersCount, "not an active watcher");
+            // this.activeWatchersCount[src.watcherId].count--;
+            // if (this.activeWatchersCount[src.watcherId].count === 0) {
+            //     delete this.activeWatchersCount[src.watcherId];
             // }
             if (this.awaitingThis !== undefined && this.awaitingThis.has(src.watcherId)) {
                 this.removeAwaitingThis(src.watcherId);
@@ -1601,7 +1612,7 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
         return true;
     }
 
-    logThis: number;
+    logThis?: number;
 
     isLogNode(): boolean {
         if ("logThis" in this || logPrototypes === undefined) {

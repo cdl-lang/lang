@@ -411,7 +411,7 @@ abstract class FunctionNode implements EqualityTest, EvaluationNodeFactory {
     scheduleStep: number;
     // When true, this node is possibly scheduled before its inputs have
     // completed.
-    schedulingError: boolean;
+    schedulingError?: boolean;
 
     // if undefined or 0, this node is global; otherwise it's local to the
     // template with the same id
@@ -420,7 +420,7 @@ abstract class FunctionNode implements EqualityTest, EvaluationNodeFactory {
     // in the cache of their area, but are treated differently.
     localToDefun: number;
     // If true, the value is constant
-    isConstant: boolean;
+    isConstant?: boolean;
 
     // The type of the value of this function node
     valueType: ValueType;
@@ -1601,7 +1601,8 @@ class AVFunctionNode extends FunctionNode {
         }
         if (path.length > 0 && path[0] in this.attributes) {
             visited[this.seqNr] = true;
-            wrNodes = this.attributes[path[0]].extractWritableDestinations(path.slice(1), visited);
+            wrNodes = this.attributes[path[0]].
+                extractWritableDestinations(path.slice(1), visited);
             delete visited[this.seqNr];
         } else {
             wrNodes = [];
@@ -1617,6 +1618,9 @@ class AVFunctionNode extends FunctionNode {
         if (makeConstant) {
             var av: any = {};
             for (var attr in attributes) {
+                if (attr === "class") {
+                    continue;
+                }
                 var c = <ConstNode> attributes[attr];
                 if (c.value !== undefined) {
                     av[attr] = c.value;
@@ -1627,6 +1631,9 @@ class AVFunctionNode extends FunctionNode {
         } else {
             var dataType: {[attribute: string]: ValueType} = {};
             for (var attr in attributes) {
+                if (attr === "class") {
+                    continue;
+                }
                 var fun = attributes[attr];
                 dataType[attr] = fun.valueType;
                 if (fun.valueType.dataSource && (suppressSet || suppressSetAttr[attr])) {
@@ -2272,7 +2279,7 @@ class SingleQualifier {
         var fn: FunctionNode = sq.functionNode;
 
         if (fn instanceof ConstNode) {
-            return !interpretedBoolMatch(sq.value, fn.value);
+            return !interpretedQualifierMatch(sq.value, fn.value);
         } else if (sq.value === true) {
             return !fn.isAlwaysTrue();
         } else if (sq.value === false) {
@@ -2286,7 +2293,7 @@ class SingleQualifier {
         var fn: FunctionNode = sq.functionNode;
 
         if (fn instanceof ConstNode) {
-            return !interpretedBoolMatch(sq.value, fn.value);
+            return !interpretedQualifierMatch(sq.value, fn.value);
         } else if (sq.value === true) {
             return fn.isAlwaysFalse();
         } else if (sq.value === false) {
@@ -3246,21 +3253,36 @@ class VariantFunctionNode extends FunctionNode {
     }
 
     extractWritableDestinations(path: string[], visited: {[seqNr: number]: boolean}): WritableNodePath[] {
-        var wrNodes: WritableNodePath[];
+        var wrNodes: WritableNodePath[] = [];
+        var earlierQualifiers: SingleQualifier[][] = [];
 
         if (this.seqNr in visited) {
             return [];
         }
         visited[this.seqNr] = true;
-        wrNodes = this.functionNodes.map(function(elem: FunctionNode): WritableNodePath[] {
-            return elem.extractWritableDestinations(path, visited);
-        }).reduce(function(allWrNodes: WritableNodePath[], wrNodes: WritableNodePath[]) {
-            return wrNodes.length > 0? allWrNodes.concat(wrNodes): allWrNodes;
-        }, []);
+        for (var i: number = 0; i < this.functionNodes.length; i++) {
+            var curQualifiers: SingleQualifier[] = this.qualifiers.qualifiers[i];
+            // Skip variants that are implied by earlier variants: since the
+            // write goes to the first active variant, they cannot be true
+            if (earlierQualifiers.some(eq_j => sqsImplies(eq_j, curQualifiers))) {
+                continue;
+            }
+            var variantWrNodes =
+                this.functionNodes[i].extractWritableDestinations(path, visited);
+            if (variantWrNodes !== undefined && variantWrNodes.length > 0) {
+                wrNodes = cconcat(wrNodes, variantWrNodes.map(wr => {
+                    return {
+                        functionNode: wr.functionNode,
+                        path: wr.path,
+                        qualifiers: wr.qualifiers.concat(curQualifiers)
+                    }
+                }));
+            }
+            earlierQualifiers.push(curQualifiers);
+        }
         delete visited[this.seqNr];
         return wrNodes;
     }
-
 
     tagExpressionPath(templateId: number, defunId: number, path: string): void {
         super.tagExpressionPath(templateId, defunId, path);
@@ -3606,7 +3628,16 @@ class FunctionApplicationNode extends FunctionNode {
                 localToDefun = mergeDefunLocality(localToDefun, functionArguments[i].localToDefun);
             }
         }
-        var c = checkConstantResult(funDef, functionArguments, origExpr);
+        var wontChangeValue: boolean = inputsWontChangeValue(functionArguments);
+        var fa = removeRedundantArguments(funDef, functionArguments, origExpr, wontChangeValue);
+        if (fa !== undefined) {
+            if (fa.repl !== undefined) {
+                return fa.repl;
+            }
+            funDef = fa.funDef;
+            functionArguments = fa.args;
+        }
+        var c = checkConstantResult(funDef, functionArguments, origExpr, wontChangeValue);
         if (c !== undefined) {
             return c;
         }
@@ -3619,6 +3650,7 @@ class FunctionApplicationNode extends FunctionNode {
                 functionArguments, localToArea, localToDefun, origin, origExpr);
           case "displayWidth":
           case "displayHeight":
+          case "baseLineHeight":
             return DisplayOffsetNode.build(funDef.name, functionArguments,
                                        localToArea, localToDefun, origin, origExpr);
           case "sort":
@@ -3863,6 +3895,7 @@ class FunctionApplicationNode extends FunctionNode {
           case "sum":
           case "displayWidth":
           case "displayHeight":
+          case "baseLineHeight":
           case "defun":
             return buildConstNode([true], true, undefined, 0, gTrueExpr);
           case "embedding":
@@ -4111,7 +4144,7 @@ class AreaOfClassNode extends FunctionApplicationNode {
 }
 
 //
-// displayWidth/displayHeight have an implicit functional argument - the
+// displayWidth/displayHeightbaseLineHeight have an implicit functional argument - the
 //  area's display-description
 //
 // the constructor realizes this argument from being an implicit argument to
@@ -4146,7 +4179,7 @@ class DisplayOffsetNode extends FunctionApplicationNode {
 
             assert((origFunctionArguments.length == 0) ||
                    (origFunctionArguments.length == 1),
-                   "displayWidth/displayHeight must have 0 or 1 arguments");
+                   "displayWidth/displayHeight/baseLineHeight must have 0 or 1 arguments");
 
             if (origFunctionArguments.length == 0) {
                 var emptyOS: FunctionNode;
@@ -4170,9 +4203,11 @@ class DisplayOffsetNode extends FunctionApplicationNode {
         var displayDescription = template.areaNode.getNodeAtPath(["display"]);
 
         var dimOffFunc: BuiltInFunction;
-        assert((dim === "displayWidth") || (dim === "displayHeight"),
+        assert(dim === "displayWidth" || dim === "displayHeight" || dim === "baseLineHeight",
                "dim must be either 'displayWidth' or 'displayHeight'");
-        dimOffFunc = (dim === "displayWidth") ? displayWidth : displayHeight;
+        dimOffFunc = dim === "displayWidth"? displayWidth:
+                     dim === "displayHeight"? displayHeight:
+                     baseLineHeight;
 
         var displayFunction = displayDescription !== undefined?
             buildFunctionNode(displayDescription, origin, defun, true):
@@ -4659,7 +4694,7 @@ class StorageNode extends FunctionNode {
     }
 
     extractWritableDestinations(path: string[], visited: {[seqNr: number]: boolean}): WritableNodePath[] {
-        return [{functionNode: this, path: path}];
+        return [{functionNode: this, path: path, qualifiers: []}];
     }
 }
 
@@ -4800,7 +4835,7 @@ class ParamStorageNode extends StorageNode {
             template.determineSetContent();
             if (template.parent.setFunctions[template.childName].data !== undefined) {
                 wrNodes = template.parent.setFunctions[template.childName].data.
-                            extractWritableDestinations(path.slice(1), visited);
+                    extractWritableDestinations(path.slice(1), visited);
             } else {
                 wrNodes = [];
             }
@@ -5418,10 +5453,18 @@ class AreaProjectionNode extends FunctionNode {
         for (var areaTemplateId of this.data.valueType.areas.keys()) {
             var template: AreaTemplate = areaTemplates[areaTemplateId];
             if (this.exportId in template.exports) {
+                // Note: resets qualifiers, since there is no relation between
+                // the write origin and destination
                 var wrns: WritableNodePath[] = template.exports[this.exportId].
                     extractWritableDestinations(path, visited);
                 if (wrns !== undefined) {
-                    wrNodes = wrNodes.concat(wrns);
+                    wrNodes = cconcat(wrNodes, wrns.map(wr => {
+                        return {
+                            functionNode: wr.functionNode,
+                            path: wr.path,
+                            qualifiers: []
+                        }
+                    }));
                 }
             }
         }
@@ -6122,8 +6165,8 @@ class OrderedSetNode extends FunctionNode {
                 } else {
                     isConstant = false;
                 }
-                // sizes = i === 0? os[i].valueType.sizes:
-                //         ValueTypeSize.sumSizes(sizes, os[i].valueType.sizes);
+                sizes = i === 0? os[i].valueType.sizes:
+                        ValueTypeSize.sumSizes(sizes, os[i].valueType.sizes);
                 localToArea = mergeLocality(localToArea, os[i].localToArea);
                 localToDefun = mergeDefunLocality(localToDefun, os[i].localToDefun);
             }
@@ -7271,7 +7314,7 @@ class CondNode extends FunctionNode {
                     var onValue: any = getDeOSedValue(on.value);
                     wontChangeValue = wontChangeValue && on.wontChangeValue;
                     if (onValue === null ||
-                          interpretedBoolMatch(onValue, condVar.value)) {
+                          interpretedQualifierMatch(onValue, condVar.value)) {
                         return wontChangeValue? altList[i].use:
                                altList[i].use.mightChange();
                     }

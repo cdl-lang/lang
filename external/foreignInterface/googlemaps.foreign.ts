@@ -123,7 +123,8 @@ class GoogleMapsFI extends ForeignInterface {
                 }
                 queueEvent(new ImpersonatedMouseDomEvent("googlemaps", undefined, undefined, undefined, undefined, undefined),
                         message, [{value: subType, areas: []}], [], undefined,
-                        [], domEventEmptyOS, undefined, undefined, undefined);
+                        [], domEventEmptyOS, undefined, undefined, undefined,
+                        undefined, undefined);
             }
 
             function initMap(): void {

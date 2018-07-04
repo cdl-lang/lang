@@ -372,6 +372,13 @@ class AppStateMgr implements Watcher, RemoteResourceUpdateClientToServer, Resour
         }
     }
 
+    markDeleted(ident: AppStateIdentifier): void {
+        var appStateId = this.getIdentHashStr(ident);
+
+        assert(appStateId in this.appStateObj, "can't delete unregistered object");
+        this.set(ident, xdrDeleteIdent);
+    }
+
     // Signals that the app state is in error
     notifyAppStateSubscribersOfError(): void {
         for (var appStateId in this.appStateObj) {

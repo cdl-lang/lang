@@ -69,6 +69,12 @@ var basicDescriptionTypes: {[typeName: string]: BasicDescriptionType[]} = {
         type: "string",
         match: /^\s*[+\-]?\d+(?:\.\d*)?\s*(?:(deg|grad|rad|turn))?\s*$/
     }],
+    numberOrDegrees: [{
+        type: "number"
+    }, {
+        type: "string",
+        match: /^\s*[+\-]?\d+(?:\.\d*)?\s*(?:(deg|grad|rad|turn))?\s*$/
+    }],
     pixelOrPercentage: [{
         type: "string",
         match: /^\s*\d+(?:\.\d*)?\s*(?:px|em|%)?\s*$/
@@ -220,7 +226,7 @@ var areaAttributeDescription: any = {
                 text: {
                     struct: {
                         value: "any",
-                        textAlign: { string: { "in": [ "left", "center", "right" ] } },
+                        textAlign: { string: { "in": [ "left", "center", "right", "justify" ] } },
                         textIndent: "numberOrString",
                         textTransform: "string",
                         verticalAlign: {or: [
@@ -243,6 +249,7 @@ var areaAttributeDescription: any = {
                         textDecoration: "string",
                         borderSpacing: "string",
                         overflow: "string",
+                        preformatted: "boolean",
                         whiteSpace: {string: {in: ["normal", "nowrap", "pre", "pre-wrap", "pre-line"]}},
                         numericFormat: {
                             struct: {
@@ -329,8 +336,8 @@ var areaAttributeDescription: any = {
                 },
                 image: {
                     struct: {
-                        __mandatory__: "src",
                         src: "string",
+                        svg: "string",
                         alt: "string",
                         size: "numberOrPercentage"
                     },
@@ -357,6 +364,7 @@ var areaAttributeDescription: any = {
                                                "text-top", "text-bottom",
                                                "middle", "top", "bottom"] }}
                         ]},
+                        textIndent: "numberOrString",
                         color: "color",
                         textFillColor: "color",
                         textStrokeWidth: "numberOrString",
@@ -379,12 +387,13 @@ var areaAttributeDescription: any = {
                 },
                 triangle: {
                     struct: {
-                        baseSide: {
-                            string: {
-                                    in: ["left", "right", "top", "bottom", "leftTop",
-                                         "leftBottom", "rightTop", "rightBottom"]
-                            }
-                        },
+                        baseSide: { string: { in: [
+                            "left", "right", "top", "bottom", "leftTop",
+                            "leftBottom", "rightTop", "rightBottom"
+                        ]}},
+                        rightAngle: { string: { in: [
+                            "leftTop", "leftBottom", "rightTop", "rightBottom"
+                        ]}},
                         color: "color",
                         stroke: "color",
                         shadow: {
@@ -400,6 +409,30 @@ var areaAttributeDescription: any = {
                     },
                     name: "triangle display"
                 },
+                line: {
+                    struct: {
+                        width: "number", // default: 1
+                        color: "color", // default: "black"
+                        dash: "number", // default: o()
+                        dashOffset: "number", // default: 0
+                        cap: {string: {in: ["butt", "round", "square"]}}, // default: "round"
+                        clip: "boolean", // default: false
+                        direction: { string: { in: [ // default: none
+                            "left-right", "right-left", "top-bottom", "bottom-top"
+                        ]}},
+                        shadow: { // default: no shadow
+                            struct: {
+                                __mandatory__: "color",
+                                color: "color",
+                                horizontal: "numberOrPixel",
+                                vertical: "numberOrPixel",
+                                blurRadius: "numberOrPixel"
+                            },
+                            name: "line shadow"
+                        },
+                    },
+                    name: "line display"
+                },
                 arc: {
                     struct: {
                         color: "color", // no default
@@ -409,7 +442,8 @@ var areaAttributeDescription: any = {
                         end: "number", // no default; excludes range
                         range: "number", // no default; excludes end
                         inset: "number", // default: 0
-                        radius: "number" // no default
+                        radius: "number", // no default; takes priority over relativeRadius
+                        relativeRadius: "number" // no default
                     }
                 },
                 foreign: {
@@ -475,17 +509,17 @@ var areaAttributeDescription: any = {
                             image: "string",
                             repeat: "string",
                             position: "string",
-                            size: "string",
+                            size: "string", // default is "auto"/"contain"; "cover" fills the div; "ddd%" works like image
                             color: "color"
                         }
                     }],
                     name: "display background"
                 },
-                borderRadius: "numberOrPixel",
-                borderTopLeftRadius: "numberOrPixel",
-                borderTopRightRadius: "numberOrPixel",
-                borderBottomLeftRadius: "numberOrPixel",
-                borderBottomRightRadius: "numberOrPixel",
+                borderRadius: "numberOrPixelOrPercentage",
+                borderTopLeftRadius: "numberOrPixelOrPercentage",
+                borderTopRightRadius: "numberOrPixelOrPercentage",
+                borderBottomLeftRadius: "numberOrPixelOrPercentage",
+                borderBottomRightRadius: "numberOrPixelOrPercentage",
                 boxShadow: {
                     orderedSet: {
                         struct: {
@@ -538,6 +572,12 @@ var areaAttributeDescription: any = {
                                 }
                             ]
                         },
+                        skew: {
+                            struct: {
+                                x: "numberOrDegrees", // skew X
+                                y: "numberOrDegrees"  // skew Y
+                            }
+                        },
                         flip: { string: { in: ["horizontally", "vertically"] } }
                     }
                 },
@@ -559,7 +599,12 @@ var areaAttributeDescription: any = {
                         borderTopColor: transitionPropertyDescription,
                         borderBottomWidth: transitionPropertyDescription,
                         borderBottomColor: transitionPropertyDescription,
-                        transform: transitionPropertyDescription
+                        transform: transitionPropertyDescription,
+                        filter: transitionPropertyDescription,
+                        opacity: transitionPropertyDescription,
+                        boxShadow: transitionPropertyDescription,
+                        rotate: transitionPropertyDescription,
+                        scale: transitionPropertyDescription
                     },
                     name: "transitions"
                 },
@@ -569,12 +614,12 @@ var areaAttributeDescription: any = {
                 hideDuringPrinting: "boolean",
                 filter: {
                     struct: {
-                        blur: "number",
+                        blur: "numberOrPixelOrPercentage",
                         brightness: "numberOrPercentage",
                         contrast: "numberOrPercentage",
                         dropShadow: "string",
                         grayscale: "numberOrPercentage",
-                        hueRotate: "degrees",
+                        hueRotate: "numberOrDegrees",
                         invert: "numberOrPercentage",
                         opacity: "numberOrPercentage",
                         saturate: "numberOrPercentage",
@@ -774,7 +819,9 @@ function checkAttributes(node: PathTreeNode, valueType: ValueType, attrDescripti
                 }
             }
             if (fn === undefined &&
-                  cdlValueTypeMatch(value.expression.expression, typeDescr[i])) {
+                  (value.expression.expression === undefined ||
+                   cdlValueTypeMatch(value.expression.expression, typeDescr[i]))
+               ) {
                 return true;
             }
         }

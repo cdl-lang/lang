@@ -83,15 +83,28 @@ function debugNoPendingTasksNotification() {
 function clearProgressDiv() {
     // Hide running div
     if (gRunningDiv !== undefined && gRunningDiv !== null) {
-        gDomEvent.recordShowRunningDiv(0);
-        gRunningDiv.style.opacity = 0;
-        gRunningDiv.hidden = true;
+        var change = false;
+        if (gOpacitySet) {
+            gRunningDiv.style.opacity = 0;
+            gOpacitySet = false;
+            change = true;
+        }
+        if (!gRunningDiv.hidden) {
+            gRunningDiv.hidden = true;
+            change = true;
+        }
         gRunIndicatorHidden1 = true;
         gRunIndicatorHidden2 = true;
         if (gSpinnerElt !== undefined && gSpinnerElt !== null) {
-            gSpinnerElt.hidden = true;
+            if (!gSpinnerElt.hidden) {
+                gSpinnerElt.hidden = true;
+                change = true;
+            }
         } else {
             gRunningDiv.style.cursor = "default";
+        }
+        if (change) {
+            gDomEvent.recordShowRunningDiv(0);
         }
     } else {
         if (gEventDivStyleCursor !== undefined) {
@@ -124,21 +137,26 @@ function unsubcribeResourceHook() {
     globalConcludeInitPhaseTask.schedule(); // move concludeInitiPhaseTesk at the end of the queue
 }
 
-function unhideMondriaRootDiv() {
-    mondriaRootDiv = document.getElementById("mondriaRootDiv");
-    if (mondriaRootDiv !== null) {
-        mondriaRootDiv.hidden = false;
+function unhideCdlRootDiv() {
+    cdlRootDiv = document.getElementById("cdlRootDiv");
+    if (cdlRootDiv !== null) {
+        cdlRootDiv.hidden = false;
+        cdlRootDiv.style.visibility = "visible";
+        cdlRootDiv.style.animationName = "rootDivInitialAnimation";
+        cdlRootDiv.style.animationDuration = "1s";
     }
 }
 
 function taskQueueInitProgressHook(p) {    
     if (gRunningDiv === undefined) {
-        gRunningDiv = document.getElementById("mondriaTaskRunningDiv");
-        gSpinnerElt = document.getElementById("mondriaTaskSpinnerElt");
+        gRunningDiv = document.getElementById("cdlTaskRunningDiv");
+        gSpinnerElt = document.getElementById("cdlTaskSpinnerElt");
         gRunIndicatorHidden1 = true;
         if (gRunningDiv !== null) {
             gDomEvent.addEventHandlers(gRunningDiv);
-            gRunningDiv.hidden = true;
+            if (!gRunningDiv.hidden) {
+                gRunningDiv.hidden = true;
+            }
         }
         gEventDiv = gDomEvent.eventDiv;
     }
@@ -157,7 +175,7 @@ function taskQueueInitProgressHook(p) {
 }
 
 function taskQueueRunningHook() {
-    var gSplashDiv = document.getElementById("mondriaSplashScreenDiv");
+    var gSplashDiv = document.getElementById("cdlSplashScreenBackground");
     if (gSplashDiv !== null) {
         // we are still in the initialization mode
         return
@@ -176,9 +194,13 @@ function taskQueueRunningHook() {
             gTimeQueueStarted = Date.now();
         } else if (gRunIndicatorHidden1) {
             if (Date.now() - gTimeQueueStarted >= 250) {
-                gRunningDiv.style.opacity = 0;
-                gOpacitySet = false;
-                gRunningDiv.hidden = false;
+                if (gOpacitySet) {
+                    gRunningDiv.style.opacity = 0;
+                    gOpacitySet = false;
+                }
+                if (gRunningDiv.hidden) {
+                    gRunningDiv.hidden = false;
+                }
                 gRunIndicatorHidden1 = false;
                 gDomEvent.recordShowRunningDiv(1);
             }
@@ -190,7 +212,9 @@ function taskQueueRunningHook() {
             if (gRunIndicatorHidden2 && Date.now() - gTimeQueueStarted >= 1000) {
                 gRunIndicatorHidden2 = false;
                 if (gSpinnerElt !== undefined && gSpinnerElt !== null) {
-                    gSpinnerElt.hidden = false;
+                    if (gSpinnerElt.hidden) {
+                        gSpinnerElt.hidden = false;
+                    }
                     gDomEvent.recordShowRunningDiv(2);
                 } else {
                     gRunningDiv.style.cursor = "wait";
@@ -213,9 +237,13 @@ function taskQueueRunningHook() {
 function showRunningDivNow() {
     if (gRunningDiv) {
         if (gRunIndicatorHidden1) {
-            gRunningDiv.style.opacity = 0;
-            gOpacitySet = false;
-            gRunningDiv.hidden = false;
+            if (gOpacitySet) {
+                gRunningDiv.style.opacity = 0;
+                gOpacitySet = false;
+            }
+            if (gRunningDiv.hidden) {
+                gRunningDiv.hidden = false;
+            }
             gRunIndicatorHidden1 = false;
         }
         if (!gOpacitySet) {
@@ -223,7 +251,9 @@ function showRunningDivNow() {
             gOpacitySet = true;
         }
         gRunIndicatorHidden2 = false;
-        gSpinnerElt.hidden = false;
+        if (gSpinnerElt.hidden) {
+            gSpinnerElt.hidden = false;
+        }
         gDomEvent.recordShowRunningDiv(2);
     }
 }

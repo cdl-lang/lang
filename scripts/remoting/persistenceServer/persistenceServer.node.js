@@ -1649,6 +1649,9 @@ function singleton(v) {
 function ensureOS(v) {
     return v === undefined ? [] : v instanceof Array ? v : [v];
 }
+function valueLength(v) {
+    return v === undefined ? 0 : v instanceof Array ? v.length : 1;
+}
 // Returns an os interpreted as a single value if possible.
 // So o(x) becomes x. Note that o() becomes false.
 function getDeOSedValue(v) {
@@ -3192,6 +3195,47 @@ class NativeObjectWrapper extends NonAV {
             new this.foreignInterfaceConstructor() : undefined;
     }
 }
+class ForeignJavaScriptFunction extends BuiltInFunction {
+    constructor(name, f, returnType = numOrStrOrBoolValueType) {
+        super(name, 0, Infinity, returnType, false, false, false);
+        this.f = f;
+        this.factory = EFForeignJavaScriptFunction.make;
+    }
+    isEqual(v) {
+        return v instanceof ForeignJavaScriptFunction && v.name === this.name;
+    }
+    copy() {
+        return new ForeignJavaScriptFunction(this.name, this.f);
+    }
+    typeName() {
+        return "JavaScriptFunction";
+    }
+    match(v) {
+        return v instanceof ForeignJavaScriptFunction && v.name === this.name;
+    }
+    marshalValue(xdr) {
+        throw new Error("Method not implemented.");
+    }
+}
+class ForeignJavaScriptObjectFunction extends ForeignJavaScriptFunction {
+    constructor(name, f, returnType = numOrStrOrBoolValueType) {
+        super(name, f, returnType);
+        this.f = f;
+        this.factory = EFForeignJavaScriptObjectFunction.make;
+    }
+    isEqual(v) {
+        return v instanceof ForeignJavaScriptObjectFunction && v.name === this.name;
+    }
+    copy() {
+        return new ForeignJavaScriptObjectFunction(this.name, this.f);
+    }
+    typeName() {
+        return "JavaScriptObjectFunction";
+    }
+    match(v) {
+        return v instanceof ForeignJavaScriptObjectFunction && v.name === this.name;
+    }
+}
 var jsIdentifierRegExp = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 //
 // classDefinitions in indexed first by class-name, then by confLib-name.
@@ -3326,6 +3370,11 @@ function deepCopy(obj) {
 function isAV(v) {
     return v instanceof Object && !(v instanceof NonAV);
 }
+// True when v is a (possibly) normalized av with attribute attr
+function hasAttribute(v, attr) {
+    return v instanceof Array ? v.some(elt => hasAttribute(elt, attr)) :
+        v instanceof Object && !(v instanceof NonAV) && !isEmptyOS(v[attr]);
+}
 function stripArray(v, deep = false) {
     var v0 = v instanceof Array && v.length === 1 ? v[0] : v;
     var repl = undefined;
@@ -3389,17 +3438,12 @@ function suppressSet(v) {
 function interpretedBoolMatch(q, v) {
     var i;
     if (v instanceof Array) {
-        if ((!(q instanceof Array) || q.length > 0) && isFalse(q)) {
-            return isFalse(v);
-        }
-        else {
-            for (i = 0; i < v.length; i++) {
-                if (interpretedBoolMatch(q, v[i])) {
-                    return true;
-                }
+        for (i = 0; i < v.length; i++) {
+            if (interpretedBoolMatch(q, v[i])) {
+                return true;
             }
-            return false;
         }
+        return false;
     }
     else {
         switch (typeof (q)) {
@@ -3410,7 +3454,7 @@ function interpretedBoolMatch(q, v) {
                             return true;
                         }
                     }
-                    return q.length === 0 && isFalse(v); // o() matches false
+                    return false;
                 }
                 if (q === _) {
                     return !isFalse(v);
@@ -3465,18 +3509,11 @@ function interpretedQuery(q, v) {
         }
         if (v instanceof Array) {
             arres = [];
-            if (v.length === 0) {
-                if ((!(q instanceof Array) || q.length > 0) && isFalse(q)) {
-                    isSel = true;
-                }
-            }
-            else {
-                for (i = 0; i !== v.length; i++) {
-                    m1 = lmatch(q, v[i]);
-                    if (m1 !== undefined) {
-                        arres = arres.concat(m1.res);
-                        isSel = m1.sel; // Only last one...
-                    }
+            for (i = 0; i !== v.length; i++) {
+                m1 = lmatch(q, v[i]);
+                if (m1 !== undefined) {
+                    arres = arres.concat(m1.res);
+                    isSel = m1.sel; // Only last one...
                 }
             }
             return isSel !== undefined ? { sel: isSel, res: arres } : undefined;
@@ -3485,7 +3522,7 @@ function interpretedQuery(q, v) {
             case "object":
                 if (q instanceof Array) {
                     if (q.length === 0) {
-                        return isFalse(v) ? { sel: true, res: v } : undefined;
+                        return undefined;
                     }
                     if (q.length === 1 && q[0] === _) {
                         return { sel: false, res: v };
@@ -3504,8 +3541,32 @@ function interpretedQuery(q, v) {
                 }
                 if (q instanceof NonAV) {
                     if (q instanceof Negation) {
-                        return interpretedBoolMatch(q, v) ?
-                            { sel: true, res: v } : undefined;
+                        var complement = interpretedQuery(q.queries, v);
+                        if (v instanceof Array) {
+                            if (complement.length === v.length) {
+                                return { sel: false, res: [] };
+                            }
+                            var i = 0, j = 0;
+                            var neg = [];
+                            while (i < complement.length && j < v.length) {
+                                if (complement[i] === v[j]) {
+                                    i++;
+                                }
+                                else {
+                                    neg.push(v[j]);
+                                }
+                                j++;
+                            }
+                            while (j < v.length) {
+                                neg.push(v[j]);
+                                j++;
+                            }
+                            return { sel: true, res: neg };
+                        }
+                        else {
+                            return isEmptyOS(complement) ?
+                                { sel: true, res: v } : undefined;
+                        }
                     }
                     return q.match(v) ? { sel: true, res: v } : undefined;
                 }
@@ -3584,6 +3645,68 @@ function interpretedQueryWithIdentifiers(q, v, allIds, selectedIds) {
     }
     return res;
 }
+// Checks if q matches v. Returns true or false. Note that false matches o().
+function interpretedQualifierMatch(q, v) {
+    var i;
+    if (v instanceof Array) {
+        // The following three lines make [false, o()] return a true selection,
+        // being o().
+        if (v.length === 0 && q === false) {
+            return true;
+        }
+        for (i = 0; i < v.length; i++) {
+            if (interpretedBoolMatch(q, v[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    else {
+        switch (typeof (q)) {
+            case "object":
+                if (q instanceof Array) {
+                    for (i = 0; i !== q.length; i++) {
+                        if (interpretedBoolMatch(q[i], v)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                if (q === _) {
+                    return !isFalse(v);
+                }
+                if (q instanceof NonAV) {
+                    if (q instanceof Negation) {
+                        for (i = 0; i !== q.queries.length; i++) {
+                            if (interpretedBoolMatch(q.queries[i], v)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                    else {
+                        return q.match(v);
+                    }
+                }
+                if (!(v instanceof Object)) {
+                    return false;
+                }
+                for (var attr in q) {
+                    if (!(attr in v) || !interpretedBoolMatch(q[attr], v[attr])) {
+                        return false;
+                    }
+                }
+                return true;
+            case "string":
+            case "number":
+                return q === v || (v instanceof RangeValue && v.match(q));
+            case "boolean":
+                return q ? isTrue(v) : isFalse(v);
+            default:
+                return false;
+        }
+    }
+}
 function nrProjSitesInQuery(query) {
     if (query === _) {
         return 1;
@@ -3655,7 +3778,7 @@ function vstringify(v) {
     else if (v instanceof ChildInfo) {
         return v.toString();
     }
-    else if (v instanceof BuiltInFunction) {
+    else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     }
     else if (v instanceof MoonRange) {
@@ -3736,7 +3859,7 @@ function cstringify(v) {
     else if (v instanceof ChildInfo) {
         return v.toString();
     }
-    else if (v instanceof BuiltInFunction) {
+    else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     }
     else if (v instanceof MoonOrderedSet) {
@@ -3781,7 +3904,7 @@ function cdlify(v, indent = undefined) {
     else if (v instanceof ChildInfo) {
         return v.toString();
     }
-    else if (v instanceof BuiltInFunction) {
+    else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     }
     else if (v instanceof RegExp) {
@@ -3834,7 +3957,7 @@ function cdlifyLim(v, maxNrChar) {
     if (v instanceof Projector || v instanceof ChildInfo ||
         v instanceof BuiltInFunction || v instanceof Negation ||
         v instanceof NonAV || v instanceof Unquote ||
-        !(v instanceof Object)) {
+        v instanceof ForeignJavaScriptFunction || !(v instanceof Object)) {
         var str = cdlify(v);
         return str === undefined ? undefined :
             str.length <= maxNrChar ? str :
@@ -3984,7 +4107,7 @@ function cdlifyNormalized(v) {
     else if (v instanceof ChildInfo) {
         return v.toString();
     }
-    else if (v instanceof BuiltInFunction) {
+    else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     }
     else if (v instanceof MoonRange) {
@@ -4419,6 +4542,8 @@ class ForeignInterface {
     releaseDiv() {
         this.displayOfArea = undefined;
         this.hasDivSet = false;
+    }
+    setSize(width, height) {
     }
     wrapUpVisuals() {
     }
@@ -6553,6 +6678,7 @@ class NetworkServer {
                 });
             }
             function findFile(fileName, contentEncoding) {
+                // TODO: BLOCK filenames with ./ or ../
                 fs.stat(fileName, (err, stats) => {
                     if (err) {
                         if (acceptsGZip && contentEncoding === undefined) {
@@ -6577,29 +6703,60 @@ class NetworkServer {
                         });
                         response.end("");
                     }
-                    else if (contentEncoding === undefined && directoryListingAllowed &&
-                        stats.isDirectory && myURL.query === "format=json") {
-                        // Allow the server to send directory contents in json
-                        // format. Could be useful for writing a cdl app that
-                        // traverses a directory.
-                        fs.readdir(fileName, (err, files) => {
-                            if (err) {
-                                RemotingLog.log(2, "directory not readable: " + request.url);
-                                response.writeHead(404, { 'Content-Type': 'text/html' });
-                                response.end("<html><body>Too bad: not a valid URL in this neck of the woods</body></html>");
-                            }
-                            else {
-                                response.writeHead(200, {
-                                    'Content-Type': 'text/json',
-                                    'ETag': fileETag
-                                });
-                                RemotingLog.log(2, "sending directory " + request.url);
-                                response.end(JSON.stringify(files.filter(fileName => {
-                                    let extPos = fileName.lastIndexOf('.');
-                                    return extPos === -1 || fileName.slice(extPos + 1) === 'html';
-                                })));
-                            }
-                        });
+                    else if (contentEncoding === undefined && directoryListingAllowed && stats.isDirectory()) {
+                        if (myURL.query === "format=json") {
+                            // Allow the server to send directory contents in json
+                            // format. Could be useful for writing a cdl app that
+                            // traverses a directory.
+                            fs.readdir(fileName, (err, files) => {
+                                if (err) {
+                                    RemotingLog.log(2, "directory not readable: " + request.url);
+                                    response.writeHead(404, { 'Content-Type': 'text/html' });
+                                    response.end("<html><body>Too bad: not a valid URL in this neck of the woods</body></html>");
+                                }
+                                else {
+                                    response.writeHead(200, {
+                                        'Content-Type': 'text/json',
+                                        'ETag': fileETag
+                                    });
+                                    RemotingLog.log(2, "sending directory " + request.url);
+                                    response.end(JSON.stringify(files.filter(fileName => {
+                                        let extPos = fileName.lastIndexOf('.');
+                                        return extPos === -1 || fileName.slice(extPos + 1) === 'html';
+                                    })));
+                                }
+                            });
+                        }
+                        else {
+                            fs.readdir(fileName, (err, files) => {
+                                if (err) {
+                                    RemotingLog.log(2, "directory not readable: " + request.url);
+                                    response.writeHead(404, { 'Content-Type': 'text/html' });
+                                    response.end("<html><body>'tis in vain to seek a URL here that means not to be found</body></html>");
+                                }
+                                else {
+                                    response.writeHead(200, {
+                                        'Content-Type': 'text/html',
+                                        'ETag': fileETag
+                                    });
+                                    RemotingLog.log(2, "sending directory " + request.url);
+                                    response.end('<html><body style="font-family: sans-serif;">' + files.map(fn => {
+                                        if (fn[0] !== '.') {
+                                            const dstats = fs.statSync(fileName + "/" + fn);
+                                            if (dstats.isDirectory()) {
+                                                return '<a href="' + encodeURIComponent(fn) + "/" + '">' + fn + '</a>';
+                                            }
+                                            else if (fn.endsWith(".html")) {
+                                                return fn +
+                                                    ':<a href="' + encodeURIComponent(fn) + '">remote</a> ' +
+                                                    ' <a href="' + encodeURIComponent(fn) + '?remote=false">local</a>';
+                                            }
+                                        }
+                                        return undefined;
+                                    }).filter(p => p !== undefined).join("<p>\n") + "</body></html>");
+                                }
+                            });
+                        }
                     }
                     else if (!stats.isFile) {
                         RemotingLog.log(2, "file found but not a normal file: " + request.url);
@@ -10147,7 +10304,7 @@ function readExternalDataSourceConfig(fileName) {
     }
     return config;
 }
-function main() {
+function persistenceServerMain() {
     var server = undefined;
     var resourceMgr = undefined;
     var addedLocalServerParam = undefined;
@@ -10279,4 +10436,4 @@ function main() {
     });
     startServer();
 }
-main();
+persistenceServerMain();

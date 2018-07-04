@@ -760,9 +760,13 @@ class AreaTemplate {
     addExistence(node: PathTreeNode): void {
         if (node.values !== undefined) {
             for (var i: number = 0; i !== node.values.length; i++) {
-                if (node.values[i].expression.type === ExpressionType.childExistence) {
+                switch (node.values[i].expression.type) {
+                  case ExpressionType.childExistence:
                     this.childExistence.push(node.values[i]);
-                } else if (node.values[i].expression.type !== ExpressionType.className) {
+                    break;
+                  case ExpressionType.className:
+                    break;
+                  default:
                     Utilities.error("unknown value type in addExistence");
                 }
             }
@@ -845,7 +849,12 @@ class AreaTemplate {
         }
 
         if (!this.expressionsHaveBeenCached && this.doesExist) {
-            assert(this.expressionsHaveBeenCached === false, "cycle?");
+            if (this.expressionsHaveBeenCached !== false) {
+                Utilities.error("cycle in area existence: @" + this.id +
+                              "=" + getShortChildPath(this.areaNode.getPath()) +
+                              " depends on itself?");
+                return;
+            }
             this.expressionsHaveBeenCached = undefined;
 
             if (FunctionNode.cacheDbg !== undefined){
@@ -869,6 +878,9 @@ class AreaTemplate {
                 }
                 if (FunctionNode.cacheDbg !== undefined) this.cacheStage[csi] = "displayFunction";
                 this.displayFunction = process(this.displayFunction, stack, true);
+                if (this.foreignInterfaceDisplayFunction !== undefined) {
+                    this.foreignInterfaceDisplayFunction = process(this.foreignInterfaceDisplayFunction, stack, true);
+                }
                 if (FunctionNode.cacheDbg !== undefined) this.cacheStage[csi] = "exports";
                 for (var exportId in this.exports) {
                     if (this.exports[exportId] === undefined) {

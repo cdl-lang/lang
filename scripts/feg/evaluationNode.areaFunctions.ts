@@ -756,48 +756,49 @@ class EvaluationAreaProjection extends EvaluationNode {
         this.values.length = areaData.length;
         this.internalSetDataSourceResultMode(this.externalDataSourceResultMode && areaData.length <= 1);
         for (var i: number = 0; i !== areaData.length; i++) {
-            assert(areaData[i] instanceof ElementReference, "should be");
-            var elemRef = <ElementReference> areaData[i];
-            var area: CoreArea = allAreaMonitor.getAreaById(elemRef.element);
-            if (area !== undefined && area.exports !== undefined &&
-                  this.exportId in area.exports) {
-                var expNode: EvaluationNode = area.getExport(this.exportId);
-                // If the node is constant, use the area instead for updates
-                // (which will then only be termination).
-                var producerId: string = area.areaId + "#" + expNode.watcherId;
-                newAreaProducerIds[producerId] = true;
-                if (this.producerPos[producerId] !== i) {
-                    this.producerPos[producerId] = i;
-                    change = true;
-                }
-                if (!(producerId in this.watchedProducers)) {
-                    var producer = expNode.isConstant()? area: expNode;
-                    this.watchedProducers[producerId] = producer;
-                    producer.addWatcher(this, producerId, false, false, this.dataSourceResultMode);
-                    change = true;
-                }
-                if (this.nrActiveWatchers > 0 && !expNode.isConstant() &&
-                      !(producerId in this.activeProducers)) {
-                    expNode.activate(this, this.dataSourceResultMode);
-                    if (this.activeProducers === undefined)
-                        return false;
-                    this.activeProducers[producerId] = area.areaId; // info for debugging
-                    if (expNode.isScheduled()) {
-                        wait = true;
-                        expNode.forceUpdate(this, false);
+            var elemRef = areaData[i];
+            if (elemRef instanceof ElementReference) {
+                var area: CoreArea = allAreaMonitor.getAreaById(elemRef.element);
+                if (area !== undefined && area.exports !== undefined &&
+                    this.exportId in area.exports) {
+                    var expNode: EvaluationNode = area.getExport(this.exportId);
+                    // If the node is constant, use the area instead for updates
+                    // (which will then only be termination).
+                    var producerId: string = area.areaId + "#" + expNode.watcherId;
+                    newAreaProducerIds[producerId] = true;
+                    if (this.producerPos[producerId] !== i) {
+                        this.producerPos[producerId] = i;
+                        change = true;
                     }
-                    change = true;
-                }
-                this.values[i] = expNode.result;
-            } else {
-                // Area has been destroyed
-                if (area === undefined && !this.destroyedAreas.has(elemRef.element)) {
-                    if (this.nrActiveWatchers > 0 && this.destroyedAreas.size === 0) {
-                        allAreaMonitor.addWatcher(this, "", false);
+                    if (!(producerId in this.watchedProducers)) {
+                        var producer = expNode.isConstant()? area: expNode;
+                        this.watchedProducers[producerId] = producer;
+                        producer.addWatcher(this, producerId, false, false, this.dataSourceResultMode);
+                        change = true;
                     }
-                    this.destroyedAreas.set(elemRef.element, i);
+                    if (this.nrActiveWatchers > 0 && !expNode.isConstant() &&
+                        !(producerId in this.activeProducers)) {
+                        expNode.activate(this, this.dataSourceResultMode);
+                        if (this.activeProducers === undefined)
+                            return false;
+                        this.activeProducers[producerId] = area.areaId; // info for debugging
+                        if (expNode.isScheduled()) {
+                            wait = true;
+                            expNode.forceUpdate(this, false);
+                        }
+                        change = true;
+                    }
+                    this.values[i] = expNode.result;
+                } else {
+                    // Area has been destroyed
+                    if (area === undefined && !this.destroyedAreas.has(elemRef.element)) {
+                        if (this.nrActiveWatchers > 0 && this.destroyedAreas.size === 0) {
+                            allAreaMonitor.addWatcher(this, "", false);
+                        }
+                        this.destroyedAreas.set(elemRef.element, i);
+                    }
+                    this.values[i] = undefined;
                 }
-                this.values[i] = undefined;
             }
         }
         for (var areaProducerId in this.watchedProducers) {
@@ -1346,49 +1347,50 @@ class EvaluationAreaSelection extends EvaluationNode {
         this.values.length = areaData.length;
         this.inputAreas.length = areaData.length;
         for (var i: number = 0; i !== areaData.length; i++) {
-            assert(areaData[i] instanceof ElementReference, "should be");
-            var elemRef = <ElementReference> areaData[i];
-            var area: CoreArea = allAreaMonitor.getAreaById(elemRef.element);
-            if (area !== undefined) {
-                this.inputAreas[i] = area.areaReference;
-                if (area.exports !== undefined && this.exportId in area.exports) {
-                    var expNode: EvaluationNode = area.getExport(this.exportId);
-                    var producerId: string = area.areaId + "#" + expNode.watcherId;
-                    newAreaProducerIds[producerId] = true;
-                    if (this.producerPos[producerId] !== i) {
-                        this.producerPos[producerId] = i;
-                        change = true;
-                    }
-                    if (!(producerId in this.watchedProducers)) {
-                        var producer = expNode.isConstant()? area: expNode;
-                        this.watchedProducers[producerId] = producer;
-                        producer.addWatcher(this, producerId, false, false, false);
-                        change = true;
-                    }
-                    if (this.nrActiveWatchers > 0 && !expNode.isConstant() &&
-                          !(producerId in this.activeProducers)) {
-                        expNode.activate(this, false);
-                        if (this.activeProducers === undefined)
-                            return false;
-                        this.activeProducers[producerId] = area.areaId; // info for debuggin
-                        if (expNode.isScheduled()) {
-                            wait = true;
-                            expNode.forceUpdate(this, false);
+            var elemRef = areaData[i];
+            if (elemRef instanceof ElementReference) {
+                var area: CoreArea = allAreaMonitor.getAreaById(elemRef.element);
+                if (area !== undefined) {
+                    this.inputAreas[i] = area.areaReference;
+                    if (area.exports !== undefined && this.exportId in area.exports) {
+                        var expNode: EvaluationNode = area.getExport(this.exportId);
+                        var producerId: string = area.areaId + "#" + expNode.watcherId;
+                        newAreaProducerIds[producerId] = true;
+                        if (this.producerPos[producerId] !== i) {
+                            this.producerPos[producerId] = i;
+                            change = true;
                         }
-                        change = true;
+                        if (!(producerId in this.watchedProducers)) {
+                            var producer = expNode.isConstant()? area: expNode;
+                            this.watchedProducers[producerId] = producer;
+                            producer.addWatcher(this, producerId, false, false, false);
+                            change = true;
+                        }
+                        if (this.nrActiveWatchers > 0 && !expNode.isConstant() &&
+                            !(producerId in this.activeProducers)) {
+                            expNode.activate(this, false);
+                            if (this.activeProducers === undefined)
+                                return false;
+                            this.activeProducers[producerId] = area.areaId; // info for debuggin
+                            if (expNode.isScheduled()) {
+                                wait = true;
+                                expNode.forceUpdate(this, false);
+                            }
+                            change = true;
+                        }
+                        this.values[i] = expNode.result.value;
+                    } else {
+                        // no such export, but value can still match false
+                        this.values[i] = undefined;
                     }
-                    this.values[i] = expNode.result.value;
                 } else {
-                    // no such export, but value can still match false
-                    this.values[i] = undefined;
-                }
-            } else {
-                // Area has been destroyed
-                if (!this.destroyedAreas.has(elemRef.element)) {
-                    if (this.nrActiveWatchers > 0 && this.destroyedAreas.size === 0) {
-                        allAreaMonitor.addWatcher(this, "", false);
+                    // Area has been destroyed
+                    if (!this.destroyedAreas.has(elemRef.element)) {
+                        if (this.nrActiveWatchers > 0 && this.destroyedAreas.size === 0) {
+                            allAreaMonitor.addWatcher(this, "", false);
+                        }
+                        this.destroyedAreas.set(elemRef.element, i);
                     }
-                    this.destroyedAreas.set(elemRef.element, i);
                 }
             }
         }

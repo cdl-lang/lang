@@ -706,6 +706,10 @@ function ensureOS(v: any): any[] {
     return v === undefined? []: v instanceof Array? v: [v];
 }
 
+function valueLength(v: any): number {
+    return v === undefined? 0: v instanceof Array? v.length: 1;
+}
+
 // Returns an os interpreted as a single value if possible.
 // So o(x) becomes x. Note that o() becomes false.
 function getDeOSedValue(v: any): any {

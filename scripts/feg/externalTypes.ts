@@ -44,10 +44,15 @@ class Relative extends ContentPos {
     exact: Rect = new Rect();
 }
 
+class DisplayDivPos extends Rect {
+    embedding: CoreArea;
+}
+
 declare function updateElementPos(element: HTMLDivElement, pos: Rect): void;
 declare function resetTransitionCssProp(style: CSSStyleDeclaration): void;
 
 declare class Display {
+    displayType: string;
     frameDiv: HTMLDivElement;
     displayDiv: HTMLDivElement;
     embeddingDiv: HTMLDivElement;
@@ -77,9 +82,10 @@ declare class Display {
     takeFocus(): void;
     releaseFocus(): void;
     setInputState(attrib: string, value: any): boolean;
-    isOpaque(): boolean;
+    isOpaquePosition(x: number, y: number): boolean;
     hasVisibleBorder(): boolean;
     willHandleClick(): boolean;
+    getInputChanges(): {[attr: string]: any}|undefined;
     getTransitions(): any;
     setForeignElement(foreignElement: HTMLElement): void;
     setShowEmbedding(showEmbedding: boolean): void;
@@ -97,6 +103,7 @@ declare class SurveyDisplay {
     getWidth(): number;
     getHeight(): number;
     getSize(): number[];
+    static getEmbeddingDiv(): HTMLDivElement;
 }
 
 declare var logEventHistory: boolean;
@@ -278,7 +285,7 @@ declare function clearProgressDiv(): void;
 declare function hideSplashScreen(): void;
 declare function showRunningDivNow(): void;
 //declare function setSplashScreenText(text: string): void;
-declare function unhideMondriaRootDiv(): void;
+declare function unhideCdlRootDiv(): void;
 
 declare class SortedListNode<T> {
     entry: T;

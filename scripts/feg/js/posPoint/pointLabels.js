@@ -191,6 +191,12 @@ function centerFrameLabel(areaId, isVertical)
     return pointId(areaId + centerFrameSuffix(isVertical));
 }
 
+// Returns a label for a point of a line; it's simply the label
+function linePointLabel(area, point)
+{
+    return pointId(area.areaId + point);
+}
+
 var posPointLabelFuncByEdge = {
     left: leftLabel,
     right: rightLabel,

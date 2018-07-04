@@ -1,6 +1,6 @@
-ROOTDIR=../../..
+LANGDIR=../../..
 
-include $(ROOTDIR)/util/mmk
+include $(LANGDIR)/util/mmk
 
 authorizationUtil: authorizationUtil.node.js
 
@@ -9,7 +9,7 @@ authorizationUtil.node.js: force
 	make -C .. tsc
 	$(GENINCJS) \
 		"--mode=js" \
-		"--rootdir=$(ROOTDIR)" \
+		"--langdir=$(LANGDIR)" \
 		"--out_file=$@" \
 		"--template=authorizationUtil.template" \
 		authorizationUtil.js

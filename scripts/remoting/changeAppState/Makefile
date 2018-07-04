@@ -2,16 +2,16 @@ TSC=tsc --noImplicitAny --noImplicitReturns -t es2015
 
 PROGRAM=changeAppState.node.js
 
-ROOTDIR=../../..
+LANGDIR=../../..
 
-include $(ROOTDIR)/util/mmk
+include $(LANGDIR)/util/mmk
 
 changeAppState.node.js: force
 	make -C ../../feg tsc
 	make -C .. tsc
 	$(GENINCJS) \
 		"--mode=js" \
-		"--rootdir=$(ROOTDIR)" \
+		"--langdir=$(LANGDIR)" \
 		"--out_file=$@" \
 		"--template=changeAppState.template" \
 		changeAppState.js

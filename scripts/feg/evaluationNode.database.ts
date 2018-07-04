@@ -114,17 +114,6 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
         }
     }
 
-    // We assume that this always runs in dataSourceResultMode. Any node that
-    // doesn't will see o(). A solution is to store dataPerFacet, and convert
-    // that to data when needed, but keeping that much data around is a waste
-    // at this moment.
-    // TODO: write indexer that uses the arrays directly in the pathNode.
-    setColumnarData(dataPerFacet: {[facetName: string]: any[]}, attributes: DataSourceAttributesInfo[]): void {
-        this.endedLoading("loaded", attributes);
-        this.indexer.clear();
-        this.indexer.addColumnObjects(dataPerFacet);
-    }
-
     dataPerFacet: {[facetName: string]: SimpleValue[]} = undefined;
     attributes: DataSourceAttributesInfo[] = undefined;
     nrDataRows: number = 0;
@@ -146,7 +135,11 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
         this.nrDataRows = nrRows;
         this.attributes = attributes;
         this.releaseDataPathNode();
-        this.indexer.clear();
+        if (this.indexer !== undefined) {
+            this.indexer.clear();
+        } else {
+            this.createIndexer();
+        }
 
         var rootPathId: number = this.indexer.qcm.getRootPathId();
         var dataPathId: number = this.indexer.qcm.allocatePathId(rootPathId, "data");
@@ -176,6 +169,16 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
             this.markAsChanged();
         }
         this.dataSourceResultMode = dataSourceResultMode;
+    }
+
+    createIndexer(): void {
+        if (this.indexer === undefined) {
+            this.indexer = new FEGValueIndexer(globalInternalQCM);
+            this.indexer.addPath(globalInternalQCM.getRootPathId());
+            this.result.dataSource = IndexerDataSource.createIndexerDataSourceRoot(this.indexer, this, this.uri);
+            this.setDataSourceResultMode(true);
+            this.result.value = emptyDataSourceResult;
+        }
     }
 
     newDataSourceResult(v: any[]): void {
@@ -688,14 +691,12 @@ class EvaluationDataTable extends EvaluationDataSource
     onlyFirstBlock: boolean = true;
     customArg: any = undefined;
     queueRunning: boolean = true; // false when this node has stopped the queue
+    withCredentialsFlag: boolean|undefined;
+    waitForReply: boolean = false;
 
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
         super(prototype, local);
-        this.indexer = new FEGValueIndexer(globalInternalQCM);
-        this.indexer.addPath(globalInternalQCM.getRootPathId());
-        this.result.dataSource = IndexerDataSource.createIndexerDataSourceRoot(this.indexer, this, this.uri);
-        this.result.value = emptyDataSourceResult;
-        this.dataSourceResultMode = true;
+        this.createIndexer();
     }
 
     updateInput(i: any, result: Result): void {
@@ -734,6 +735,8 @@ class EvaluationDataTable extends EvaluationDataSource
             if (!objectEqual(result.value, this.customArg)) {
                 this.customArg = getDeOSedValue(result.value);
                 this.onlyFirstBlock = checkValue(this.onlyFirstBlock, "onlyFirstBlock");
+                this.withCredentialsFlag = checkValue(this.withCredentialsFlag, "withCredentials");
+                this.waitForReply = checkValue(this.waitForReply, "waitForReply");
             }
         }
     }
@@ -874,6 +877,9 @@ class EvaluationDataTable extends EvaluationDataSource
         for (var i: number = 0; i < data.length; i++) {
             var obj: any = data[i];
             var empty: boolean = true;
+            if (typeof(obj) !== "object" || obj === null) {
+                continue;
+            }
             for (var attr in obj) {
                 var v_ij: any = obj[attr];
                 var j: number = attributeToIndex[attr];
@@ -1004,21 +1010,7 @@ class EvaluationDataTable extends EvaluationDataSource
         this.endedLoading("loaded", attributes);
         if (this.arguments[1] !== undefined &&
               isTrue(interpretedQuery({noIndexer: _}, this.arguments[1].value))) {
-            this.indexer.destroy();
-            delete this.indexer;
-            delete this.result.dataSource;
-            this.dataSourceResultMode = false;
-            this.result.value = [{
-                state: "loaded",
-                fullName: (this.uri instanceof NativeObjectWrapper? this.uri.file.name: this.sourceName),
-                name: extractBaseName(this.sourceName),
-                revision: getDeOSedValue(this.revision),
-                lastUpdate: Date.now(),
-                attributes: attributes,
-                data: normalizeObject(data)
-            }];
-            this.endedLoading("loaded", attributes);
-            this.informAllWatchers();
+            this.setNoIndexerData(attributes, data);
         } else if (useDataSupplyMechanism) {
             this.dataPerFacet = dataPerFacet;
             this.provideDataSupplier(dataSize, dataPerFacet, attributes);
@@ -1030,6 +1022,26 @@ class EvaluationDataTable extends EvaluationDataSource
             }, undefined);
             this.endedLoading("loaded", attributes);
         }
+    }
+
+    private setNoIndexerData(attributes: DataSourceAttributesInfo[], data: any[]): void {
+        if (this.indexer !== undefined) {
+            this.indexer.destroy();
+            delete this.indexer;
+        }
+        delete this.result.dataSource;
+        this.dataSourceResultMode = false;
+        this.result.value = [{
+            state: "loaded",
+            fullName: (this.uri instanceof NativeObjectWrapper ? this.uri.file.name : this.sourceName),
+            name: extractBaseName(this.sourceName),
+            revision: getDeOSedValue(this.revision),
+            lastUpdate: Date.now(),
+            attributes: attributes,
+            data: normalizeObject(data)
+        }];
+        this.endedLoading("loaded", attributes);
+        this.informAllWatchers();
     }
 
     // loadJSONStat(response: string): void {
@@ -1078,6 +1090,24 @@ class EvaluationDataTable extends EvaluationDataSource
         var dateTest = EvaluationDataTable.dateTest;
         var possibleDate: boolean[] = [];
         var fixedUpNames: string[] = [];
+
+        function convertToOS(): any[] {
+            var res: any[] = [];
+
+            for (var attr in dataPerFacet) {
+                var col = dataPerFacet[attr];
+                for (var i: number = 0; i < col.length; i++) {
+                    var dataElement = col[i];
+                    if (dataElement !== undefined) {
+                        if (res[i] === undefined) {
+                            res[i] = {};
+                        }
+                        res[i][attr] = dataElement;
+                    }
+                }
+            }
+            return res;
+        }
 
         function fixUpAttribute(attr: string): string {
             if (attr === "") {
@@ -1390,7 +1420,7 @@ class EvaluationDataTable extends EvaluationDataSource
                     }
                 }
                 if (type_ij !== "undefined") {
-                    let cnt = valueCount_j.get(v_ij);
+                    var cnt = valueCount_j.get(v_ij);
                     if (cnt !== undefined) {
                         valueCount_j.set(v_ij, cnt + 1);
                     } else {
@@ -1470,8 +1500,12 @@ class EvaluationDataTable extends EvaluationDataSource
                 }]
             }]
         });
-        // this.setColumnarData(dataPerFacet, attributes);
-        this.provideDataSupplier(nrRows, dataPerFacet, attributes);
+        if (this.arguments[1] !== undefined &&
+              isTrue(interpretedQuery({noIndexer: _}, this.arguments[1].value))) {
+            this.setNoIndexerData(attributes, convertToOS());
+        } else {
+            this.provideDataSupplier(nrRows, dataPerFacet, attributes);
+        }
     }
     
     parseResponse(response: string): string[][] {
@@ -1637,15 +1671,19 @@ class EvaluationDataTable extends EvaluationDataSource
                     this.fileReader = undefined;
                 }
             }
-            this.suspendQueue();
+            if (this.waitForReply) {
+                this.suspendQueue();
+            }
             this.fileReader.readAsText(this.uri.file);
-        } else if (typeof(this.uri) === "string" &&
-                   /^(\.\.?\/|((file|https?|[st]?ftp):\/\/))/.test(this.uri)) {
+        } else if (typeof(this.uri) === "string") {
             this.infoUpdate("loading", [], "datatable", 0, undefined);
-            var uri: string = /^(file|https?|[st]?ftp):\/\//.test(this.uri)?
-                this.uri: combineFilePath(runtimeEnvironment.dirName, this.uri);
+            var uri: string = /^\.\.?\//.test(this.uri)?
+                combineFilePath(runtimeEnvironment.dirName, this.uri): this.uri;
             this.determineFileMode(uri, true);
             this.client = new XMLHttpRequest();
+            if (this.withCredentialsFlag) {
+                this.client.withCredentials = true;
+            }
             this.client.onerror = (errorEvent: ErrorEvent): void => {
                 this.error(errorEvent);
             }
@@ -1661,9 +1699,11 @@ class EvaluationDataTable extends EvaluationDataSource
                     this.client = undefined;
                 }
             }
-            this.client.send();
+            this.client.send("{}");
             if (!this.errorInLoad) {
-                this.suspendQueue();
+                if (this.waitForReply) {
+                    this.suspendQueue();
+                }
             } else {
                 this.infoUpdate("error", [], "datatable", undefined, "opening file not allowed by browser");
                 this.setResult("error", "opening datatable not allowed by browser: " + uri, undefined, undefined);

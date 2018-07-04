@@ -313,45 +313,6 @@ class EFPow extends EFBinaryOperator {
 }
 pow.factory = EFPow.make;
 
-class EFLn extends EFUnaryOperator {
-
-    static singleton: ExecutableFunction = new EFLn();
-    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
-        return EFLn.singleton;
-    }
-
-    op(a: any): number {
-        return a === undefined? undefined: Math.log(a);
-    }
-}
-ln.factory = EFLn.make;
-
-class EFExp extends EFUnaryOperator {
-
-    static singleton: ExecutableFunction = new EFExp();
-    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
-        return EFExp.singleton;
-    }
-
-    op(a: any): number {
-        return a === undefined? undefined: Math.exp(a);
-    }
-}
-exp.factory = EFExp.make;
-
-class EFLog10 extends EFUnaryOperator {
-
-    static singleton: ExecutableFunction = new EFLog10();
-    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
-        return EFLog10.singleton;
-    }
-
-    op(a: any): number {
-        return a === undefined? undefined: Math.log(a) / Math.LN10;
-    }
-}
-log10.factory = EFLog10.make;
-
 // [logb, o(2, 4, 8), 2] = o(1,2,3)
 class EFLogB extends EFBinaryOperator {
 
@@ -1368,7 +1329,7 @@ class EFBool implements ExecutableFunction {
     }
 
     execute(args: Result[]): any[] {
-        return isTrueValue(args[0].value)? constTrueOS: constEmptyOS;
+        return isTrueValue(args[0].value)? constTrueOS: constFalseOS;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
@@ -1535,7 +1496,7 @@ class EFEmpty implements ExecutableFunction {
     execute(args: Result[]): any[] {
         var arg1: any[] = args[0].value;
 
-        return arg1 !== undefined && arg1.length === 0? constTrueOS: constEmptyOS;
+        return arg1 !== undefined && arg1.length === 0? constTrueOS: constFalseOS;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
@@ -1567,7 +1528,7 @@ class EFNotEmpty implements ExecutableFunction {
         var arg1: any[] = args[0].value;
 
         return arg1 !== undefined &&
-            (!(arg1 instanceof Array) || arg1.length !== 0)? constTrueOS: constEmptyOS;
+            (!(arg1 instanceof Array) || arg1.length !== 0)? constTrueOS: constFalseOS;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
@@ -2317,23 +2278,6 @@ class EFSubString extends EFBinaryOperator {
 }
 subStr.factory = EFSubString.make;
 
-class EFStringToNumber extends EFUnaryOperator {
-    static singleton: ExecutableFunction = new EFStringToNumber();
-    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
-        return EFStringToNumber.singleton;
-    }
-
-    op(str: any): string | number {
-        if (typeof(str) === "string") {
-            var num: number = Number(str);
-            return isNaN(num)? str: num;
-        } else {
-            return str;
-        }
-    }
-}
-stringToNumber.factory = EFStringToNumber.make;
-
 class EFSingleValue implements ExecutableFunction {
 
     static singleton: ExecutableFunction = new EFSingleValue();
@@ -2548,3 +2492,171 @@ class EFYear extends EFUnaryOperator {
     }
 }
 year.factory = EFYear.make;
+
+class EFURLStr extends EFUnaryOperator {
+
+    static singleton: ExecutableFunction = new EFURLStr();
+    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
+        return EFURLStr.singleton;
+    }
+
+    op(a: any): string {
+        if (typeof(a) === "string") {
+            return encodeURI(a);
+        }
+        if (isAV(a)) {
+            var url: string = "protocol" in a? singleton(a.protocol) + "://": "http://";
+            if (!(a.path instanceof Array) || a.path.some((p: any): boolean => typeof(p) !== "string" && typeof(p) !== "number")) {
+                return undefined;
+            }
+            url += a.path.map(encodeURI).join("/");
+            if ("query" in a) {
+                var hasArguments = url.indexOf("?") >= 0;
+                for (var i = 0; i < a.query.length; i++) {
+                    var query: any = a.query[i];
+                    if (isAV(query)) {
+                        var mergedAttributes: any = {};
+                        for (var attr in query) {
+                            if (!(attr in mergedAttributes)) {
+                                var val: any = query[attr];
+                                mergedAttributes[attr] = true;
+                                if (val !== undefined && !(val instanceof Array && val.length === 0)) {
+                                    url += (hasArguments? "&": "?") + encodeURIComponent(attr) +
+                                        "=" + encodeURIComponent(singleton(val));
+                                }
+                                hasArguments = true;
+                            }
+                        }
+                    }
+                }
+            }
+            return url;
+        }
+        return undefined;
+    }
+}
+urlStr.factory = EFURLStr.make;
+
+class EFForeignJavaScriptFunction extends EFNSetOperator {
+    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
+        return new EFForeignJavaScriptFunction((<EvaluationFunctionApplication>en).bif);
+    }
+
+    f: (... args: any[]) => any;
+
+    constructor(bif: BuiltInFunction) {
+        super();
+        if (bif instanceof ForeignJavaScriptFunction) {
+            this.f = bif.f;
+        } else {
+            this.f = () => undefined;
+        }
+    }
+
+    call(args: any[]): any[] {
+        try {
+            return ensureOS(this.f.apply(undefined, args)).
+                    filter(v => {
+                        var t = typeof(v);
+                        return t === "number" || t === "string" || t === "boolean";
+                    });
+        } catch (e) {
+            Utilities.warn(e.toString());
+            return constEmptyOS;
+        }
+    }
+
+    compute(args: any[][]): any[] {
+        if (args.length === 0) {
+            return this.call([]);
+        } else {
+            var res: any[] = [];
+            var i: number = 0;
+            while (true) {
+                var fargs: any[] = [];
+                var nrI: number = 0;
+                for (var j = 0; j < args.length; j++) {
+                    if (i < args[j].length) {
+                        if (args[j].length === 1) nrI++;
+                        fargs.push(args[j][i]);
+                    } else if (args[j].length === 1) {
+                        fargs.push(args[j][0]);
+                    } else {
+                        return res;
+                    }
+                }
+                res = cconcat(res, this.call(fargs));
+                if (i === 0 && nrI === args.length) {
+                    return res;
+                }
+                i++;
+            }
+        }
+    }
+
+    computeUndef(args: any[][]): any[] {
+        return this.compute(args);
+    }
+}
+
+class EFForeignJavaScriptObjectFunction extends EFNSetOperator {
+    static make(local: EvaluationEnvironment, en: EvaluationNode): ExecutableFunction {
+        return new EFForeignJavaScriptObjectFunction((<EvaluationFunctionApplication>en).bif);
+    }
+
+    f: (... args: any[]) => any;
+
+    constructor(bif: BuiltInFunction) {
+        super();
+        if (bif instanceof ForeignJavaScriptObjectFunction) {
+            this.f = bif.f;
+        } else {
+            this.f = () => undefined;
+        }
+    }
+
+    call(args: any[]): any[] {
+        try {
+            return ensureOS(this.f.apply(args[0], args.slice(1))).
+                    filter(v => {
+                        var t = typeof(v);
+                        return t === "number" || t === "string" || t === "boolean";
+                    });
+        } catch (e) {
+            Utilities.warn(e.toString());
+            return constEmptyOS;
+        }
+    }
+
+    compute(args: any[][]): any[] {
+        if (args.length === 0) {
+            return constEmptyObject;
+        } else {
+            var res: any[] = [];
+            var i: number = 0;
+            while (true) {
+                var fargs: any[] = [];
+                var nrI: number = 0;
+                for (var j = 0; j < args.length; j++) {
+                    if (i < args[j].length) {
+                        if (args[j].length === 1) nrI++;
+                        fargs.push(args[j][i]);
+                    } else if (args[j].length === 1) {
+                        fargs.push(args[j][0]);
+                    } else {
+                        return res;
+                    }
+                }
+                res = cconcat(res, this.call(fargs));
+                if (i === 0 && nrI === args.length) {
+                    return res;
+                }
+                i++;
+            }
+        }
+    }
+
+    computeUndef(args: any[][]): any[] {
+        return this.compute(args);
+    }
+}

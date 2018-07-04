@@ -1,0 +1,91 @@
+<html>
+  <head>
+    <style type="text/css">
+      .splashContainer {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          top: 0px;
+          left: 0px;
+      }
+
+      .splashLogo {
+          display: table;
+          animation-name: initialization;
+          animation-duration: 2s;
+      }
+
+      .splashText {
+          display: table;
+          animation-name: initialization;
+          animation-duration: 2s;
+      }
+
+      .systemMessage {
+          display: table;
+      }
+      
+      .splashBackground1 {
+          background:linear-gradient(150deg,rgb(169, 219, 192),rgb(220, 240, 230) 70%);
+          top: 0px;
+          animation-name: initialization;
+          animation-duration: 2s;
+          animation-iteration-count: 1;
+      }
+      
+      .splashBackground2 {
+          background:linear-gradient(150deg,rgb(169, 192, 219),rgb(220, 230, 240) 70%);
+          top: 0px;
+          animation-name: splashWait;
+          animation-duration: 4s;
+          animation-iteration-count: infinite;
+      }
+
+      @keyframes initialization {
+          0% {
+              opacity: 0
+          }
+
+          100% {
+              opacity: 1
+          }
+      }
+      
+      @keyframes splashWait {
+          0% {
+              opacity: 0
+          }
+
+          50% {
+              opacity: 1;
+          }
+
+          100% {
+              opacity: 0
+          }
+      }
+}
+    </style>
+  </head>
+  <body>
+    <div class="splashContainer splashBackground1">
+    </div>
+    <div class="splashContainer splashBackground2">
+    </div>
+    <div class="splashContainer splashText">
+      <div style="display: table-cell; vertical-align: middle; text-align: center; font-family: Open Sans; font-size: 28px; color: #4060a0; position: relative; top: 70px">
+        Loading...
+      </div>
+    </div>
+    <div class="splashContainer splashLogo">
+      <div style="display: table-cell; vertical-align: middle; text-align: center; position: relative; top: 0px; width: 100%; height: auto">
+        <img id="logo" style="width: 100px; height: auto" src="../img/cdlLangLogo.svg">
+        </div>
+    </div>
+    
+    <div id="cdlSystemMessageContainer" class="splashContainer systemMessage">
+      <div id="cdlSystemMessage" style="display: table-cell; vertical-align: middle; text-align: center; font-family: Open Sans; font-size: 16px; color: #a02020; position: relative; top: 104px;">
+      </div>
+    </div>
+    </body>
+</html>

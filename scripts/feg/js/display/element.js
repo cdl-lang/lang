@@ -37,50 +37,42 @@ function updateElementPos(element, pos) {
     if(!element || !pos)
         return;
 
-    var props = ['left', 'top', 'width', 'height'] ;
-    var propStr;
-
-    // set the div position
-
-    for(var p in props) {
-        var prop = props[p];
-        if (pos.hasOwnProperty(prop)) {
-            var val = elementPosNormalize(prop, pos[prop]);
-            if (val !== undefined) {
-                element.style[prop] = val;
-            }
-        }
+    if (!isNaN(pos.left)) {
+        element.style.left = pos.left + "px";
     }
+    if (!isNaN(pos.top)) {
+        element.style.top = pos.top + "px";
+    }
+    if (!isNaN(pos.width)) {
+        element.style.width = pos.width + "px";
+    }
+    if (!isNaN(pos.height)) {
+        element.style.height = pos.height + "px";
+    }
+}
+
+// When in zero offset pos mode, element's left and top are at 0px from their
+// embedding element's left and top
+
+function setZeroOffsetElementPos(element, pos) {
+    element.style.left = "0px";
+    element.style.top = "0px";
 }
 
 // This function updates the position of the given HTML element.
 // It assumes a left/top offset of zero, and therefore sets these offsets
 // to zero and only reads the width and height from the 'pos' argument.
-// 
 
 function updateZeroOffsetElementPos(element, pos) {
-    if(!element || !pos)
-        return;
-    element.style.left = "0px";
-    element.style.top = "0px";
-    var width = elementPosNormalize("width", pos.width);
-    var height = elementPosNormalize("height", pos.height);
-    if (width !== undefined)
-        element.style.width = width;
-    if (height !== undefined)
-        element.style.height = height;
+    var width = pos.width;
+    var height = pos.height;
+
+    if (!isNaN(width))
+        element.style.width = width + "px";
+    if (!isNaN(height))
+        element.style.height = height + "px";
 }
 
-function elementPosNormalize(edge, pos) {
-    var nonNegative = { width: 1, height: 1 };
-
-    if (edge in nonNegative) {
-        pos = Math.max(0, pos);
-    }
-    if (isNaN(pos))
-        return undefined;
-    return (pos + "px");
-}
 // This function embeds the given element at the given position inside the
 // embedding element. Since all positions are absolute, the order of the
 // elements inside the embedding element does not matter.
@@ -101,6 +93,7 @@ function embedElementAtPos(element, pos, embeddingElement, beforeElement, dontSe
 
 function embedZeroOffsetElementAtPos(element, pos, embeddingElement, beforeElement)
 {
+    setZeroOffsetElementPos(element, pos);
     updateZeroOffsetElementPos(element, pos);
     embedElementInElement(element, embeddingElement, beforeElement);
 }
@@ -138,7 +131,7 @@ function embedAreaFrameElementAtPos(area, pos, dontSetPos)
     if(!area || !area.display.frameDiv)
         return;
 
-    if(!pos || typeof(pos.embedding) == "undefined") {
+    if(!pos || pos.embedding === undefined) {
         extractElementFromEmbedding(area.display.frameDiv);
         return;
     }
@@ -191,7 +184,7 @@ function removeElement(element)
 function createDiv(id, overflow)
 {
     if (id === "1:1") {
-        return document.getElementById("mondriaRootDiv");
+        return document.getElementById("cdlRootDiv");
     } else {
         var div = document.createElement("div");
         div.id = id;
@@ -402,7 +395,7 @@ function copyBackgroundImage(displayDiv, value) {
         var v = getDeOSedValue(value[attr]);
         // Note: concatenation is 10x faster than lookup in all 3 major browsers
         assignCSSStyleProp(displayDiv.style, "background-" + attr,
-                           attr === "image"? "url(" + v + ")": v);
+                           attr === "image"? "url('" + v + "')": v);
     }
     for (attr in resetAttributes) {
         if (!(attr in value)) {
@@ -460,6 +453,7 @@ var cssPropTranslationTable = {
     borderRightWidth: "border-right-width",
     borderTopWidth: "border-top-width",
     borderBottomWidth: "border-bottom-width",
+    boxShadow: "boxShadow",
     paddingTop: "padding-top",
     paddingBottom: "padding-bottom",
     paddingLeft: "padding-left",
@@ -511,6 +505,7 @@ function copyDisplayCssProp(display, attrib, value) {
       case "iframe":
       case "triangle":
       case "arc":
+      case "line":
       case "image":
       case "pointerOpaque":
       case "transitions":
@@ -547,7 +542,6 @@ function copyDisplayCssProp(display, attrib, value) {
                                    "backgroundColor", value);
                 resetBackgroundColor = false;
             }
-            break;
         }
         if (resetBackgroundColor) {
             assignCSSStyleProp(display.displayDiv.style,
@@ -653,16 +647,20 @@ function copyDisplayCssProp(display, attrib, value) {
 function getCSSFilterString(v) {
     var filterString = "";
     var filterTranslate = {dropShadow: "drop-shadow", hueRotate: "hue-rotate"};
+    var numberSuffix = {blur: "px", hueRotate: "deg"};
 
     if (!v || !(v instanceof Object)) {
         return "";
     }
     for (var attr in v) {
-        var val = v[attr];
+        var val = getDeOSedValue(v[attr]);
+        if (typeof(val) === "number" && attr in numberSuffix) {
+            val += numberSuffix[attr];
+        }
         if (attr in filterTranslate) {
             attr = filterTranslate[attr];
         }
-        filterString += " " + attr + "(" + getDeOSedValue(val) + ")";
+        filterString += " " + attr + "(" + val + ")";
     }
     return filterString;
 }
@@ -797,6 +795,8 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
     }
 
     switch (attrib) {
+      case "preformatted":
+        break;
       case "clip":
         // TODO
         break;

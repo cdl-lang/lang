@@ -500,6 +500,15 @@ function posCalcAddSegment(point1, point2, constraintId,
     if(stability) { // calculate the current offset of this pair
         currentValue = this.getCurrentValue(point1, point2);
     }
+
+    // round very small bounds to zero (to avoid conflicts with the solution
+    // calculation rounding).
+    if(extremum1 && extremum1 < this.zeroRounding &&
+       -extremum1 < this.zeroRounding)
+        extremum1 = 0;
+    if(extremum2 && extremum2 < this.zeroRounding &&
+       -extremum2 < this.zeroRounding)
+        extremum2 = 0;
     
     this.addedSegmentConstraints[constraintId] =
         [point1, point2, constraintId, priority, extremum1, extremum2,
@@ -1040,6 +1049,7 @@ function posCalcRefreshEquations()
     debugStopTimer("refresh changed equations");
     debugStartTimer("positioning", "refresh changed pairs");
     this.refreshChangedVarPairs();
+    this.refreshClonedVariables();
     debugStopTimer("refresh changed pairs");
 }
 
@@ -1118,6 +1128,37 @@ function posCalcRefreshChangedVarPairs()
     }
 
     this.newVarPairValues = {}; // clear the table
+}
+
+// This function takes all cloned variables which are new and determines the
+// initial value to assign these variables (and stores it in the newVariables
+// list). The initial value should be equal to the value of the cloned
+// variable. If the cloned variable is also new, the initial value is taken
+// from the newVariables list, which was already updated for the main
+// variable in refreshChangedVarPairs(). If the cloned variable is not
+// new, is last value is used.
+// This function performs for cloned variable a similar function to that
+// performed by refreshChangedVarPairs() for non-cloned variables.
+
+PosCalc.prototype.refreshClonedVariables =
+    posCalcRefreshClonedVariables;
+
+function posCalcRefreshClonedVariables()
+{
+    for(var cloneVar in this.linearConstraints.cloneChanges) {
+        if(this.linearConstraints.cloneChanges[cloneVar] != "added")
+            continue; // removed so no initial value to set
+        // new clone variable, add it as a new variable.
+        
+        var mainVar = this.linearConstraints.cloneVariables[cloneVar];
+        
+        if(mainVar in this.newVariables)
+            this.newVariables[cloneVar] = this.newVariables[mainVar];
+        else
+            this.newVariables[cloneVar] = this.getLastValue(mainVar);
+    }
+
+    this.linearConstraints.clearCloneChanges();
 }
 
 // Given the ID of a pair that changed and an object 'change' which describes
@@ -1201,8 +1242,6 @@ function posCalcRefreshCloneEquations()
             delete this.cloneEquations[cloneVar];
         }
     }
-
-    this.linearConstraints.clearCloneChanges();
 }
 
 // This function takes all cycles in the pair equations which have changed
@@ -1572,11 +1611,11 @@ function  posCalcSetToPreferredValue(variable)
 }
 
 // Given a variable name, this function returns the last value assigned
-// to this variable. If the variable is a clone variable and it is
-// not yet assigned any value but the main variable the clone belongs to
-// is assigned a value, this function returns the value of the main variable.
-// Otherwise, if the variable appears in the 'newVariables' table
-// and has an initial value there, that value is used.
+// to this variable. If the variable appears in the 'newVariables' table
+// and has an initial value there, that value is used. Otherwise, if
+// the variable is a clone variable and it is not yet assigned any value
+// but the main variable the clone belongs to is assigned a value,
+// this function returns the value of the main variable.
 // The function returns undefined if the current value of the variable is
 // not known (it is a new variable and the newVariables table does not
 // hold an initial value for it).
@@ -1588,18 +1627,22 @@ function  posCalcGetLastValue(variable)
     // get the current value
     var value = this.variables[variable];
 
-    if(value == undefined) { // a new variable
-        
-        // is this a clone value? If it is, the current value can be
-        // set based on the value of the main variable, if it is not new.
+    if(value !== undefined)
+        return value; // not a new variable, previous value exists
+    
+    // check whether a new value was explicitly assigned to this variable.
+    value = this.newVariables[variable]; // may be undefined
 
-        var mainVar = this.linearConstraints.cloneVariables[variable];
+    if(value !== undefined)
+        return value; // new value explicitly assigned the variable.
+    
+    // is this a clone value? If it is, the current value can be
+    // set based on the value of the main variable, if it is not new.
 
-        if(mainVar != undefined)
-            value = this.variables[mainVar];
-        else 
-            value = this.newVariables[variable]; // may be undefined
-    }
+    var mainVar = this.linearConstraints.cloneVariables[variable];
+    
+    if(mainVar != undefined)
+        value = this.variables[mainVar];
 
     return value;
 }

@@ -1,5 +1,5 @@
-ROOTDIR=.
+LANGDIR=.
 
-SUBDIRS = scripts cdl
+SUBDIRS=scripts
 
-include $(ROOTDIR)/util/mmk
+include util/mmk

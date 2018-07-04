@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // This is a result node (derived from FuncResult) which makes a function
 // into an identification function. This object provides the interface
 // between the output of this function and the identity interface.
@@ -1228,11 +1227,17 @@ function identityResultRemoveAllMatches(source)
 
         if(this.raisedIdentified)
             this.raisedIdentified = {};
+
+        // remove all identities and (second argument) don't require
+        // notifications to be sent of this removal (for source
+        // identification) if the identification object is the same as
+        // the identified object (because the matches are then removed below).
         
-        this.identityIndexer.removeAllIdentities(this.identificationId);
+        this.identityIndexer.
+            removeAllIdentities(this.identificationId,
+                                (source == this.identifiedDataObj));
         if(this.identity === undefined)
             this.monitor.releaseAllIdentities();
-        
     }
 
     if(source == this.identifiedDataObj && this.composedActiveNum > 0) {

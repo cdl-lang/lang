@@ -23,4 +23,9 @@ var XMLHttpRequest = requireXMLHttpRequest();
 
 // %%include%%: source
 // %%include%%: foreign
-// %%include%%: "../functionExecute.postlude.js"
+// %%include%%: "../functionExecute.js"
+
+mondriaOnLoadDate = new Date();
+console.log('Time to onload=' + (mondriaOnLoadDate.getTime() - mondriaStartDate.getTime()) + 'ms');
+initializeModeDetection();
+cdlMain();

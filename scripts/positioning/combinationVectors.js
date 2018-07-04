@@ -577,7 +577,7 @@ function combinationVectorsEliminate(name, combId)
         // as a result of this operation (in case of rounding errors).
         _self.combinationSet.setValue(addToId, name, 0);
     });
-    
+
     return true;
 }
 
@@ -625,11 +625,7 @@ function combinationVectorsRepairCombinations()
 // all combination numbers is < 1. If some absolute values of combination
 // numbers are larger than 1 and some smaller, the normalization constant
 // returned is 1 (which means 'no need to normalize').
-// If 'this.zeroRounding' is non-zero, combination numbers whose
-// ratio with the largest absolute value combination number is smaller
-// (in absolute value) than this.zeroRounding are considered to be zero
-// for the purpose of this calculation.
-// If the given ID is no the ID of a combination vector, this function
+// If the given ID is not the ID of a combination vector, this function
 // returns 'undefined'.
 
 CombinationVectors.prototype.calcNormalizationConstant =
@@ -644,25 +640,17 @@ function combinationVectorsCalcNormalizationConstant(combId)
     var min = Infinity;
     var inverseCombId = this.inverse[combId];
     
-    while(1) {
-        for(var id in inverseCombId) {
-            var a = Math.abs(inverseCombId[id]);
-
-            if(!a)
-                continue;
-
-            if(a > max)
-                max = a;
-            else if(a / max < this.zeroRounding)
-                continue; // value is too small, round to zero 
+    for(var id in inverseCombId) {
+        var a = Math.abs(inverseCombId[id]);
+        
+        if(!a)
+            continue;
+        
+        if(a > max)
+            max = a;
             
-            if(a < min)
-                min = a;
-        }
-
-        if(min / max >= this.zeroRounding)
-            break;
-        min = Infinity;
+        if(a < min)
+            min = a;
     }
 
     if(min > 1)
@@ -787,4 +775,58 @@ CombinationVectors.prototype.clearNormalizationCandidates =
 function combinationVectorsClearNormalizationCandidates()
 {
     this.normalizationCandidates = {};
+}
+
+//
+// Debugging
+//
+
+// Given the ID of a vector in the combination set, this function checks
+// whether the calculated combination vector is indeed the sum of the
+// given base vectors with the given weight. It returns true if it is
+// and the list of variables where the two do not agree if it isn't.
+
+CombinationVectors.prototype.debugCheckCombination =
+    combinationVectorsDebugCheckCombination;
+
+function combinationVectorsDebugCheckCombination(combId)
+{
+    var combVec = this.combinationSet.vectors[combId];
+
+    if(combVec === undefined)
+        return undefined;
+
+    var resultSet = new VectorSet(this.zeroRounding);
+    var resultVecId = resultSet.newVector([]);
+    
+    for(var baseId in this.inverse[combId]) {
+
+        var baseVec = this.baseSet.vectors[baseId];
+        resultSet.addToVector(resultVecId, baseVec, undefined,
+                              this.inverse[combId][baseId]);
+    }
+
+    // remove the combination vector
+    
+    resultSet.addToVector(resultVecId, combVec, undefined, -1);
+
+    var resultVec = resultSet.vectors[resultVecId];
+
+    if(!resultVec || resultVec.length == 0)
+        return true;
+
+    return resultVec;
+}
+
+CombinationVectors.prototype.debugCheckAllCombinations =
+    combinationVectorsDebugCheckAllCombinations;
+
+function combinationVectorsDebugCheckAllCombinations()
+{
+    for(var combId in this.combinationSet.vectors) {
+        var result = this.debugCheckCombination(combId);
+        if(result !== true && result !== undefined) {
+            console.log(combId, result);
+        }
+    }
 }

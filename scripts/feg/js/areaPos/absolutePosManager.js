@@ -571,12 +571,22 @@ function absolutePosManagerUpdatePairOffset(pairs)
         // (see the introduction for an explanation)
         var exactOffset = Math.round(1024 * (entry.dir * pairs[pairId])) / 1024;
         
-        if(entry.offset == "left" || entry.offset == "top") {
+        switch(entry.offset) {
+          case "left": case "top":
             this.updateCornerOffset(area, entry.isContent, entry.offset,
                                     exactOffset);
-        } else {// width or height
+            break;
+          case "width": case "height":
             this.updateSizeOffset(area, entry.isContent, entry.offset,
                                   exactOffset);
+            break;
+          default: // y0, y1, x0, x1
+            // Pass value of offset on to the display. Rounding needed?
+            if (area.linePos === undefined) {
+                area.linePos = {};
+            }
+            area.linePos[entry.offset] = exactOffset;
+            break;
         }
 
         if(entry.isContent) {
@@ -593,8 +603,8 @@ function absolutePosManagerUpdatePairOffset(pairs)
     }
 }
 
-// This function updates the integer corner (left/top) offsets of the given
-// area. The 'edge' argument is, therefore, either "left" or "top".
+// This function updates the integer corner (left/top/y0) offsets of the given
+// area. The 'edge' argument is, therefore, either "left", or "top".
 // If 'isContent' is set, the content position is updated and otherwise
 // the frame position is updated. If 'exactOffset' is not undefined,
 // this offset is used as the offset calculated by the positioning system

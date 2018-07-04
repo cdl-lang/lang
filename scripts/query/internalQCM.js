@@ -85,7 +85,7 @@
 // The roundingSpecs are passed directly to the compression module.
 // See there for more information.
 
-function InternalQCM(roundingSpecs)
+function InternalQCM(roundingSpecs, scheduleFunc)
 {
 	this.rootQueryCalcs = new Map();
     this.compCalcs = new Map();
@@ -94,7 +94,7 @@ function InternalQCM(roundingSpecs)
 	this.pathIdAllocator = new InternalQCMPathIdAllocator();
 	this.compression = new InternalQCMCompression(roundingSpecs,
                                                   this.getRootPathId());
-    this.queue = new IndexerQueue();
+    this.queue = new IndexerQueue(scheduleFunc);
     this.garbageCollector = new IndexerGarbageCollector();
 
     // initialize debugging (only if the appropriate debug flag is set)

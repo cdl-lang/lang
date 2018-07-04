@@ -731,39 +731,54 @@ function posEquationsRemoveOneCombinationVector(baseVectorId)
 {
     var combinations = this.equations.combinations[baseVectorId];
     
-    var firstCombId;
-    
-    // loop over the non-zero combinations of the base vector
-    for(var combId in combinations) {
+    var selectedCombId;
+    var selectedComb;
+    var selectedAbsComb = 0;
+    var allCombIds = [];
+    var allCombs = [];
 
-        if(!combinations[combId])
-            continue; // a zero component
+    // loop over the non-zero combinations of the base vector. Select the
+    // one with the highest absolute coefficient (this ensures that the
+    // resulting coefficients do not become unnecessarily large).
+    for(var combId in combinations) {
+        var comb = combinations[combId];
+        if(!comb)
+            continue;
+        var absComb = Math.abs(comb);
+        if(absComb > selectedAbsComb) {
+            selectedCombId = combId;
+            selectedComb = comb;
+            selectedAbsComb = absComb;
+        }
+        
+        allCombIds.push(combId);
+        allCombs.push(comb);
+    }
+
+    for(var i = 0, l = allCombIds.length ; i < l ; ++i) {
+
+        var combId = allCombIds[i];
         
         // this equation is about to be changed or removed
         this.changedEquations[combId] = true;
-        
-        if(firstCombId === undefined) {
-            // we take the first combination as the one which is added to
-            // all others
-            firstCombId = combId;
+
+        if(combId == selectedCombId)
             continue;
-        }
         
-        // add/substract the first combination vector from this combination
+        // add/substract the selected combination vector from this combination
         // vector so that its component for the base vector becomes zero
-        this.equations.addCombToCombVector(combId, firstCombId,
-                                           -combinations[combId] /
-                                           combinations[firstCombId]);
+        this.equations.addCombToCombVector(combId, selectedCombId,
+                                           -allCombs[i] / selectedComb);
     }
     
-    var boundVar = this.boundVarsByEq[firstCombId];
+    var boundVar = this.boundVarsByEq[selectedCombId];
     
     // remove the bound variable assigned to the equation about to be removed
     if(boundVar != undefined) {
         
         delete this.boundVars[boundVar];
-        delete this.boundVarsByEq[firstCombId];
-        delete this.needToRefreshBoundVar[firstCombId];
+        delete this.boundVarsByEq[selectedCombId];
+        delete this.needToRefreshBoundVar[selectedCombId];
         
         // calculate the effect of the removal on total and or-group resistance
         this.resistance.refreshAfterBoundVarRemoved(boundVar);
@@ -771,14 +786,14 @@ function posEquationsRemoveOneCombinationVector(baseVectorId)
 
     // check whether the vector contains any additional bound variables
     // (may happen in the process of modifying the equations)
-    var equation = this.equationVecs[firstCombId];
+    var equation = this.equationVecs[selectedCombId];
     for(var i = 0, l = equation.length ; i < l ; ++i) {
         var variable = equation[i].name;
         if(variable in this.boundVars)
             this.needToRefreshBoundVar[this.boundVars[variable]] = true;
     }
     
-    this.equations.removeCombVector(firstCombId);
+    this.equations.removeCombVector(selectedCombId);
 }
 
 // This function receives the ID of an existing base equation which was
@@ -824,7 +839,7 @@ function posEquationsPrepareAndSolve()
     debugStartTimer("positioning", "find optimal solution");
     this.findOptimalSolution();
     debugStopTimer("find optimal solution");
-    
+
     // reset the resistance of variables which changed, adding the stability
     // resistance (this should be done now before the list of changed
     // variables is cleared).

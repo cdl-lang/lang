@@ -4,9 +4,10 @@
   "description": "Dependencies for the persistence server",
   "dependencies": {
     "email-addresses": "^3.0.1",
-    "mongojs": "^2.4.1",
+    "mongojs": "^2.6.0",
     "node-redshift": "^0.1.5",
-    "websocket": "^1.0.25"
+    "websocket": "^1.0.26",
+    "xmlhttprequest": "^1.8.0"
   },
   "engine": "node >= 8.9.1"
 }

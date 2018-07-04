@@ -92,7 +92,7 @@
 #   of confLib 'CL' to 'var CL__fn__classes ='
 #   if the classes are already defined with a variable which is the basename
 #   of the file, that case is recognized too:
-#     'var fn =' in fn.js is convertred to 'var CL__fn ='
+#     'var fn =' in fn.js is converted to 'var CL__fn ='
 #
 # - the script emits a list with the class-lists and their confLib,
 #  { confLib: "CL1", classes: [CL1__fn1_1__classes, CL1__fn1_2__classes, ...] },
@@ -117,11 +117,8 @@
 # --includedir - add the argument to the list of directories in which include
 #      files (encountered in %%include%%: macros) are searched for
 #
-# --datadir - add the argument to the list of directories in which data files
-#      (encountered in %%datafile%%: directives) are searched for
-#
 # --langdir - set the argument as the root directory for scripts. it is added
-#      to all search paths (include/classfile/datafile/image/constantfile)
+#      to all search paths (include/classfile/image/constantfile/textfile/url)
 #
 # --cdldir -- like langdir, but for cdl
 #
@@ -138,6 +135,8 @@
 #      to the specified commonImageDir. This is used when generating the
 #      production environment, where all images are collated to a single dir
 #
+# --commonDataDir - like commonImageDir, but for %data:()%%
+#
 # --title - the argument would become the value of the %%title:()%% macro
 #
 # --max-include-level - do not process include lines above this level
@@ -146,6 +145,9 @@
 #
 # --sourcedir - sets the directory that should be used for relative includes
 #               from the source file; by default the directory of the source
+#
+# --splash-screen-url - the path to the HTML file which provides the splash
+#                       screen. If not specified, the default is used.
 
 from __future__ import print_function
 
@@ -165,11 +167,17 @@ mode = None
 # --title --> %%title:()%%
 title = None
 
+# --splash-screen-url
+splash_screen_url = None
+
 # don't include files higher than given level
 max_include_level = 999999999
 
 # --commonImageDir
 common_image_dir = None
+
+# --commonDataDir
+common_data_dir = None
 
 # all normalized paths are relative to this directory
 # (absolute paths generated in a cygwin environment are meaningless to the
@@ -205,10 +213,12 @@ path_per_dtype = {
     'include': [],
     'classfile': [],
     'constantfile': [],
-    'datafile': [],
     'template': [],
     'image': [],
-    'foreign': []
+    'data': [],
+    'foreign': [],
+    'text': [],
+    'url': []
 }
 
 # the 'source' file, the single positional run-time argument --> 'source'
@@ -238,10 +248,6 @@ dtype_property = {
         'section': 'prefix',
         'conf_lib': ['design', 'func', 'automated' ],
         'html': 'script'
-    },
-    'datafile': {
-        'html': 'script',
-        'sticky_conf_lib': ['data']
     },
     'template': {},
     'image': {
@@ -276,10 +282,6 @@ conf_lib_by_priority = []
 
 current_conf_lib = None
 
-# Gets set to true on detecting configPreable. When true, and common_image_dir
-# is set, causes gzip'ed copying of image files to the common_image_dir.
-copy_image_files = False
-
 # Counter for number of screenArea declarations and var test lines
 nr_screen_area = 0
 nr_test = 0
@@ -287,16 +289,31 @@ nr_test = 0
 # Target for make file include
 make_target = None
 
+
 def error_exit(msg):
     print(sys.argv[0], ": ", msg, file=sys.stderr)
     # print(str(fn_stack), file=sys.stderr)
     sys.exit(1)
 
-def stemname(path):
-    """return the extension-less basename of path"""
-    return os.path.splitext(os.path.basename(path))[0]
 
-def gen_parser():
+# Dictionary to check that no two file names get mapped onto the same class
+# variable
+class_stem_names = {}
+
+def stemname(path, conf_lib_name):
+    """return the extension-less basename of path and make sure it's a legal JS identifier"""
+    basename = os.path.splitext(os.path.basename(path))[0]
+    class_identifier = re.sub("[^a-zA-Z0-9_]+", "_", basename)
+    if conf_lib_name is None:
+        return class_identifier
+    conflib_class_identifier = conf_lib_name + "__" + class_identifier
+    if conflib_class_identifier in class_stem_names and class_stem_names[conflib_class_identifier] != path:
+        error_exit("files {} and {} map to the same variable name".format(path, class_stem_names[conflib_class_identifier]))
+    class_stem_names[class_identifier] = path
+    return class_identifier
+
+
+def get_arg_parser():
     parser = argparse.ArgumentParser(description='cdl script aggregator')
     parser.add_argument('-o', '--out_file', help='output file name',
                         required=True)
@@ -309,9 +326,6 @@ def gen_parser():
                         help='processing mode, "js"/"html"/"incl"/"make"', required=True)
 
     parser.add_argument('--includedir', help='include directory',
-                        action='append')
-
-    parser.add_argument('--datadir', help='data directory',
                         action='append')
 
     parser.add_argument('--langdir', help='root of the lang directory')
@@ -333,16 +347,20 @@ def gen_parser():
 
     parser.add_argument('--max-include-level', help='suppress indirect includes above level')
 
-    parser.add_argument('--commonImageDir',
-                        help='all images should reference the given image' +
-                        ' inside the specified directory')
+    parser.add_argument('--commonImageDir', help='replaces all references in image macros')
+
+    parser.add_argument('--commonDataDir', help='replaces all references in data macros')
 
     parser.add_argument('--title')
 
+    parser.add_argument('--splash-screen-url', help='a URL pointing at the HTML page which should server as a splash screen')
+    
     return parser
+
 
 def annotate(msg):
     print(msg)
+
 
 def set_reference_dir(rd):
     global reference_dir
@@ -351,14 +369,17 @@ def set_reference_dir(rd):
     else:
         reference_dir = os.path.realpath(rd)
 
+
 def set_source_dir(sd):
     global source_dir
     if sd is not None:
         source_dir = os.path.realpath(sd)
 
+
 def normalize_path(path):
     real_path = os.path.realpath(path)
     return os.path.relpath(real_path, reference_dir)
+
 
 def push_include_file(dtype, fn):
     global fn_stack
@@ -396,81 +417,105 @@ def get_last_file_name(dtype):
         return last_file_name[dtype]
     return ""
 
+
 def set_last_file_name(dtype, fn):
     global last_file_name
     last_file_name[dtype] = fn
 
+
 def append_root_path(path):
     global path_per_dtype
     if (path != None):
-        path_per_dtype['include'].append(path)
-        path_per_dtype['classfile'].append(path)
-        path_per_dtype['constantfile'].append(path)
-        path_per_dtype['datafile'].append(path)
-        path_per_dtype['image'].append(path)
-        path_per_dtype['foreign'].append(os.path.join(path, "external", "foreignInterface"))
+        paths = path.split(";")
+        path_per_dtype['include'].extend(paths)
+        path_per_dtype['classfile'].extend(paths)
+        path_per_dtype['constantfile'].extend(paths)
+        path_per_dtype['image'].extend(paths)
+        path_per_dtype['data'].extend(paths)
+        path_per_dtype['foreign'].extend(
+            map(lambda path: os.path.join(path, "external", "foreignInterface"),
+            paths))
+        path_per_dtype['text'].extend(paths)
+        path_per_dtype['url'].extend(paths)
+
 
 def set_include_path(path_list):
     global path_per_dtype
     if (path_list != None):
         path_per_dtype['include'].extend(path_list)
 
-def set_data_path(path_list):
-    global path_per_dtype
-    if (path_list != None):
-        path_per_dtype['datafile'].extend(path_list)
-    
+
 def set_build_info_file(path):
     global build_info_file
     if path != None:
         build_info_file = path
 
+
+# Creates a directory at path if it doesn't exist, or is not a directory
+def mkdir_if_not_exists(path):
+    if not os.path.isdir(path):
+        if os.path.exists(path):
+            os.remove(path)
+        os.makedirs(path)
+
+
 def set_common_image_dir(path):
     global common_image_dir
     if path != None:
         common_image_dir = path
-        if not os.path.isdir(path):
-            if os.path.exists(path):
-                os.remove(path)
-            os.mkdir(path)
+        mkdir_if_not_exists(path)
+
+
+def set_common_data_dir(path):
+    global common_data_dir
+    if path != None:
+        common_data_dir = path
+        mkdir_if_not_exists(path)
 
 
 def set_cdl_source(fn):
     global cdl_source
-
     cdl_source = fn
+
 
 def get_cdl_source():
     global cdl_source
     return cdl_source
     
+
 def set_mode(m):
     global mode
     mode = m
+
 
 def get_mode():
     global mode
     return mode
 
+
 def set_out_file(fn):
     global out_file_handle
     out_file_handle = open(fn, 'w');
+
 
 def set_dep_file(fn):
     global dep_file_handle
     if fn != None:
         dep_file_handle = open(fn, 'w');
 
+
 # Name of the file that stores the resources used in the current input
 res_out_file_name = None
 # used resources per resource type
-used_resources = { "foreign": set(), "font": set() }
+used_resources = { "foreign": set(), "font": set(), "text": set() }
 # flag to indicate use of external resources
 does_use_resources = False
+
 
 def set_res_out_file(fn):
     global res_out_file_name
     res_out_file_name = fn
+
 
 def add_resource_usage(res_type, res_uri):
     global used_resources, does_use_resources
@@ -479,10 +524,16 @@ def add_resource_usage(res_type, res_uri):
     used_resources.get(res_type).add(res_uri)
     does_use_resources = True
 
+
 def write_resource_usage():
     global used_resources, res_out_file_name, does_use_resources
     if res_out_file_name != None:
         if does_use_resources:
+            if os.path.exists(res_out_file_name):
+                with open(res_out_file_name, 'rb') as input:
+                    dict = pickle.load(input)
+                    if dict == used_resources:
+                        return
             with open(res_out_file_name, 'wb') as output:
                 pickle.dump(used_resources, output, pickle.HIGHEST_PROTOCOL)
         elif os.path.exists(res_out_file_name):
@@ -508,6 +559,13 @@ def set_title(str):
     else:
         title = str
 
+def set_splash_screen_url(str):
+    global splash_screen_url
+    if str == None:
+        splash_screen_url = ""
+    else:
+        splash_screen_url = str
+        
 def set_make_target(arg, deflt):
     global make_target
     if arg == None:
@@ -602,12 +660,15 @@ def gen_filename_and_line_number(dtype, fn):
 def find_file_in_path(dtype, basename):
     global path_per_dtype
 
-    path = path_per_dtype[dtype]
-
-    for dirp in path:
-        file_path = os.path.join(dirp, basename)
-        if (os.path.isfile(file_path)):
-            return file_path
+    if basename.startswith("."):
+        if (os.path.isfile(basename)):
+            return basename
+    else:
+        path = path_per_dtype[dtype]
+        for dirp in path:
+            file_path = os.path.join(dirp, basename)
+            if (os.path.isfile(file_path)):
+                return file_path
 
     if dtype == "image":
         print("could not find path for image " + basename, file=sys.stderr)
@@ -710,6 +771,7 @@ def set_lib_conf(lib_conf):
 
             conf_lib_list.append({ 'name': lcname, 'path': lcpath })
 
+
 def gen_conf_lib_preamble():
     for conf_lib in conf_lib_list:
         add_conf_lib_sticky_path(conf_lib['path'])
@@ -723,6 +785,7 @@ def gen_conf_lib_preamble():
     preamble = get_output_str()
 
     return preamble
+
 
 def process_directive(line, directive_fn, linenr, basedir):
     global make_target, used_resources
@@ -775,40 +838,75 @@ def process_directive(line, directive_fn, linenr, basedir):
     else:
         error_exit('invalid directive: ' + line)
 
+
 # Only compress svg images
-def use_compression_for(filename):
+def use_compression_for_image(filename):
     return filename.endswith(".svg")
 
-# Returns the path to the image file from the macro. When copy_image_files is
-# true and the common_image_dir has been set, copies the image file to
-# common_image_dir, compressing it when the extension allows it, but only when
-# the source file is newer.
-def process_image_macro(macro_name, macro_args):
-    global common_image_dir, copy_image_files
 
-    image_src_path = find_file_in_path('image', macro_args[0])
-    if common_image_dir == None:
-        return image_src_path
-    else:
-        image_out_path = os.path.join(common_image_dir, os.path.basename(macro_args[0]))
-        if not os.path.exists(image_src_path):
-            print("image does not exist: {0}".format(image_src_path), file=sys.stderr)
-            return image_out_path
-        use_compression = use_compression_for(macro_args[0])
-        if image_out_path == image_src_path:
-            return image_out_path # In case someone puts the images in the common_image_dir
-        if copy_image_files:
-            target_path = image_out_path
-            if use_compression:
-                target_path += '.gz'
-            if not os.path.exists(target_path) or os.path.getmtime(target_path) < os.path.getmtime(image_src_path):
-                if use_compression:
-                    with open(image_src_path, 'rb') as f_in, gzip.open(target_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-                else:
-                    with open(image_src_path, 'rb') as f_in, open(target_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-        return image_out_path
+# Compress all data files
+def use_compression_for_data(filename):
+    return True
+
+
+# Stores which resource has been copied to which path; avoids duplicate copies
+# and resolves faster
+copied_resources = {}
+# Stores which path is the target for which resource; avoids duplicate naming
+resource_targets = {}
+
+def add_copied_resource(resource_hash, path):
+    global copied_resources
+    if path in resource_targets and resource_targets[path] != resource_hash:
+        error_exit("{} is the target for both {} and {}".format(
+            path, resource_targets[path], resource_hash
+        ))
+    copied_resources[resource_hash] = path
+    resource_targets[path] = resource_hash
+
+
+# Returns the path to the file from the macro. When common_dir has been set,
+# copies the file to that directory, compressing it when the extension allows
+# it, but only when the source file is newer.
+def copy_and_compress(type, macro_arg, use_compression_fun, common_dir):
+    global copied_resources
+    resource_hash = type + ':' + macro_arg
+    if resource_hash in copied_resources:
+        return copied_resources[resource_hash]
+    src_path = find_file_in_path(type, macro_arg)
+    if common_dir == None:
+        add_copied_resource(resource_hash, src_path)
+        return src_path
+    out_path = os.path.join(common_dir, os.path.basename(macro_arg))
+    if not os.path.exists(src_path):
+        print("{0} does not exist: {1}".format(type, src_path), file=sys.stderr)
+        add_copied_resource(resource_hash, out_path)
+        return out_path
+    use_compression = use_compression_fun(macro_arg)
+    if out_path == src_path:
+        add_copied_resource(resource_hash, src_path)
+        return out_path # In case someone puts the images in the common_dir
+    target_path = out_path
+    if use_compression:
+        target_path += '.gz'
+    if not os.path.exists(target_path) or os.path.getmtime(target_path) < os.path.getmtime(src_path):
+        if use_compression:
+            with open(src_path, 'rb') as f_in, gzip.open(target_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        else:
+            with open(src_path, 'rb') as f_in, open(target_path, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+    add_copied_resource(resource_hash, src_path)
+    return out_path
+
+
+# format: %%image:(url)%%. Behaves like process_image_macro.
+# Calls copy_and_compress for an image
+def process_image_macro(macro_name, macro_args):
+    global common_image_dir
+
+    return copy_and_compress('image', macro_args[0], use_compression_for_image, common_image_dir)
+
 
 # format: %%font:(fontFamily,url)%%, no comma in the font name, no superfluous spaces
 def process_font_macro(macro_name, macro_args):
@@ -818,22 +916,35 @@ def process_font_macro(macro_name, macro_args):
     add_resource_usage('font', url)
     return macro_args[0]
 
+
+# format: %%data:(url)%%. Behaves like process_image_macro.
+# Calls copy_and_compress for a data file
+def process_data_macro(macro_name, macro_args):
+    global common_data_dir
+
+    return copy_and_compress('data', macro_args[0], use_compression_for_data, common_data_dir)
+
+
 def process_buildinfo_macro(macro_name, macro_args):
     global build_info_file
+
     return build_info_file
 
-def process_conf_lib_preamble_macro(macro_name, macro_args):
-    global copy_image_files
 
-    copy_image_files = True
+def process_conf_lib_preamble_macro(macro_name, macro_args):
     push_include_file('template', '--conf-lib-include--')
     str = '\n' + gen_conf_lib_preamble()
     pop_include_file('template', '--conf-lib-include--')
     return str
 
+
 def process_title_macro(macro_name, macro_args):
     global title
     return title
+
+def process_splash_screen_url_macro(macro_name, macro_args):
+    global splash_screen_url
+    return find_file_in_path('url', splash_screen_url)
 
 def process_classes_macro(macro_name, macro_args):
     global conf_lib_by_priority
@@ -850,14 +961,28 @@ def process_classes_macro(macro_name, macro_args):
             )
         ) + "\n"
 
-def process_macro(dtype, line, fn, linenr):
-    match = re.search('^(.*)(%%[a-zA-Z]*:\([^%()]*\)%%)(.*)$', line)
-    line_start = match.group(1)
-    line_end = match.group(3)
 
-    macro_str = match.group(2)
+def process_textfile_macro(macro_name, macro_args):
+    if len(macro_args) != 1:
+        error_exit('textfile macro should have one argument')
+    src_path = find_file_in_path('text', macro_args[0])
+    if get_mode() == 'incl':
+        print('textfile', src_path)
+        return ""
+    str = ""
+    with open(src_path) as input_handle:
+        for line in input_handle:
+            str += "\\n" + line[:-1].replace('\\', '\\\\').replace('"', '\\"')
+    return str[2:]
 
-    match = re.search('^%%(.*):\((.*)\)%%$', macro_str)
+
+def process_url_macro(macro_name, macro_args):
+    if len(macro_args) != 1:
+        error_exit('textfile macro should have one argument')
+    return find_file_in_path('url', macro_args[0])
+
+
+def process_macro(dtype, line, fn, linenr, match):
     macro_name = match.group(1)
     macro_arg_str = match.group(2)
 
@@ -866,6 +991,8 @@ def process_macro(dtype, line, fn, linenr):
 
     if macro_name == 'image':
         macro_subst = process_image_macro(macro_name, macro_args)
+    elif macro_name == 'data':
+        macro_subst = process_data_macro(macro_name, macro_args)
     elif macro_name == 'font':
         macro_subst = process_font_macro(macro_name, macro_args)
     elif macro_name == 'buildinfo':
@@ -874,16 +1001,22 @@ def process_macro(dtype, line, fn, linenr):
         macro_subst = process_conf_lib_preamble_macro(macro_name, macro_args)
     elif macro_name == 'title':
         macro_subst = process_title_macro(macro_name, macro_args)
+    elif macro_name == 'splashScreenUrl':
+        macro_subst = process_splash_screen_url_macro(macro_name, macro_args)
     elif macro_name == 'classes':
         macro_subst = process_classes_macro(macro_name, macro_args)
+    elif macro_name == 'textfile':
+        macro_subst = process_textfile_macro(macro_name, macro_args)
+    elif macro_name == 'url':
+        macro_subst = process_url_macro(macro_name, macro_args)
     else:
         error_exit(fn + ':' + str(linenr) + ": don't know (yet) how to handle macro '" + macro_name +
                    "' in '" + line + "'")
 
-    if dtype == 'template' or get_mode() == 'js':
-        if macro_subst == None:
-            error_exit(fn + ':' + str(linenr) + ': empty subst')
-        section_print(dtype, line_start + macro_subst + line_end + '\n')
+    if macro_subst == None:
+        error_exit(fn + ':' + str(linenr) + ': empty subst')
+    return macro_subst
+
 
 def get_current_conf_lib_name():
     global current_conf_lib
@@ -893,6 +1026,7 @@ def get_current_conf_lib_name():
         conf_lib_name = current_conf_lib['name']
     return conf_lib_name
 
+
 def verify_current_conf_lib(conf_lib_name):
     cblp_name = conf_lib_by_priority[0]['name']
     if cblp_name == None:
@@ -900,6 +1034,7 @@ def verify_current_conf_lib(conf_lib_name):
 
     if cblp_name != conf_lib_name:
         error_exit('confLib names do not match')
+
 
 def process_class_def(dtype, line, fn):
     """replace 'var classes =' with 'var <CL>__<fn>__classes ='
@@ -911,7 +1046,7 @@ def process_class_def(dtype, line, fn):
     conf_lib_name = get_current_conf_lib_name()
     verify_current_conf_lib(conf_lib_name)
 
-    mclass_name = conf_lib_name + '__' + stemname(fn) + '__classes'
+    mclass_name = conf_lib_name + '__' + stemname(fn, conf_lib_name) + '__classes'
     mclass_def = 'var ' +  mclass_name + ' ='
     match = re.search('^\s*var[^=]*=(.*)$', line)
     mclass_def = mclass_def + match.group(1) + "\n"
@@ -978,6 +1113,11 @@ var xxx = { // %%constantdef%%
         'element': mconst_name
     })
 
+# The pattern for macros
+macro_re = re.compile('%%([a-zA-Z0-9_]*):\(([^%()]*)\)%%')
+# The pattern for includes
+include_re = re.compile('^[^a-z]*%%[a-z]+%%:')
+
 # Returns a string indicating the line type
 # - 'class' when the line is var classes/stemname = ...
 # - 'screen' when the line is var screenArea = ...
@@ -986,16 +1126,14 @@ def process_line(dtype, line, fn, linenr, basedir):
     line = line.rstrip('\n')
     line += '\n'
     mode = get_mode()
-    class_stemname = stemname(fn)
 
-    if re.search('^[^a-z]*%%[a-z]+%%:', line):
+    line = macro_re.sub(lambda match_group: process_macro(dtype, line, fn, linenr, match_group), line)
+
+    if include_re.search(line):
         process_directive(line, fn, linenr, basedir)
 
-    elif re.search('%%[a-zA-Z]*:\([^%()]*\)%%', line):
-        process_macro(dtype, line, fn, linenr)
-
     elif dtype == 'classfile' and (re.search('^\s*var\s+classes\s*=', line) or \
-                       re.search('^\s*var\s*' + class_stemname + '\s*=', line)):
+                       re.search('^\s*var\s*' + stemname(fn, None) + '\s*=', line)):
         if mode == 'js':
             process_class_def(dtype, line, fn)
         return 'class'
@@ -1029,11 +1167,11 @@ def process_file(dtype, filename, basedir):
     mode = get_mode()
     linenr = 1
 
-    normalized_filename = normalize_path(filename)
-
     if dtype == 'foreign':
-        add_resource_usage('foreign', normalized_filename)
+        add_resource_usage('foreign', filename)
         return
+
+    normalized_filename = normalize_path(filename)
 
     if dtype == 'include' and len(fn_stack) < max_include_level:
         return
@@ -1069,8 +1207,8 @@ def process_file(dtype, filename, basedir):
                         nr_test += 1
                     elif line_type == 'constant':
                         constant_found = True
-                    if mode == 'incl' and (class_found or screen_area_found or test_found or constant_found):
-                        break # Stop scanning file for includes
+                    # if mode == 'incl' and (class_found or screen_area_found or test_found or constant_found):
+                    #     break # Stop scanning file for includes
                     linenr += 1
         except IOError:
             print("cannot open file: " + normalized_filename + " from " + fn_stack[len(fn_stack)-2], file=sys.stderr)
@@ -1094,7 +1232,7 @@ def process_file(dtype, filename, basedir):
 def main():
     global reference_dir
 
-    parser = gen_parser()
+    parser = get_arg_parser()
     args = parser.parse_args()
     mode = args.mode
 
@@ -1106,7 +1244,6 @@ def main():
     append_root_path(args.langdir)
     append_root_path(args.cdldir)
     set_include_path(args.includedir)
-    set_data_path(args.datadir)
     set_dep_file(args.dep_file)
     set_res_out_file(args.resourceOutFile)
     set_res_use_file(args.resourceUseFile)
@@ -1114,6 +1251,7 @@ def main():
     set_build_info_file(args.buildInfoFile)
 
     set_common_image_dir(args.commonImageDir)
+    set_common_data_dir(args.commonDataDir)
 
     cdl_source = args.cdl_source
 
@@ -1135,6 +1273,8 @@ def main():
 
     set_title(args.title)
 
+    set_splash_screen_url(args.splash_screen_url)
+    
     process_file('template', template, os.path.dirname(template))
 
     write_resource_usage()

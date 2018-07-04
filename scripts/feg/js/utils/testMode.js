@@ -42,8 +42,15 @@ function debugNoPendingTasksNotification() {
 
     mondriaOnLoadDate = undefined;
 
-    testDurationGuardTime = Date.now() + maxTestDuration;
-    scheduleTestTask();
+    if (runTests) {
+        testDurationGuardTime = Date.now() + maxTestDuration;
+        scheduleTestTask();
+    } else {
+        if (gArgParser.getArg("dumpHTML", false)) {
+            document.toHTML();
+        }
+        process.exit(0);
+    }
 }
 
 function taskQueueEmptyHook() {
@@ -78,7 +85,7 @@ function setSplashScreenText(text) {
 }
 */
 
-function unhideMondriaRootDiv() {
+function unhideCdlRootDiv() {
 }
 
 function showRunningDivNow() {

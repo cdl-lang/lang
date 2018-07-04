@@ -171,7 +171,6 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
     getIdentifiers(value: any): any[] {
         var va: any = value instanceof Array? value: [value];
         var ids: any[] = new Array(va.length);
-        var idMap: {[id: string]: boolean} = {};
 
         if (typeof(this.identificationAttribute) === "string") {
             for (var i: number = 0; i !== va.length; i++) {
@@ -189,12 +188,6 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
                         }
                     }
                     ids[i] = id;
-                    if (id in idMap) {
-                        Utilities.warn("identify (watcherId=" + this.watcherId +
-                                    "): duplicate identity: " + id);
-                    } else {
-                        idMap[id] = true;
-                    }
                 }
             }
         } else if (this.identificationQuery !== undefined) {
@@ -395,7 +388,7 @@ class EvaluationSort extends EvaluationFunctionApplication
             this.setSortKey(result.value);
         } else if (i === 0) {
             if (("dataSource" in result || "dataSource" in this.result) &&
-                    (this.inputs[0].isScheduled() || !this.inputs[0].isActive())) {
+                (this.inputs[0].isScheduled() || !this.inputs[0].isActive())) {
                 // Wait with changing datasources until input has been updated
                 this.inputs[0].addForcedUpdate(this);
             } else if ("dataSource" in result) {
@@ -409,7 +402,7 @@ class EvaluationSort extends EvaluationFunctionApplication
                 }
                 if (this.prototype.areaSort) {
                     if (this.prototype.areaSort && this.nrActiveWatchers > 0 &&
-                        this.setAreas(result.value)) {
+                          this.setAreas(result.value)) {
                         this.markAsChanged();
                     }
                 } else {
@@ -1452,6 +1445,7 @@ class EvaluationPFFirst extends EvaluationPositionFunction {
     execute(): void {
         if (this.arguments.length !== 1 ||
               this.arguments[0].value === undefined) {
+            this.result.set(constEmptyOS);
             return;
         }
         var os: any[] = this.arguments[0].value;
@@ -1513,6 +1507,7 @@ class EvaluationPFLast extends EvaluationPositionFunction {
     execute(): void {
         if (this.arguments.length !== 1 ||
               this.arguments[0].value === undefined) {
+            this.result.set(constEmptyOS);
             return;
         }
         var os: any[] = this.arguments[0].value;
@@ -1553,7 +1548,6 @@ class EvaluationPFPos extends EvaluationPositionFunction {
     updateInput(i: any, result: Result): void {
         this.arguments[i] = result;
         if (result === undefined) {
-            // Input is being destroyed; stop evaluation
             this.unsetQuery();
         } else if (i === 0) {
             this.setQuery(result.value);
@@ -1584,6 +1578,7 @@ class EvaluationPFPos extends EvaluationPositionFunction {
         if (this.arguments.length !== 2 ||
               this.arguments[0].value === undefined ||
               this.arguments[1].value === undefined) {
+            this.result.set(constEmptyOS);
             return;
         }
         var positions: any[] = this.arguments[0].value;
@@ -2264,7 +2259,7 @@ class EvaluationChanged extends EvaluationFunctionApplication implements TimeSen
         this.inputHasChanged = false;
         if (status !== this.status) {
             this.status = status;
-            this.result.set(status? constTrueOS: constEmptyOS);
+            this.result.set(status? constTrueOS: constFalseOS);
             return true;
         }
         return false;
@@ -2520,7 +2515,7 @@ class EvaluationCompareAreasQuery extends EvaluationFunctionApplication {
 }
 compareAreasQuery.classConstructor = EvaluationCompareAreasQuery;
 
-// [displayWidth/displayHeight, { modifiers } ]
+// [displayWidth/displayHeight/baseLineHeight, { modifiers } ]
 //
 // measure the current area's width/height, assuming the display description
 //  is the one currently described by the area, applying the modifications
@@ -2639,6 +2634,11 @@ class EvaluationDisplayOffset extends EvaluationFunctionApplication {
             textStrokeColor: true,
             handleClick: true
         },
+        foreign: true,
+        triangle: true,
+        line: true,
+        arc: true,
+        boxShadow: true,
         background: true,
         borderRadius: true,
         borderTopLeftRadius: true,
@@ -2659,7 +2659,14 @@ class EvaluationDisplayOffset extends EvaluationFunctionApplication {
         transitions: true,
         hoverText: true,
         pointerOpaque: true,
-        windowTitle: true
+        windowTitle: true,
+        borderWidth: true,
+        borderLeftWidth: true,
+        borderRightWidth: true,
+        borderTopWidth: true,
+        borderBottomWidth: true,
+        hideDuringPrinting: true,
+        filter: true
     };
 
     displayString: string = undefined;
@@ -2671,8 +2678,8 @@ class EvaluationDisplayOffset extends EvaluationFunctionApplication {
         var dispObj: any = shallowCopyMinusTree(
             deOsedMerge(modObj.display, areaDisplay.value),
             EvaluationDisplayOffset.suppressedAttributes);
-        var width: number = Number(modObj.width);
-        var height: number = Number(modObj.height);
+        var width: number = typeof(modObj.width) === "number"? modObj.width: undefined;
+        var height: number = typeof(modObj.height) === "number"? modObj.height: undefined;
 
         if (isNaN(width)) {
             width = undefined;
@@ -2711,7 +2718,9 @@ class EvaluationDisplayOffset extends EvaluationFunctionApplication {
 
     // called by the surveyor when the values may have changed
     surveyNotification(lastCall: boolean, size: number[]): void {
-        var ret: number = this.bif.name === "displayWidth"? size[0]: size[1];
+        var ret: number = this.bif.name === "displayWidth"? size[0]:
+                          this.bif.name === "displayHeight"? size[1]:
+                          size[2];
 
         if (ret !== this.surveyorResult) {
             this.surveyorResult = ret;
@@ -2744,6 +2753,9 @@ displayWidth.classConstructor = EvaluationDisplayWidth;
 class EvaluationDisplayHeight extends EvaluationDisplayOffset {
 }
 displayHeight.classConstructor = EvaluationDisplayHeight;
+class EvaluationBaseLineHeight extends EvaluationDisplayOffset {
+}
+baseLineHeight.classConstructor = EvaluationBaseLineHeight;
 
 //
 // DisplayOffsetSurveyor
@@ -2784,7 +2796,7 @@ class DisplayOffsetSurveyor {
     /// The string representation of the request
     displayString: string = undefined;
     /// True when the text is in italics, something the browser doesn't measure properly.
-    italicizedText: boolean = false;
+    // italicizedText: boolean = false;
     /// Actual font size (16 is the default)
     fontSize: number = 16;
     /// When true, the display requires an image to be loaded, which means it
@@ -2807,8 +2819,8 @@ class DisplayOffsetSurveyor {
     }
 
     update(dispObj: any, modObj: any) {
-        var width: number = Number(modObj.width);
-        var height: number = Number(modObj.height);
+        var width: number = isEmptyOS(modObj.width)? undefined: Number(modObj.width);
+        var height: number = isEmptyOS(modObj.height)? undefined: Number(modObj.height);
 
         if (isNaN(width)) {
             width = undefined;
@@ -2818,7 +2830,7 @@ class DisplayOffsetSurveyor {
         }
         if (dispObj.text !== undefined && dispObj.text.fontStyle !== undefined) {
             var fontSize: any = dispObj.text.fontSize;
-            this.italicizedText = (dispObj.text.fontStyle === "italic" || dispObj.text.fontStyle === "oblique");
+            // this.italicizedText = (dispObj.text.fontStyle === "italic" || dispObj.text.fontStyle === "oblique");
             // when there's no numeric looking font size, so the browser
             // sticks to the default
             if (typeof(fontSize) === "number") {
@@ -2853,9 +2865,9 @@ class DisplayOffsetSurveyor {
     surveyNotification(): void {
         if (this.survObj !== undefined) { // ignore notification after destroy
             this.size = this.survObj.getSize();
-            if (this.italicizedText) {
-                this.size[0] += Math.floor(this.fontSize * 1.25);
-            }
+            // if (this.italicizedText) {
+            //     this.size[0] += Math.floor(this.fontSize * 1.25);
+            // }
             this.clients.forEach(client => {
                 client.surveyNotification(DisplayOffsetSurveyor.resourcesLoaded, this.size);
             });
@@ -2928,6 +2940,8 @@ class EvaluationCond extends EvaluationNode
     condVarBoolMatch: boolean = true;
     boolVarAppl: DataSourceFunctionApplication;
     useChanged: boolean = false;
+    constant: boolean = false;
+    varAndOnConstant: boolean = true;
 
     // Currently active use expression; if equal to altList.length, no
     // on expression matches the condition variable.
@@ -2965,6 +2979,7 @@ class EvaluationCond extends EvaluationNode
                 this.inputs.push(on);
             }
             this.condVarBoolMatch = false;
+            this.varAndOnConstant = false;
         } else if (!(on.result.value instanceof Array) ||
                    on.result.value.length !== 1 ||
                    (on.result.value[0] !== true && on.result.value[0] !== false)) {
@@ -2983,7 +2998,42 @@ class EvaluationCond extends EvaluationNode
             if ("schedulingError" in this.prototype) {
                 this.inputs.push(condVar);
             }
+            this.varAndOnConstant = false;
         }
+    }
+
+    init(): void {
+        if (this.varAndOnConstant) {
+            // The variable and the on: values are constant, so there's only one
+            // relevant use: expression. Instantiate it and check if it's constant.
+            var newPos: number = 0;
+            var condVarVal: any = this.condVar.result.value;
+            while (newPos < this.altList.length) {
+                var av: any = getDeOSedValue(this.altList[newPos].on.result.value);
+                if (av === null || interpretedQualifierMatch(av, condVarVal)) {
+                    break;
+                }
+                newPos++;
+            }
+            this.selectedPos = newPos;
+            this.updatePos = undefined;
+            if (newPos < this.altList.length) {
+                var use: EvaluationNode = this.instantiateUse(newPos);
+                if (use.isConstant()) {
+                    this.constant = true;
+                } else {
+                    this.selectedPos = this.altList.length;
+                    this.updatePos = 0;
+                }
+            } else {
+                this.constant = true;
+            }
+        }
+        super.init();
+    }
+
+    isConstant(): boolean {
+        return this.constant;
     }
 
     instantiateUse(pos: number): EvaluationNode {
@@ -3063,18 +3113,14 @@ class EvaluationCond extends EvaluationNode
     }
 
     setDataSourceResultMode(dataSourceResultMode: boolean): void {
-        if (this.selectedPos < this.altList.length) {
+        if (this.isActive() && this.selectedPos < this.altList.length) {
             var use: EvaluationNode = this.altList[this.selectedPos].use;
             if (dataSourceResultMode && !this.dataSourceResultMode) {
                 use.activeWatcherBecomesDataSourceAware(this);
-                if (this.isActive()) {
-                    this.markAsChanged();
-                }
+                this.markAsChanged();
             } else if (!dataSourceResultMode && this.dataSourceResultMode) {
                 use.activeWatcherNoLongerIsDataSourceAware(this);
-                if (this.isActive()) {
-                    this.markAsChanged();
-                }
+                this.markAsChanged();
             }
         }
         this.dataSourceResultMode = dataSourceResultMode;
@@ -3101,7 +3147,7 @@ class EvaluationCond extends EvaluationNode
             this.updatePos = undefined;
             while (newPos < this.altList.length) {
                 var av: any = getDeOSedValue(this.altList[newPos].on.result.value);
-                if (av === null || interpretedBoolMatch(av, condVarVal)) {
+                if (av === null || interpretedQualifierMatch(av, condVarVal)) {
                     break;
                 }
                 newPos++;
@@ -3136,7 +3182,7 @@ class EvaluationCond extends EvaluationNode
         if (this.selectedPos < this.altList.length) {
             this.result.copy(this.altList[this.selectedPos].use.result);
         } else {
-            this.result.set([]);
+            this.result.set(constEmptyOS);
         }
         return oldValue === undefined ||
             !this.result.equalLabels(resultLabels) ||
@@ -3514,7 +3560,7 @@ implements FuncResultWatcherInterface
 
     eval(): boolean {
         var newValue: any[] =
-            this.nrCommonElements === 0? constTrueOS: constEmptyOS;
+            this.nrCommonElements === 0? constTrueOS: constFalseOS;
 
         if (this.result.value !== newValue) {
             this.result.value = newValue;
@@ -4603,8 +4649,8 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
                         for (var attr in arg) {
                             var val: any = arg[attr];
                             if (val !== undefined && !(val instanceof Array && val.length === 0)) {
-                                url += (hasArguments? "&": "?") + encodeURI(attr) +
-                                        "=" + encodeURI(singleton(val));
+                                url += (hasArguments? "&": "?") + encodeURIComponent(attr) +
+                                       "=" + encodeURIComponent(singleton(val));
                             }
                             hasArguments = true;
                         }
@@ -4749,7 +4795,7 @@ class PrintAreaTask implements PrintJob {
         if (this.area.embedding === undefined) {
             return {left: 0, top: 0, width: this.area.relative.width, height: this.area.relative.height};
         }
-        let pos = this.area.embedding.getAbsolutePosition();
+        var pos = this.area.embedding.getAbsolutePosition();
             return {left: pos.left, top: pos.top, width: this.area.embedding.relative.width, height: this.area.embedding.relative.height};
     }
 
@@ -4784,7 +4830,7 @@ class EvaluationPrintArea extends EvaluationFunctionApplication {
             };
             queueEvent(new ImpersonatedDomEvent("print"), message, undefined,
                        constEmptyOS, undefined, constEmptyOS, constEmptyOS,
-                       undefined, undefined, undefined);
+                       undefined, undefined, undefined, undefined, undefined);
             globalPrintTask.addPrintTask(undefined);
             return;
         }

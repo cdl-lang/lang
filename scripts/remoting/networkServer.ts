@@ -213,6 +213,7 @@ class NetworkServer {
             }
 
             function findFile(fileName: string, contentEncoding: string|undefined): void {
+                // TODO: BLOCK filenames with ./ or ../
                 fs.stat(fileName, (err: any, stats: FS.Stats) => {
                     if (err) {
                         if (acceptsGZip && contentEncoding === undefined) {
@@ -235,28 +236,56 @@ class NetworkServer {
                             'ETag': stats.mtime.getTime().toString()
                         });
                         response.end("");
-                    } else if (contentEncoding === undefined && directoryListingAllowed &&
-                               stats.isDirectory && myURL.query === "format=json") {
-                        // Allow the server to send directory contents in json
-                        // format. Could be useful for writing a cdl app that
-                        // traverses a directory.
-                        fs.readdir(fileName, (err: any, files: string[]): void => {
-                            if (err) {
-                                RemotingLog.log(2, "directory not readable: " + request.url);
-                                response.writeHead(404, {'Content-Type': 'text/html'});
-                                response.end("<html><body>Too bad: not a valid URL in this neck of the woods</body></html>");
-                            } else {
-                                response.writeHead(200, {
-                                    'Content-Type': 'text/json',
-                                    'ETag': fileETag
-                                });
-                                RemotingLog.log(2, "sending directory " + request.url);
-                                response.end(JSON.stringify(files.filter(fileName => {
-                                    let extPos = fileName.lastIndexOf('.');
-                                    return extPos === -1 || fileName.slice(extPos + 1) === 'html';
-                                })));
-                            }
-                        });
+                    } else if (contentEncoding === undefined && directoryListingAllowed && stats.isDirectory()) {
+                        if (myURL.query === "format=json") {
+                            // Allow the server to send directory contents in json
+                            // format. Could be useful for writing a cdl app that
+                            // traverses a directory.
+                            fs.readdir(fileName, (err: any, files: string[]): void => {
+                                if (err) {
+                                    RemotingLog.log(2, "directory not readable: " + request.url);
+                                    response.writeHead(404, {'Content-Type': 'text/html'});
+                                    response.end("<html><body>Too bad: not a valid URL in this neck of the woods</body></html>");
+                                } else {
+                                    response.writeHead(200, {
+                                        'Content-Type': 'text/json',
+                                        'ETag': fileETag
+                                    });
+                                    RemotingLog.log(2, "sending directory " + request.url);
+                                    response.end(JSON.stringify(files.filter(fileName => {
+                                        let extPos = fileName.lastIndexOf('.');
+                                        return extPos === -1 || fileName.slice(extPos + 1) === 'html';
+                                    })));
+                                }
+                            });
+                        } else {
+                            fs.readdir(fileName, (err: any, files: string[]): void => {
+                                if (err) {
+                                    RemotingLog.log(2, "directory not readable: " + request.url);
+                                    response.writeHead(404, {'Content-Type': 'text/html'});
+                                    response.end("<html><body>'tis in vain to seek a URL here that means not to be found</body></html>");
+                                } else {
+                                    response.writeHead(200, {
+                                        'Content-Type': 'text/html',
+                                        'ETag': fileETag
+                                    });
+                                    RemotingLog.log(2, "sending directory " + request.url);
+                                    response.end('<html><body style="font-family: sans-serif;">' + files.map(fn => {
+                                        if (fn[0] !== '.') {
+                                            const dstats = fs.statSync(fileName + "/" + fn);
+                                            if (dstats.isDirectory()) {
+                                                return '<a href="' + encodeURIComponent(fn) + "/" + '">' + fn + '</a>';
+                                            } else if (fn.endsWith(".html")) {
+                                                return fn +
+                                                    ':<a href="' + encodeURIComponent(fn) + '">remote</a> ' +
+                                                    ' <a href="' + encodeURIComponent(fn) + '?remote=false">local</a>';
+                                            }
+                                        }
+                                        return undefined;
+                                    }).filter(p => p !== undefined).join("<p>\n") + "</body></html>");
+                                }
+                            });
+                        }
                     } else if (!stats.isFile) {
                         RemotingLog.log(2, "file found but not a normal file: " + request.url);
                         response.writeHead(404, {'Content-Type': 'text/html'});

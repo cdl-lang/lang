@@ -16,11 +16,17 @@
 #
 # make file template
 
+ifdef ROOTDIR
+$(error "ROOTDIR is defined")
+endif
+ifndef LANGDIR
+$(error "LANGDIR is not defined")
+endif
+
 ECHO=/bin/echo
 AWKF=gawk -f
 MKDIR=mkdir
 
-LANGDIR=$(ROOTDIR)/lang
 UTIL=$(LANGDIR)/util
 
 FEGTEMPLATEDIR = $(LANGDIR)/scripts/feg/templates
@@ -41,11 +47,16 @@ endif
 FEGERRORSTATUS ?= ""
 
 # target path
-COMMON_IMAGE_DIR=image
+COMMON_IMAGE_DIR=resources/images
+COMMON_DATA_DIR=resources/data
 
 NODEJS=node
 
 INTERMEDIATE=intermediate
+
+ifndef SPLASH_SCREEN_URL
+SPLASH_SCREEN_URL=resources/splashscreen/cdlSplashScreen.html
+endif
 
 ifndef HTML_TEMPLATE_NAME
 HTML_TEMPLATE_NAME=runtemplate.html
@@ -53,6 +64,10 @@ endif
 
 ifndef SFHTML_TEMPLATE_NAME
 SFHTML_TEMPLATE_NAME=sftemplate.html
+endif
+
+ifndef CRTHTML_TEMPLATE_NAME
+CRTHTML_TEMPLATE_NAME=commonruntimetemplate.html
 endif
 
 ifndef SFJS_TEMPLATE_NAME
@@ -71,6 +86,11 @@ ifndef SFHTML_TEMPLATE_FILE
 SFHTML_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(SFHTML_TEMPLATE_NAME)
 endif
 
+
+ifndef CRTHTML_TEMPLATE_FILE
+CRTHTML_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(CRTHTML_TEMPLATE_NAME)
+endif
+
 ifndef NODEJS_TEMPLATE_FILE
 NODEJS_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(INCJSTEMPLATE_NAME)
 endif
@@ -84,7 +104,9 @@ GENINCJS=$(UTIL)/genIncJS.py
 JS_SOURCES += $(NODETEST)
 
 HTML=$(JS_SOURCES:%.js=%.html)
-MIN_HTML=$(HTML:%.html=%.min.html)
+MIN_HTML=$(JS_SOURCES:%.js=%.min.html)
+CRT_HTML=$(JS_SOURCES:%.js=%.crt.html)
+CRT_HTML=$(JS_SOURCES:%.js=%.comp.html)
 
 COMP_JS=$(JS_SOURCES:%.js=$(INTERMEDIATE)/%.comp.js)
 RUN_JS=$(JS_SOURCES:%.js=$(INTERMEDIATE)/%.run.js)
@@ -116,7 +138,7 @@ clean_programs: force
 html: $(HTML)
 
 clean_html: force
-	-$(RM) $(HTML) $(COMP_JS) $(RUN_JS) $(MIN_HTML)
+	-$(RM) $(HTML) $(COMP_JS) $(COMP_HTML) $(RUN_JS) $(MIN_HTML) $(CRT_HTML)
 	-$(RM) -r intermediate javascript
 
 jsinc: $(JSINC)
@@ -134,7 +156,7 @@ $(HTML_TEMPLATE_FILE): ;
 $(INTERMEDIATE):
 	-@$(MKDIR) $(INTERMEDIATE)
 
-RUN_INCJS_COMMON=$(GENINCJS) "--out_file=$@" "--sourcedir=." "--cdldir=$(CDLDIR)" "--langdir=$(LANGDIR)"
+RUN_INCJS_COMMON=$(GENINCJS) "--out_file=$@" "--sourcedir=." "--cdldir=$(CDLPATH)" "--langdir=$(LANGDIR)" "--splash-screen-url=$(SPLASH_SCREEN_URL)"
 
 %.html: $(INTERMEDIATE)/%.run.js
 	$(RUN_INCJS_COMMON) \
@@ -149,13 +171,16 @@ $(INTERMEDIATE)/common_runtime.js: tscmin
 		"--template=$(SFJS_TEMPLATE_FILE)" \
 		"--mode=js" "$<"
 
+javascript/common_runtime.min.js: $(INTERMEDIATE)/common_runtime.js
+	-$(MKDIR) -p javascript
+	$(UGLIFY) $(INTERMEDIATE)/common_runtime.js -c -m > $@
+
 UGLIFY=uglifyjs --max-old-space-size=4000 --stack_size=4000
 
 $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runtime.js
 	$(UGLIFY) $(INTERMEDIATE)/common_runtime.js -c -m > $@
 	echo "" >> $@
 	egrep -v '^// ' $< >> $@
-	$(UGLIFY) $(LANGDIR)/scripts/feg/minbuild/feg/functionExecute.postlude.js -c -m >> $@
 
 # resulting .min.js file must be placed in javascript directory
 %.min.html: $(INTERMEDIATE)/%.min.js
@@ -165,13 +190,25 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 		"--template=$(SFHTML_TEMPLATE_FILE)" \
 		"--resourceUseFile=$(INTERMEDIATE)/$*.res" \
 		"--mode=html" \
-		"--commonImageDir=image" \
+		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
 		"--title=$(@:%.min.html=%)" \
 		"$(<:$(INTERMEDIATE)%=javascript/%)"
 	@date
 
+# resulting js files must be placed in javascript directory
+%.crt.html: javascript/%.crt.js javascript/common_runtime.min.js
+	$(RUN_INCJS_COMMON) \
+		"--template=$(CRTHTML_TEMPLATE_FILE)" \
+		"--resourceUseFile=$(INTERMEDIATE)/$*.res" \
+		"--mode=html" \
+		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
+		"--title=$(@:%.crt.html=%)" \
+		"$<"
+
 %.node.js: $(INTERMEDIATE)/%.run.js
-	(cd "$(CDLDIR)"; npm install)
+	(cd "$(CDLPATH)"; npm install)
 	$(RUN_INCJS_COMMON) \
 		"--template=$(NODEJS_TEMPLATE_FILE)" \
 		"--resourceUseFile=$(INTERMEDIATE)/$*.res" \
@@ -179,7 +216,8 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 
 .PRECIOUS: $(INTERMEDIATE)/%.run.js $(INTERMEDIATE)/%.sf.js \
 	$(INTERMEDIATE)/%.min.js $(INTERMEDIATE)/%.buildInfo.js \
-	$(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/%.comp_pp.js
+	$(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/%.comp_pp.js \
+	javascript/%.crt.js
 
 $(INTERMEDIATE)/%.run.js: $(INTERMEDIATE)/%.comp.js
 	@date
@@ -189,17 +227,19 @@ $(INTERMEDIATE)/%.run.js: $(INTERMEDIATE)/%.comp.js
 $(INTERMEDIATE)/%.sfrun.js: $(INTERMEDIATE)/%.sfcomp.js
 	bash "${UTIL}/fegcompile.sh" "$<" "$@" $(FEGDEBUGINFOMIN) "$(FEGERRORSTATUS)"
 
+javascript/%.crt.js: $(INTERMEDIATE)/%.crtcomp.js
+	bash "${UTIL}/fegcompile.sh" "$<" "$@" $(FEGDEBUGINFOMIN) "$(FEGERRORSTATUS)"
+
 COMP_INCJS_COMMON = \
 	$(GENINCJS) \
-		"--cdldir=$(CDLDIR)" \
+		"--cdldir=$(CDLPATH)" \
 		"--langdir=$(LANGDIR)" \
 		"--libConf=lib.conf"
 
 BUILDINFO_CMD = \
-	@bash ${UTIL}/buildInfo.sh ${ROOTDIR} > $@.buildInfo ; \
-	cat $@.buildInfo $@.tmp > $@ ; \
-	$(RM) $@.buildInfo $@.tmp
-
+	@bash $(UTIL)/buildInfo.sh "$(LANGDIR)" "$(CDLPATH)" > $@ ; \
+	cat $@.tmp >> $@ ; \
+	$(RM) $@.tmp
 
 $(INTERMEDIATE)/%.comp.js: %.js tsc $(INTERMEDIATE)
 	$(COMP_INCJS_COMMON) \
@@ -216,6 +256,18 @@ $(INTERMEDIATE)/%.sfcomp.js: %.js tsc $(INTERMEDIATE)
 		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
 		"--template=$(COMPTEMPLATE)" \
 		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
+		"--mode=js" \
+		$<
+	$(BUILDINFO_CMD)
+
+$(INTERMEDIATE)/%.crtcomp.js: %.js tsc $(INTERMEDIATE)
+	$(COMP_INCJS_COMMON) \
+		"--out_file=$@.tmp" \
+		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
+		"--template=$(COMPTEMPLATE)" \
+		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
 		"--mode=js" \
 		$<
 	$(BUILDINFO_CMD)
@@ -239,7 +291,7 @@ $(INTERMEDIATE)/%.comp_pp.js: %.js tsc
 
 $(INTERMEDIATE)/%.buildInfo.js: force
 	@-mkdir intermediate
-	@bash $(UTIL)/buildInfo.sh $(LANGDIR) > $@
+	@bash $(UTIL)/buildInfo.sh "$(LANGDIR)" "$(CDLPATH)" > $@
 
 
 $(INTERMEDIATE)/%.dmp: $(INTERMEDIATE)/%.comp.js

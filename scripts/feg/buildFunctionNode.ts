@@ -179,6 +179,9 @@ function buildAVNode1(node: PathTreeNode, origin: number, defun: number, suppres
         return buildConstNode(undefined, true, suppressSet, 0, gUndefinedExpr);
     }
     for (var attr in node.next) {
+        if (attr === "class") {
+            continue;
+        }
         var attrVal: PathTreeNode = node.next[attr];
         var fun: FunctionNode = buildFunctionNode(attrVal, origin, defun, suppressSet);
         if (fun !== undefined && !valueIsUndefined(fun)) {
@@ -285,7 +288,7 @@ function buildQualifier(qualifiers: CDLQualifierTerm[], origin: number, defun: n
             } else if (attrQuery instanceof ConstNode) {
                 var val = <ConstNode> attrQuery;
                 if ((val.value === undefined && qualifiers[i].value !== undefined) ||
-                      (val.value !== undefined && !interpretedBoolMatch(qualifiers[i].value, val.value))) {
+                      (val.value !== undefined && !interpretedQualifierMatch(qualifiers[i].value, val.value))) {
                     return undefined; // this condition will never match
                 }
                 // this condition will always match, so can be skipped
@@ -517,7 +520,7 @@ function buildQualifierNode(values: PathInfo[], origin: number, defun: number,
                             qualifierWithCycles.cycles.length === 1 && 
                             cyclicQual.attribute === contextAttribute) {
                             var qc = <ConstNode> fun;
-                            if (interpretedBoolMatch(cyclicQual.value, qc.value)) {
+                            if (interpretedQualifierMatch(cyclicQual.value, qc.value)) {
                                 // Everything's cool; expression is not influenced
                                 // by value of the context attribute
                                 Utilities.warnOnce("redundant cyclical qualifier: " + contextAttribute + " @ " + origin);
@@ -578,15 +581,10 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
       case "debugBreak":
         valueType.sizes = [_r(0, 0)];
         break;
-      // functions that have size 1
+      // functions that have size 0 or 1
       case "first":
       case "last":
-      case "and":
-      case "or":
-      case "not":
-      case "debugNodeToStr":
-      case "tempAppStateConnectionInfo":
-        valueType.sizes = [_r(1, 1)];
+        valueType.sizes = [_r(0, 1)];
         break;
       // The result of evaluating push() is 1, but when it is merged, the result
       // can be infinitely large, so this is a bit of a trick to propagate
@@ -596,44 +594,31 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
       case "internalPush":
         valueType.sizes = [_r(1, Infinity)];
         break;
-      // functions that have the size of the 1st argument
-      case "anonymize":
-      case "internalAtomic":
-      case "floor":
-      case "ceil":
-      case "round":
-      case "abs":
-      case "sqrt":
-      case "sign":
-      case "uminus":
-      case "abs":
-      case "ln":
-      case "log10":
-      case "logb":
-      case "exp":
-      case "evaluateCdlStringValue":
-      case "testCdlStringValue":
-        if (args[0] !== undefined && args[0].valueType !== undefined) {
-            valueType.sizes = args[0].valueType.sizes;
-        }
-        break;
       case "index":
         if (args[0] !== undefined && args[0].valueType !== undefined) {
             valueType.sizes = ValueTypeSize.max(args[0].valueType.sizes);
         }
         break;
+      case "pos":
+        if (args[1] !== undefined && args[1].valueType !== undefined) {
+            valueType.sizes = ValueTypeSize.max(args[1].valueType.sizes);
+        }
+        break;
+      case "internalApply":
+        if (args[0] !== undefined && args[1] !== undefined &&
+              args[1].valueType !== undefined &&
+              !(args[0].valueType.anyData || args[0].valueType.defun ||
+                args[0].valueType.unknown || args[0].valueType.projector)) {
+            // When the first argument is data and not a defun or projector,
+            // the result can't be larger than the second argument.
+            valueType.sizes = ValueTypeSize.max(args[1].valueType.sizes);
+        } else {
+            valueType.sizes = [_r(0, Infinity)];
+        }
+        break;
       // arithmetic functions
-      case "plus":
-      case "minus":
-      case "mul":
-      case "div":
-      case "pow":
-      case "mod":
-      case "remainder":
       case "lessThan":
       case "lessThanOrEqual":
-      case "equal":
-      case "notEqual":
       case "greaterThanOrEqual":
       case "greaterThan":
         if (args[0] !== undefined && args[0].valueType !== undefined && args[1] !== undefined && args[1].valueType !== undefined) {
@@ -641,10 +626,28 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
         }
         break;
       // arbitrary size
-      case "internalApply":
       case "testStore":
         valueType.sizes = [_r(0, Infinity)];
         break;
+      // Basic arithmentic and foreign functions return one result per element
+      // in the arguments. Since there's a special case for arguments of length
+      // 1, the maximum length of all arguments is used as the default.
+      default:
+        valueType.sizes = undefined;
+        for (var i: number = 0; i < args.length; i++) {
+            var arg: FunctionNode = args[i];
+            if (arg !== undefined) {
+                if (arg.valueType === undefined) {
+                    valueType.sizes = undefined;
+                    break;
+                }
+                if (valueType.sizes === undefined) {
+                    valueType.sizes = arg.valueType.sizes;
+                } else {
+                    valueType.sizes = ValueTypeSize.minOfSizes(valueType.sizes, arg.valueType.sizes);
+                }
+            }
+        }
     }
 }
 
@@ -743,7 +746,7 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
     }
     var template: AreaTemplate;
     var nrAreas: RangeValue[];
-    switch (fun.name) {
+    switch (funName) {
       case "me":
         valueType = new ValueType().addArea(origin, [_r(1, 1)]);
         break;
@@ -1138,6 +1141,7 @@ function getLocalToAreaOfBuiltInFunction(fun: BuiltInFunction, origin: number): 
         return undefined;
       case "displayWidth":
       case "displayHeight":
+      case "baseLineHeight":
         // displayWidth/displayHeight always assume they act on the current area
         return origin;
       default:
@@ -1270,16 +1274,31 @@ function makeEmptyOSOfType(fn: FunctionNode): ConstNode {
     return res;
 }
 
-var constantNumericalUnaryFunctions: {[funName: string]: BuiltInFunction} = {
-    ln: ln,
-    exp: exp,
-    log10: log10,
+var constantUnaryFunctions: {[funName: string]: BuiltInFunction} = {
     abs: abs,
     uminus: uminus,
     sqrt: sqrt,
-    sign: sign
+    sign: sign,
+    empty: empty,
+    notEmpty: notEmpty,
+    first: first,
+    last: last,
+    size: size,
+    reverse: reverse,
+    escapeQuotes: escapeQuotes,
+    dayOfWeek: dayOfWeek,
+    dayOfMonth: dayOfMonth,
+    month: month,
+    quarter: quarter,
+    year: year,
+    hour: hour,
+    minute: minute,
+    second: second,
+    urlStr: urlStr,
+    singleValue: singleValue,
+    testFormula: testFormula
 };
-var constantNumericalBinaryFunctions: {[funName: string]: BuiltInFunction} = {
+var constantBinaryFunctions: {[funName: string]: BuiltInFunction} = {
     plus: plus,
     minus: minus,
     mul: mul,
@@ -1289,23 +1308,26 @@ var constantNumericalBinaryFunctions: {[funName: string]: BuiltInFunction} = {
     greaterThan: greaterThan,
     greaterThanOrEqual: greaterThanOrEqual,
     lessThan: lessThan,
-    lessThanOrEqual: lessThanOrEqual
+    lessThanOrEqual: lessThanOrEqual,
+    pow: pow,
+    logb: logb,
+    subStr: subStr,
+    numberToString: numberToString,
+    dateToNum: dateToNum,
+    numToDate: numToDate
 };
 
 // Returns a constant when it can determine the result of a function application
-// Now mainly serves to make life a bit easier when prev/next etc. get an empty
-// os and an area.
-function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], origExpr: Expression): FunctionNode {
+function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], origExpr: Expression, wontChangeValue: boolean): FunctionNode {
     var i: number;
 
     var constantArguments: boolean =
         args.every(function(f: FunctionNode): boolean {
             return f instanceof ConstNode;
         });
-    var wontChangeValue: boolean = inputsWontChangeValue(args);
 
     function applyUnaryNumFunc(name: string, arg0: ConstNode): number[] {
-        var fun: BuiltInFunction = constantNumericalUnaryFunctions[name];
+        var fun: BuiltInFunction = constantUnaryFunctions[name];
 
         if (fun === undefined) {
             Utilities.error("unknown operator");
@@ -1315,7 +1337,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
     }
 
     function applyBinaryNumFunc(name: string, args: ConstNode[]): number[] {
-        var fun: BuiltInFunction = constantNumericalBinaryFunctions[name];
+        var fun: BuiltInFunction = constantBinaryFunctions[name];
 
         if (fun === undefined) {
             Utilities.error("unknown operator");
@@ -1350,6 +1372,15 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
                 return typeof(v) === "number";
             }));
         }, []);
+    }
+
+    function applyForeignFunction(funDef: BuiltInFunction, args: ConstNode[]): any[] {
+        var bif: any = {bif: funDef};
+        var exec = funDef instanceof ForeignJavaScriptObjectFunction?
+                   EFForeignJavaScriptObjectFunction.make(undefined, bif):
+                   EFForeignJavaScriptFunction.make(undefined, bif);
+
+        return exec.execute(args.map((arg: ConstNode) => new Result(ensureOS(arg.value))))
     }
 
     switch (funDef.name) {
@@ -1392,12 +1423,12 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
       case "bool":
         if (args.length === 1) {
             if (args[0].isAlwaysTrue()) {
-                return new ConstNode([true], new ValueType().addBoolean().addSize(1), origExpr, undefined, wontChangeValue);
+                return new ConstNode([true], new ValueType().addBoolean().addSize(1),
+                                     origExpr, undefined, wontChangeValue);
             }
             if (args[0].isAlwaysFalse()) {
-                var fls: ConstNode = new ConstNode([], emptyValueType, origExpr,
-                                                   undefined, wontChangeValue);
-                return fls;
+                return new ConstNode([false], new ValueType().addBoolean().addSize(1),
+                                     origExpr, undefined, wontChangeValue);
             }
         }
         break;
@@ -1409,44 +1440,6 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
             if (args[0].isAlwaysFalse()) {
                 return new ConstNode([true], new ValueType().addBoolean().addSize(1), origExpr, undefined, wontChangeValue);
             }
-        }
-        break;
-      case "and":
-        if (args.some(f => f.isAlwaysFalse())) {
-            return new ConstNode([], emptyValueType, origExpr, undefined, wontChangeValue);
-        }
-        // Remove the always true arguments
-        i = 0;
-        while (i < args.length) {
-            if (args[i].isAlwaysTrue()) {
-                args.splice(i, 1);
-            } else {
-                i++;
-            }
-        }
-        if (args.length === 0) {
-            return new ConstNode([true], new ValueType().addBoolean().addSize(1), origExpr, undefined, wontChangeValue);
-        } else if (args.length === 1) {
-            return args[0].getBoolInterpretation();
-        }
-        break;
-      case "or":
-        if (args.every(f => f.isAlwaysFalse())) {
-            return new ConstNode([], emptyValueType, origExpr, undefined, wontChangeValue);
-        }
-        // Remove the always false arguments
-        i = 0;
-        while (i < args.length) {
-            if (args[i].isAlwaysFalse()) {
-                args.splice(i, 1);
-            } else {
-                i++;
-            }
-        }
-        if (args.length === 0) {
-            return new ConstNode([false], new ValueType().addBoolean().addSize(1), origExpr, undefined, wontChangeValue);
-        } else if (args.length === 1) {
-            return args[0].getBoolInterpretation();
         }
         break;
       case "concatStr":
@@ -1521,16 +1514,184 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
       case "pointer":
         return buildConstNode(new ElementReference("p1"), true, undefined, undefined, origExpr);
       default:
-        if (args.length === 2 && constantArguments &&
-            funDef.name in constantNumericalBinaryFunctions) {
+        if (!constantArguments) {
+            break;
+        }
+        if (args.length === 2 && funDef.name in constantBinaryFunctions) {
             return buildConstNode(
                 applyBinaryNumFunc(funDef.name, <ConstNode[]> args),
                 wontChangeValue, undefined, undefined, origExpr);
-        } else if (args.length === 1 && constantArguments &&
-            funDef.name in constantNumericalUnaryFunctions) {
+        } else if (args.length === 1 &&
+                   funDef.name in constantUnaryFunctions) {
             return buildConstNode(
                 applyUnaryNumFunc(funDef.name, <ConstNode> args[0]),
                 wontChangeValue, undefined, undefined, origExpr);
+        } else if (funDef instanceof ForeignJavaScriptFunction) {
+            return buildConstNode(
+                    applyForeignFunction(funDef, <ConstNode[]> args),
+                    wontChangeValue, undefined, undefined, origExpr);
+        }
+        break;
+    }
+    return undefined;
+}
+
+interface FuncApplReplacement {
+    funDef: BuiltInFunction|undefined;
+    args: FunctionNode[]|undefined;
+    repl: FunctionNode|undefined;
+}
+
+// Removes redundant arguments. E.g. [plus, x, 0] becomes x, and
+// [minus, 0, x] becomes [uminus, x].
+function removeRedundantArguments(funDef: BuiltInFunction, args: FunctionNode[], origExpr: Expression, wontChangeValue: boolean): FuncApplReplacement|undefined {
+    var nArgs: FunctionNode[];
+
+    function isNumConst(fn: FunctionNode, n: number): boolean {
+        return fn instanceof ConstNode && fn.value instanceof Array &&
+               fn.value.length === 1 && fn.value[0] === n;
+    }
+
+    switch (funDef.name) {
+      case "and":
+        nArgs = args.filter(arg => !arg.isAlwaysTrue());
+        if (nArgs.length === args.length) {
+            return undefined;
+        }
+        return nArgs.length === 0? {
+                funDef: undefined,
+                args: undefined,
+                repl: new ConstNode([true], new ValueType().addBoolean().addSize(1), origExpr, undefined, inputsWontChangeValue(args))
+            }: nArgs.length === 1? {
+                funDef: undefined,
+                args: undefined,
+                repl: nArgs[0].getBoolInterpretation()
+            }: {
+                funDef: funDef,
+                args: nArgs,
+                repl: undefined
+            };
+      case "or":
+        nArgs = args.filter(arg => !arg.isAlwaysFalse());
+        if (nArgs.length === args.length) {
+            return undefined;
+        }
+        return nArgs.length === 0? {
+                funDef: undefined,
+                args: undefined,
+                repl: new ConstNode([false], new ValueType().addBoolean().addSize(1), origExpr, undefined, inputsWontChangeValue(args))
+            }: nArgs.length === 1? {
+                funDef: undefined,
+                args: undefined,
+                repl: nArgs[0].getBoolInterpretation()
+            }: {
+                funDef: funDef,
+                args: nArgs,
+                repl: undefined
+            };
+      case "plus":
+        nArgs = args.filter(arg => !isNumConst(arg, 0));
+        if (nArgs.length === args.length) {
+            return undefined;
+        }
+        return nArgs.length === 0? {
+                funDef: undefined,
+                args: undefined,
+                repl: new ConstNode([0], new ValueType().addNumber().addSize(1), origExpr, undefined, inputsWontChangeValue(args))
+            }: nArgs.length === 1? {
+                funDef: undefined,
+                args: undefined,
+                repl: nArgs[0]
+            }: {
+                funDef: funDef,
+                args: nArgs,
+                repl: undefined
+            };
+      case "minus":
+        if (args.length !== 2) {
+            return undefined;
+        }
+        if (isNumConst(args[1], 0)) {
+            return {
+                    funDef: undefined,
+                    args: undefined,
+                    repl: args[0]
+                };
+        }
+        if (isNumConst(args[0], 0)) {
+            return {
+                    funDef: uminus,
+                    args: [args[1]],
+                    repl: undefined
+            };
+        }
+        break;
+      case "mul":
+        nArgs = args.filter(arg => !isNumConst(arg, 1));
+        if (nArgs.length === args.length) {
+            return undefined;
+        }
+        return nArgs.length === 0? {
+                funDef: undefined,
+                args: undefined,
+                repl: new ConstNode([1], new ValueType().addNumber().addSize(1), origExpr, undefined, inputsWontChangeValue(args))
+            }: nArgs.length === 1? {
+                funDef: undefined,
+                args: undefined,
+                repl: nArgs[0]
+            }: {
+                funDef: funDef,
+                args: nArgs,
+                repl: undefined
+            };
+      case "div":
+        if (args.length !== 2) {
+            return undefined;
+        }
+        if (isNumConst(args[1], 1)) {
+            return {
+                    funDef: undefined,
+                    args: undefined,
+                    repl: args[0]
+                };
+        }
+        break;
+      case "logb":
+        if (args.length !== 2) {
+            return undefined;
+        }
+        if (isNumConst(args[1], 10)) {
+            return {
+                    funDef: log10,
+                    args: [args[0]],
+                    repl: undefined
+                };
+        }
+        if (isNumConst(args[1], 2)) {
+            return {
+                    funDef: log2,
+                    args: [args[0]],
+                    repl: undefined
+                };
+        }
+        if (isNumConst(args[1], Math.E)) {
+            return {
+                    funDef: ln,
+                    args: [args[0]],
+                    repl: undefined
+                };
+        }
+        break;
+      case "pow":
+        if (args.length !== 2) {
+            return undefined;
+        }
+        if (isNumConst(args[0], Math.E)) {
+            return {
+                    funDef: exp,
+                    args: [args[1]],
+                    repl: undefined
+                };
         }
         break;
     }
@@ -1658,7 +1819,8 @@ function determineQueryValueType(q: Expression, data: FunctionNode): ValueType {
     }
     if (containsSelection || possiblyUndef) {
         valueType = valueType.copy();
-        valueType.sizes = ValueTypeSize.max(valueType.sizes);
+        valueType.sizes =
+            ValueTypeSize.multiplySizes(data.valueType.sizes, valueType.sizes);
     }
     if (data.valueType.remote) {
         valueType = valueType.copy().addRemote();
@@ -3643,7 +3805,8 @@ function buildFunctionNode(node: PathTreeNode, origin: number, defun: number, su
 var appStateSources: {[wrPath: string]: {[nodeId: number]: PathTreeNode}} = {};
 
 class WritableNodePath {
-    functionNode: FunctionNode;
+    qualifiers: SingleQualifier[];
+    functionNode: StorageNode;
     path: string[];
 }
 
@@ -3691,12 +3854,12 @@ function buildToMergeNode(node: PathTreeNode, origin: number, wrNode: WriteNode)
     var toNode: PathTreeNode = node.next["to"];
     gErrContext.enter(toNode, undefined);
     var toFunc: FunctionNode = buildFunctionNode(toNode, origin, 0, undefined);
-    gErrContext.leave();
     var wrNodes: WritableNodePath[] = toFunc === undefined? undefined:
-                                     toFunc.extractWritableDestinations([], {});
+                                 toFunc.extractWritableDestinations([], {});
 
     if (wrNodes === undefined) {
         Utilities.warnOnce("cannot write to:\n// " + toNode.toString().split("\n").join("\n// "));
+        gErrContext.leave();
         gErrContext.leave();
         return undefined;
     }
@@ -3706,8 +3869,10 @@ function buildToMergeNode(node: PathTreeNode, origin: number, wrNode: WriteNode)
             Utilities.warnOnce("cannot write to constant: " + toNode.toString().split("\n").join("\n// "));
         }
         gErrContext.leave();
+        gErrContext.leave();
         return undefined;
     }
+    gErrContext.leave();
 
     var mergeNode: PathTreeNode = node.next["merge"];
     gErrContext.enter(mergeNode, undefined);
@@ -3725,13 +3890,14 @@ function buildToMergeNode(node: PathTreeNode, origin: number, wrNode: WriteNode)
     // only for storage nodes, unfortunately.
     for (var i: number = 0; i < wrNodes.length; i++) {
         if (wrNodes[i].functionNode instanceof StorageNode) {
-            var stn = <StorageNode> wrNodes[i].functionNode;
+            var stn = wrNodes[i].functionNode;
             var wrPath: string = stn.localToArea + ":" + stn.path.join(".");
             if (!(wrPath in appStateSources)) {
                 appStateSources[wrPath] = {};
             }
             appStateSources[wrPath][node.id] = node;
-            stn.makeCompatible(addPathToType(mergeExpr.valueType, wrNodes[i].path));
+            var possibleMergeValues = mergeExpr.valueUnderQualifier(wrNodes[i].qualifiers, []);
+            stn.makeCompatible(addPathToType(possibleMergeValues.valueType, wrNodes[i].path));
             if (stn.valueType.isDataAndAreas()) {
                 Utilities.warnOnce("both data and areas in app state: " +
                                    stn.path.join(".") + " @" + stn.localToArea +

@@ -20,6 +20,7 @@ type CdlExpression = any;
 
 enum ExpressionType {
     builtInFunction,
+    javaScriptFunction,
     attributeValue,
     query,
     functionApplication,
@@ -64,6 +65,7 @@ function getCdlExpressionType(e: CdlExpression): ExpressionType {
     assert(!(e instanceof Expression), "DEBUGGING!!!");
     if (e instanceof Object) {
         return e instanceof BuiltInFunction? ExpressionType.builtInFunction:
+               e instanceof ForeignJavaScriptFunction? ExpressionType.javaScriptFunction:
                e instanceof ChildExistence? ExpressionType.childExistence:
                e instanceof ClassName? ExpressionType.className:
                e instanceof Negation? ExpressionType.negation:
@@ -684,6 +686,41 @@ class ExpressionBuiltInFunction extends ExpressionConstant {
     }
 }
 
+class ExpressionJavaScriptFunction extends ExpressionConstant {
+    expression: ForeignJavaScriptFunction;
+
+    constructor(expression: ForeignJavaScriptFunction) {
+        super(expression, ExpressionType.builtInFunction);
+    }
+
+    static getExpressionDict(): ExpressionDict {
+        return new ExpressionDictByName(function (e: ExpressionJavaScriptFunction): string {
+            return e.expression.name;
+        });
+    }
+
+    isSimpleValue(): boolean {
+        return false;
+    }
+
+    isUnmergeable(): boolean {
+        return true;
+    }
+
+    cloneBase(): Expression {
+        return new ExpressionJavaScriptFunction(this.expression);
+    }
+
+    buildFunctionNode(origin: number, defun: number, suppressSet: boolean, context: number): FunctionNode {
+        Utilities.error("cannot build function node for built-in function (no brackets around " + this.expression.name + "?)");
+        return undefined;
+    }
+
+    toCdlString(formattingOptions?: CDLFormattingOptions, indent?: string): string {
+        return this.expression.toCdl();
+    }
+}
+
 class ExpressionAttributeValue extends ExpressionWithArguments {
     attributes: string[]; // The sorted list of attributes of the arguments
 
@@ -1055,6 +1092,7 @@ var unmergeableBuiltInFunctions: {[funName: string]: boolean} = {
 	"changed":                       true,
 	"displayWidth":                  true,
 	"displayHeight":                 true,
+    "baseLineHeight":                true,
 	"dateToNum":                     true,
 	"numToDate":                     true,
 	"stringToNumber":                true,
@@ -2606,6 +2644,7 @@ class ExpressionStore {
     constructor() {
         this.expressions = [
             ExpressionBuiltInFunction.getExpressionDict(),
+            ExpressionJavaScriptFunction.getExpressionDict(),
             ExpressionAttributeValue.getExpressionDict(),
             ExpressionQuery.getExpressionDict(),
             ExpressionFunctionApplication.getExpressionDict(),
@@ -2733,6 +2772,9 @@ class ExpressionStore {
         switch (type) {
           case ExpressionType.builtInFunction:
             expr = new ExpressionBuiltInFunction(expression);
+            break;
+          case ExpressionType.javaScriptFunction:
+            expr = new ExpressionJavaScriptFunction(expression);
             break;
           case ExpressionType.projector:
             expr = new ExpressionProjector(expression);

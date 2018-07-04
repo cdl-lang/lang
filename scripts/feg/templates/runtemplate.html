@@ -15,6 +15,14 @@
       margin: 0px;
       padding: 0px;
     }
+    @keyframes rootDivInitialAnimation {
+        from {
+            opacity: 0
+        }
+        to {
+            opacity: 1
+        }
+    }
   </style>
   <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900">
   %%include%%: fonturls
@@ -32,12 +40,13 @@
       window.onload = mondriaOnloadInitializations;
       function mondriaOnloadInitializations()
       {
+        RemoteMgr.appName = "%%title:()%%";
         mondriaOnLoadDate = new Date();
         console.log('Time to onload=' +
           (mondriaOnLoadDate.getTime() - mondriaStartDate.getTime()) + 'ms');
       
         initializeModeDetection();
-        main();
+        cdlMain();
       }
     </script>
 
@@ -47,24 +56,20 @@
 
 <body style="overflow: hidden;">
 
-  <div id="mondriaSplashScreenBackground" style="background-color:#efefde; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000002;">
-    <div id="mondriaSplashScreenDiv" style="position: absolute; margin: auto; top: 0; right: 0; bottom: 0; left: 0; z-index:2000000002; width:250px; height: 250px; text-align: center;">
-      <img id="mondriaSplashScreenLogo" src="%%image:(cdl/core/design/img/MondriaLogoAlphaNoCircle.svg)%%" style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%;">        
-      <span id="mondriaSplashScreenText" style="font-family:Roboto; color:darkgray; position:absolute; top:65%; transform: translateX(-50%);">Initializing</span>
-      <img id="mondriaSplashScreenDots" src="%%image:(cdl/core/design/img/three_dots_animation/three_dots_0.svg)%%" style="position: absolute; top: 60%; transform: translateX(-50%); width: 20%; height: 20%;">    
-    </div>
+  <div id="cdlSplashScreenBackground" style="background-color:#efefef; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000002;">
+    <iframe id="cdlSplashScreenFrame" src="%%splashScreenUrl:()%%" style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; border-style: none;">
+    </iframe>
   </div>
 
-
-  <div id="mondriaTaskRunningDiv" hidden=true style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000001; background-color: #e0e0e8; transition: opacity 4s;">
-    <img id="mondriaTaskSpinnerElt" src="%%image:(cdl/core/design/img/hourglass.svg)%%" style="position: absolute; top: 45%; left: 45%; width: 50px; height: 50px;">
-  </div>
+<!--  <div id="cdlTaskRunningDiv" hidden=true style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; z-index:2000000001; background-color: #e0e0e8; transition: opacity 4s;">
+    <img id="cdlTaskSpinnerElt" src="%%image:(common/design/img/hourglass.svg)%%" style="position: absolute; top: 45%; left: 45%; width: 50px; height: 50px;">
+  </div> -->
 
   %%include%%: source
   %%include%%: foreign
-  %%include%%: <scripts/feg/functionExecute.postlude.js>
+  %%include%%: <scripts/feg/functionExecute.js>
 
-  <div id="mondriaRootDiv" style="overflow: hidden; transition: opacity 4s;"></div>
+  <div id="cdlRootDiv" style="overflow: hidden; visibility: hidden; transition: opacity 4s;"></div>
 
 </body>
 

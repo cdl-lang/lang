@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // This table is stored inside a merge group and stores information
 // about the source nodes mapped by the mappings in the group. The
 // information in this table only depends on the source data and the
@@ -565,14 +564,17 @@ function identitySourceNodesUpdateIdentity(sourceId, refCount, newIdentity)
     // decrease reference count of old identity
 
     var idNodeId = this.byIdentities.get(oldIdentity);
-    var oldEntry = this.identityNodes.get(idNodeId);
 
-    oldEntry.count -= refCount;
+    if(idNodeId !== undefined) {
+        var oldEntry = this.identityNodes.get(idNodeId);
+
+        oldEntry.count -= refCount;
     
-    if(oldEntry.count <= 0) {
-        this.identityNodes.delete(idNodeId);
-        this.byIdentities.delete(oldIdentity);
-        update.removed.push(idNodeId);
+        if(oldEntry.count <= 0) {
+            this.identityNodes.delete(idNodeId);
+            this.byIdentities.delete(oldIdentity);
+            update.removed.push(idNodeId);
+        }
     }
 
     // increase reference count of new identity

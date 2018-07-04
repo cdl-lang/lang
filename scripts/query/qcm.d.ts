@@ -53,6 +53,7 @@ declare class QCM {
 }
 
 declare class InternalQCM extends QCM {
+    constructor(roundingSpecs: any, scheduleFunc: () => void);
 }
 
 declare class ElementNode {

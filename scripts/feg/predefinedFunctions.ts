@@ -37,19 +37,16 @@ var div: BuiltInFunction = new BuiltInFunction("div", 2, 2, numericValueType);
 var pow: BuiltInFunction = new BuiltInFunction("pow", 2, 2, numericValueType);
 var mod: BuiltInFunction = new BuiltInFunction("mod", 2, 2, numericValueType);
 var remainder: BuiltInFunction = new BuiltInFunction("remainder", 2, 2, numericValueType);
-var and: BuiltInFunction = new BuiltInFunction("and", 2, Infinity, boolValueType);
-var ln: BuiltInFunction = new BuiltInFunction("ln", 1, 1, numericValueType);
-var log10: BuiltInFunction = new BuiltInFunction("log10", 1, 1, numericValueType);
+var and: BuiltInFunction = new BuiltInFunction("and", 2, Infinity, boolValueType.addSize(1));
 var logb: BuiltInFunction = new BuiltInFunction("logb", 2, 2, numericValueType);
-var exp: BuiltInFunction = new BuiltInFunction("exp", 1, 1, numericValueType);
-var or: BuiltInFunction = new BuiltInFunction("or", 2, Infinity, boolValueType);
-var not: BuiltInFunction = new BuiltInFunction("not", 1, 1, boolValueType);
+var or: BuiltInFunction = new BuiltInFunction("or", 2, Infinity, boolValueType.addSize(1));
+var not: BuiltInFunction = new BuiltInFunction("not", 1, 1, boolValueType.addSize(1));
 var offset: BuiltInFunction = new BuiltInFunction("offset", 2, 3, numericValueType.copy().addSize(0, Infinity), true, true);
 var coordinates: BuiltInFunction = new BuiltInFunction("coordinates", 1, 1, anyDataValueType, false, true, true);
 var lessThan: BuiltInFunction = new BuiltInFunction("lessThan", 2, 2, boolValueType);
 var lessThanOrEqual: BuiltInFunction = new BuiltInFunction("lessThanOrEqual", 2, 2, boolValueType);
-var equal: BuiltInFunction = new BuiltInFunction("equal", 2, 2, boolValueType);
-var notEqual: BuiltInFunction = new BuiltInFunction("notEqual", 2, 2, boolValueType);
+var equal: BuiltInFunction = new BuiltInFunction("equal", 2, 2, boolValueType.addSize(1));
+var notEqual: BuiltInFunction = new BuiltInFunction("notEqual", 2, 2, boolValueType.addSize(1));
 var greaterThanOrEqual: BuiltInFunction = new BuiltInFunction("greaterThanOrEqual", 2, 2, boolValueType);
 var greaterThan: BuiltInFunction = new BuiltInFunction("greaterThan", 2, 2, boolValueType);
 var map: BuiltInFunction = new BuiltInFunction("map", 2, 2, undefined);
@@ -81,14 +78,14 @@ var embeddingStar: BuiltInFunction = new BuiltInFunction("embeddingStar", 0, 1, 
 var expressionOf: BuiltInFunction = new BuiltInFunction("expressionOf", 0, 1, undefined, true, true);
 var referredOf: BuiltInFunction = new BuiltInFunction("referredOf", 0, 1, undefined, true, true);
 var intersectionParentOf: BuiltInFunction = new BuiltInFunction("intersectionParentOf", 0, 1, undefined, true, true);
-var debugNodeToStr: BuiltInFunction = new BuiltInFunction("debugNodeToStr", 1, 2, stringValueType);
+var debugNodeToStr: BuiltInFunction = new BuiltInFunction("debugNodeToStr", 1, 2, stringValueType.addSize(1));
 var size: BuiltInFunction = new BuiltInFunction("size", 1, 1, numericValueType.copy().addSize(1));
 var pointer: BuiltInFunction = new BuiltInFunction("pointer", 0, 0, areaZeroValueType.copy().addSize(1));
 var sequence: BuiltInFunction = new BuiltInFunction("sequence", 1, 1, numericValueType.copy().addSize(0, Infinity));
 var reverse: BuiltInFunction = new BuiltInFunction("reverse", 1, 1, undefined);
 var pos: BuiltInFunction = new BuiltInFunction("pos", 2, 2, undefined);
 var range: BuiltInFunction = new BuiltInFunction("range", 2, 2, undefined);
-var arg: BuiltInFunction = new BuiltInFunction("arg", 2, 2, numOrStrOrBoolValueType.copy().addSize(1));
+var arg: BuiltInFunction = new BuiltInFunction("arg", 2, 2, numOrStrOrBoolValueType.copy().addSize(0, 1));
 var merge: BuiltInFunction = new BuiltInFunction("merge", 1, Infinity, undefined);
 var mergeWrite: BuiltInFunction = new BuiltInFunction("mergeWrite", 1, Infinity, undefined);
 var areaOfClass: BuiltInFunction = new BuiltInFunction("areaOfClass", 1, 1, undefined, false, true);
@@ -114,16 +111,13 @@ var loginInfo: BuiltInFunction = new BuiltInFunction("loginInfo", 0, 1,
     addSize(1));
 var timestamp: BuiltInFunction = new BuiltInFunction("timestamp", 1, 1, numericValueType.copy().addSize(1));
 var displayWidth: BuiltInFunction =
-    new BuiltInFunction("displayWidth", 0, 1,
-                        numericValueType.copy().addSize(0, Infinity),
-                        true, true);
+    new BuiltInFunction("displayWidth", 0, 1, numericValueType, true, true);
 var displayHeight: BuiltInFunction =
-    new BuiltInFunction("displayHeight", 0, 1,
-                        numericValueType.copy().addSize(0, Infinity),
-                        true, true);
+    new BuiltInFunction("displayHeight", 0, 1, numericValueType, true, true);
+var baseLineHeight: BuiltInFunction =
+    new BuiltInFunction("baseLineHeight", 0, 1, numericValueType, true, true);
 var dateToNum: BuiltInFunction = new BuiltInFunction("dateToNum", 2, 2, numericValueType);
 var numToDate: BuiltInFunction = new BuiltInFunction("numToDate", 2, 2, stringValueType);
-var stringToNumber: BuiltInFunction = new BuiltInFunction("stringToNumber", 1, 1, numericValueType);
 var escapeQuotes: BuiltInFunction = new BuiltInFunction("escapeQuotes", 1, 1, anyDataValueType);
 var areasUnderPointer: BuiltInFunction = new BuiltInFunction("areasUnderPointer", 0, 0, undefined);
 var globalDefaults: BuiltInFunction = new BuiltInFunction("globalDefaults", 0, 0, anyDataValueType.copy().addSize(1));
@@ -143,6 +137,7 @@ var remoteStatus: BuiltInFunction = new BuiltInFunction("remoteStatus", 1, 1,
     new ValueType().
         addAttribute("state", new ValueType().addString().addSize(1)).
     addSize(0, 1));
+var urlStr: BuiltInFunction = new BuiltInFunction("urlStr", 1, 1, stringValueType);
 
 // set functions
 var intersect: BuiltInFunction = new BuiltInFunction("intersect", 2, 2, undefined);

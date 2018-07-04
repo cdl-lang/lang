@@ -3562,7 +3562,9 @@ class OrderingResultWatcher extends FuncResult
 }
 
 // TODO: find place for global declaration for the internal QCM
-var globalInternalQCM: QCM = new InternalQCM();
+var globalInternalQCM: QCM = new InternalQCM(undefined, function() {
+    globalExecutePathNodeQueue.schedule();
+});
 
 function accuquery(ds: DataSource): string {
     function accToString(acc: AccuQuery): string {

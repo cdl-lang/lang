@@ -43,7 +43,6 @@ if (typeof window !== "undefined") {
 }
 
 var inMouseDown = false;
-var gExpTaskTimeCheck = 0;
     
 // Don't process events that are equal to gDontProcessEvent. They have been
 // created in the event handler and should only be handled by the targeted
@@ -73,14 +72,14 @@ var domEventFalseResult = new Result(constEmptyOS);
 // The set of overlapping areas is computed using the embedding hierarchy,
 // and is ordered by z-value.
 // 
-// The cursor is set on the outermost div, with id mondriaRootDiv.
+// The cursor is set on the outermost div, with id cdlRootDiv.
 //
 
-// TODO: walk up parents from mondriaRootDiv, and subtract their clientLeft,
+// TODO: walk up parents from cdlRootDiv, and subtract their clientLeft,
 // and clientTop and add scrollLeft and scrollTop from/to clientX and clientY
-// to compensate when mondriaRootDiv's top/left is not at (0, 0).
+// to compensate when cdlRootDiv's top/left is not at (0, 0).
 
-type OverlappingArea = {recipient: CoreArea; relX: number; relY: number;};
+type OverlappingArea = {recipient: CoreArea; insideVisibleRegion: boolean; relX: number; relY: number;};
 type OverlappingAreaList = OverlappingArea[];
 type EmittedValueList = { value: string; areas: CoreArea[]; }[];
 
@@ -93,14 +92,14 @@ class MondriaDomEvent {
     domEventAreasUnderPointerResult: Result = new Result();
     areaChangeCounter: number = areaChangeCounter;
     areaWithFocus: CoreArea = undefined;
-    nextAreaWithFocus: CoreArea[] = [];
+    nextAreaWithFocus: {area: CoreArea, focus: boolean}[] = [];
     eventDiv: HTMLElement = undefined;
     debugAbortId: string = undefined;
 
     // When true, the mouse is over 'screenArea'
     mouseOverScreenArea: boolean = true;
 
-    // When 0, the mondriaRootDiv (which contains the screenArea) is the top
+    // When 0, the cdlRootDiv (which contains the screenArea) is the top
     // div; when 1 or 2, the "runningDiv" is on top (2 means the embedded div,
     // spinnerElt, is showing)
     topDivState: number = 0;
@@ -167,7 +166,7 @@ class MondriaDomEvent {
     //  to allow interception of mouse events, and set global cursor.
     //
     createDiv(): void {
-        this.eventDiv = document.getElementById("mondriaRootDiv");
+        this.eventDiv = document.getElementById("cdlRootDiv");
         this.eventDiv.style.cursor = "default";
         this.eventDiv.style.outline = "none";
     
@@ -225,7 +224,6 @@ class MondriaDomEvent {
             this.checkClickExpirationTask = setTimeout(function() {
                 self.checkClickExpired(Date.now(), 0, 0, true, "timeout");
             }, this.eventAutomaton.maxClickDelta);
-            gExpTaskTimeCheck = Date.now();
         }
     }
     
@@ -291,7 +289,7 @@ class MondriaDomEvent {
     
         if (logEventHistory) {
             this.eventHistory.push({
-                type: "mousemove",
+                type: domEvent.type,
                 absX: domEvent.clientX,
                 absY: domEvent.clientY,
                 time: Date.now(),
@@ -328,7 +326,7 @@ class MondriaDomEvent {
         domEvent.stopImmediatePropagation();
         queueEvent(domEvent, undefined, undefined, domEventEmptyOS,
                 this.pointerObj, overlappingAreaList, undefined,
-                undefined, undefined, undefined);
+                undefined, undefined, undefined, undefined, undefined);
     }
 
     inEventDivCoordinates(clientX: number, clientY: number): boolean {
@@ -363,7 +361,8 @@ class MondriaDomEvent {
             time: [Date.now()]
         };
         queueEvent(domEvent, message, undefined, [], this.pointerObj, undefined,
-                   undefined, undefined, undefined, undefined);
+                   undefined, undefined, undefined, undefined, undefined,
+                   undefined);
     }
 
     clearDragState(): boolean {
@@ -372,7 +371,8 @@ class MondriaDomEvent {
             this.dragValue = constEmptyOS;
             queueEvent(new ImpersonatedDomEvent("cleardragstate"), undefined,
                        undefined, [], this.pointerObj, undefined,
-                       domEventEmptyOS, undefined, undefined, undefined);
+                       domEventEmptyOS, undefined, undefined, undefined,
+                       undefined, undefined);
             return true;
         }
         return false;
@@ -408,7 +408,8 @@ class MondriaDomEvent {
             time: [Date.now()]
         };
         queueEvent(domEvent, message, undefined, [], this.pointerObj, undefined,
-                   undefined, undefined, undefined, undefined);
+                   undefined, undefined, undefined, undefined, undefined,
+                   undefined);
     }
     
     dragValue: any[] = constEmptyOS;
@@ -443,7 +444,7 @@ class MondriaDomEvent {
             }
             queueEvent(domEvent, undefined, undefined, domEventEmptyOS,
                        this.pointerObj, undefined, this.dragValue,
-                       undefined, undefined, undefined);
+                       undefined, undefined, undefined, undefined, undefined);
         }
         this.dragCounter = 1;
     }
@@ -467,7 +468,7 @@ class MondriaDomEvent {
         markEventStart("dragover");
         if (logEventHistory) {
             this.eventHistory.push({
-                type: "dragover",
+                type: domEvent.type,
                 absX: domEvent.clientX,
                 absY: domEvent.clientY,
                 time: Date.now(),
@@ -488,7 +489,7 @@ class MondriaDomEvent {
                                                           domEvent.clientY);
         queueEvent(domEvent, undefined, undefined, domEventEmptyOS,
                   this.pointerObj, overlappingAreaList, this.dragValue,
-                  undefined, undefined, undefined);
+                  undefined, undefined, undefined, undefined, undefined);
     }
     
     dragEndHandler(domEvent: DragEvent): void {
@@ -522,6 +523,7 @@ class MondriaDomEvent {
         markEventStart("pick");
         this.fileChoice(domEvent, "pick", fileList, [{
             recipient: inputArea,
+            insideVisibleRegion: true,
             relX: 0,
             relY: 0
         }]);
@@ -587,10 +589,11 @@ class MondriaDomEvent {
         // Propagate FileChoice over the areas
         queueEvent(domEvent, message, [{value: subType, areas: areaList.slice(0)}],
                    areaList, undefined, overlappingAreaList, undefined,
-                   undefined, undefined, undefined);
+                   undefined, undefined, undefined, undefined, undefined);
         queueEvent(new ImpersonatedMouseDomEvent("mousemove", undefined, absX, absY, undefined, []),
                    undefined, undefined, domEventEmptyOS, this.pointerObj,
-                   overlappingAreaList, undefined, undefined, undefined, undefined);
+                   overlappingAreaList, undefined, undefined, undefined,
+                   undefined, undefined, undefined);
     }
     
     // Translates non-standard domEvent.key into standard names, also when the
@@ -860,11 +863,20 @@ class MondriaDomEvent {
         }
         domEvent.stopPropagation();
         domEvent.stopImmediatePropagation();
+        // First create empty event for mousemove, so that pointerInArea
+        // changes before the MouseDown begins
+        queueEvent(new ImpersonatedDomEvent("MouseMove"), undefined, undefined,
+                   domEventEmptyOS, this.pointerObj, overlappingAreaList, undefined,
+                   undefined, undefined, undefined, undefined, undefined);
         // Note: MouseGestureExpired doesn't update the pointer
         queueEvent(domEvent, message, subTypes, areaList, undefined,
                    overlappingAreaList, undefined, undefined, undefined,
-                   undefined, copyTouch(touch1));
-        return;
+                   undefined, copyTouch(touch1), undefined);
+        if (domEvent.touches.length === 0) {
+            queueEvent(domEvent, undefined, undefined, [], undefined, [],
+                       undefined, undefined, undefined, undefined,
+                       copyTouch(touch1), undefined);
+        }
     }
 
     touchCancelHandler(domEvent: TouchEvent): void {
@@ -902,7 +914,7 @@ class MondriaDomEvent {
 
         if (logEventHistory) {
             this.eventHistory.push({
-                type: "mousemove",
+                type: domEvent.type,
                 absX: clientX,
                 absY: clientY,
                 time: Date.now(),
@@ -938,7 +950,7 @@ class MondriaDomEvent {
         domEvent.stopImmediatePropagation();
         queueEvent(domEvent, undefined, undefined, domEventEmptyOS,
                 this.pointerObj, overlappingAreaList, undefined,
-                undefined, undefined, undefined, copyTouch(touch1));
+                undefined, undefined, undefined, copyTouch(touch1), undefined);
     }
 
     /**
@@ -950,11 +962,6 @@ class MondriaDomEvent {
      * @param {any} force when true, the expiration is forced
      */
     checkClickExpired(t: number, x: number, y: number, force: boolean, reason: string) {
-        if (reason === "timeout") {
-            if (t - gExpTaskTimeCheck < this.eventAutomaton.maxClickDelta) {
-                console.log("premature time out for clicks", t - gExpTaskTimeCheck);
-            }
-        }
         if (this.eventAutomaton.canEmitClick() &&
               (force || this.eventAutomaton.clickExpired(t, x, y))) {
             this.cancelExpirationTask();
@@ -990,7 +997,7 @@ class MondriaDomEvent {
                 var area = allAreaMonitor.getAreaById(areaId);
                 if (area !== undefined) {
                     overlappingAreas =
-                        [{recipient: area, relX: undefined, relY: undefined}].
+                        [{recipient: area, insideVisibleRegion: true, relX: undefined, relY: undefined}].
                         concat(overlappingAreas.filter(a => a.recipient !== area));
                 }
             }
@@ -1064,12 +1071,16 @@ class MondriaDomEvent {
     
         // Do not prevent default when first is clickable
         var preventDefault: boolean = true;
+        var clickableElement: Element = undefined;
+        var changes: any = undefined;
         if (areaList.length > 0) {
             var area: CoreArea = areaList[0];
             if (area instanceof DisplayArea && area.display !== undefined &&
-                  area.display.displayElement !== undefined &&
-                  MondriaDomEvent.findClickable(area.display.displayElement.content, absX, absY)) {
-                preventDefault = false;
+                  area.display.displayElement !== undefined) {
+                clickableElement = MondriaDomEvent.findClickable(
+                    area.display.displayElement.content, absX, absY);
+                preventDefault = clickableElement === undefined;
+                changes = area.getInputChanges();
             }
         }
         if (preventDefault) {
@@ -1081,7 +1092,7 @@ class MondriaDomEvent {
         queueEvent(domEvent, message, subTypes, areaList,
                 (type !== "MouseGestureExpired"? this.pointerObj: undefined),
                 overlappingAreaList, undefined, buttonStateChanges,
-                undefined, undefined);
+                changes, undefined, undefined, clickableElement);
     }
     
     wheelEventHandler(domEvent: WheelEvent): void {
@@ -1124,13 +1135,25 @@ class MondriaDomEvent {
             modifier: modifier
         };
     
-        domEvent.preventDefault();
+        // Do not prevent default when first is clickable
+        var preventDefault: boolean = true;
+        if (areaList.length > 0) {
+            var area: CoreArea = areaList[0];
+            if (area instanceof DisplayArea && area.display !== undefined &&
+                  area.display.displayElement !== undefined &&
+                  MondriaDomEvent.findClickable(area.display.displayElement.content, absX, absY) !== undefined) {
+                preventDefault = false;
+            }
+        }
+        if (preventDefault) {
+            domEvent.preventDefault();
+        }
         domEvent.stopPropagation();
         domEvent.stopImmediatePropagation();
         queueCancelEventsOfType("wheel");
         queueEvent(domEvent, message, [], areaList, undefined,
                    overlappingAreaList, undefined, undefined,
-                   undefined, undefined);
+                   undefined, undefined, undefined, undefined);
     }
     
     // Looks for a clickable/actionable element in the DOM elements under 'element'
@@ -1140,7 +1163,8 @@ class MondriaDomEvent {
         if (element instanceof HTMLAnchorElement ||
               (element instanceof HTMLDivElement &&
                (element.contentEditable === "true" || element.contentEditable === "")) ||
-              element instanceof HTMLInputElement) {
+              element instanceof HTMLInputElement  ||
+              element instanceof HTMLTextAreaElement) {
             var clientRect = element.getBoundingClientRect();
             return clientRect.top <= clientY && clientY <= clientRect.bottom &&
                    clientRect.left <= clientX && clientX <= clientRect.right?
@@ -1171,6 +1195,7 @@ class MondriaDomEvent {
               this.rootArea.pointInsideDisplay(x, y, offsetFromParent)) {
             var rootEntry: OverlappingArea = {
                 recipient: this.rootArea,
+                insideVisibleRegion: true, // Doesn't matter
                 relX: x,
                 relY: y
             };
@@ -1225,10 +1250,13 @@ class MondriaDomEvent {
             var offsetFromParent: Point = { left: 0, top: 0 };
             if (child instanceof DisplayArea &&
                   child.pointInsideDisplay(relX, relY, offsetFromParent)) {
+                var x = relX - offsetFromParent.left,
+                    y = relY - offsetFromParent.top;
                 overlapping.push({
                     recipient: child,
-                    relX: relX - offsetFromParent.left,
-                    relY: relY - offsetFromParent.top
+                    insideVisibleRegion: child.isOpaquePosition(x, y),
+                    relX: x,
+                    relY: y
                 });
             }
         }
@@ -1236,9 +1264,13 @@ class MondriaDomEvent {
         return overlapping;
     }
     
-    setNextFocussedArea(area: CoreArea): void {
-        this.nextAreaWithFocus.push(area);
+    setNextFocussedArea(area: CoreArea, focus: boolean): void {
+        this.nextAreaWithFocus.push({area: area, focus: focus});
         globalSetFocusTask.schedule();
+    }
+
+    focusChanged(area: CoreArea): boolean {
+        return this.nextAreaWithFocus.some(focusElt => focusElt.area === area);
     }
 
     updateFocus(): void {
@@ -1246,11 +1278,14 @@ class MondriaDomEvent {
 
         this.nextAreaWithFocus = [];
         for (var i = 0; i < nextAreaWithFocus.length; i++) {
-            var area = nextAreaWithFocus[i];
+            var area = nextAreaWithFocus[i].area;
+            var focus = nextAreaWithFocus[i].focus;
             if (area !== undefined && !area.hasBeenDestroyed() &&
                   area.canReceiveFocus()) {
-                area.takeFocus();
-                return;
+                if (focus) {
+                    area.takeFocus();
+                    return;
+                }
             }
         }
         this.eventDiv.focus();
@@ -1380,7 +1415,8 @@ class MondriaDomEvent {
         }
         queueEvent(domEvent, message, undefined,
                    recipient === undefined? ["global"]: [recipient, "global"],
-                   undefined, [], undefined, undefined, undefined, undefined);
+                   undefined, [], undefined, undefined, undefined, undefined,
+                   undefined, undefined);
     }
     
     blockDefaultBrowserAction(key: string, modifiers: any): boolean {

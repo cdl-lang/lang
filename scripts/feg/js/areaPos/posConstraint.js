@@ -156,13 +156,19 @@ function posConstraintNewDescription(constraintDesc, priority)
     
     if(mustBeLinearConstraint(constraintDesc)) {
 
+        var ratio = ("ratio" in constraintDesc) ?
+            Number(getDeOSedValue(constraintDesc.ratio)) : undefined;
+
+        if(ratio < positioningDefaultZeroRounding &&
+           ratio > -positioningDefaultZeroRounding)
+            ratio = 0;
+        
         // is it a linear constraint with a 0 ratio?
         // we convert these to a segment constraint:
         // { pair1: { p1: <a>, p2: <b> }, pair2: { p1: <c>, p2: <d> }, ratio: 0}
         // becomes
         // { p1: <c>, p2: <d>, min:0, max:0, priority: maxNonSystemPosPriority }
-        if (("ratio" in constraintDesc) &&
-            (Number(getDeOSedValue(constraintDesc.ratio)) === 0)) {
+        if (ratio === 0) {
 
             // take the two points
             var desc = {};

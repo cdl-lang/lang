@@ -1,7 +1,7 @@
 
-ROOTDIR=../../../..
-UTIL=$(ROOTDIR)/util
-INCLUDEPATH=.;$(ROOTDIR)
+LANGDIR=../../../..
+UTIL=$(LANGDIR)/util
+INCLUDEPATH=.;$(LANGDIR)
 
 GENHTML=$(UTIL)/genHtml.pl
 GENINCJS=$(UTIL)/genIncJS.awk
@@ -32,11 +32,11 @@ endif
 %.html: %.js
 	$(GENINCJS) -v "includepath=$(INCLUDEPATH)" \
 		    -v "template=$(HTML_TEMPLATE_FILE)" \
-                    -v "rootdir=$(ROOTDIR)" \
+                    -v "rootdir=$(LANGDIR)" \
                     -v "out=$@" -v mode=html "$<"
 
 %.node.js: %.js
 	$(GENINCJS) -v "includepath=$(INCLUDEPATH)" \
 		    -v "template=$(NODEJS_TEMPLATE_FILE)" \
-                    -v "rootdir=$(ROOTDIR)" \
+                    -v "rootdir=$(LANGDIR)" \
                     -v "out=$@" -v mode=js "$<"

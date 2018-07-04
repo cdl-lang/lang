@@ -77,11 +77,12 @@ class IdentityQuery implements SimpleQuery {
         if (identifiers !== undefined) {
             var r: any[] = [];
             for (var i: number = 0; i !== data.length; i++) {
+                var d: any = data[i];
                 if (identifiers[i] in this.ids &&
-                    (this.data[this.ids[identifiers[i]]] === data[i] ||
-                     this.testSingle(data[i]))) {
+                      (this.data[this.ids[identifiers[i]]] === d ||
+                       this.testSingle(d))) {
                     selectedIdentifiers.push(identifiers[i]);
-                    r.push(data[i]);
+                    r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -163,7 +164,7 @@ class SimplePassThrough implements SimpleQuery {
                 var val: any = data[i];
                 if (!valueMap.has(val)) {
                     valueMap.add(val);
-                    res.push(data[i]);
+                    res.push(val);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -245,7 +246,11 @@ class SingleAttributeProjection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            var queryResult: any = data[i][this.attr];
+            var data_i: any = data[i];
+            if (typeof(data_i) !== "object") {
+                continue;
+            }
+            var queryResult: any = data_i[this.attr];
             if (queryResult !== undefined) {
                 if (!(queryResult instanceof Array)) {
                     r.push(queryResult);
@@ -317,7 +322,7 @@ class DoubleAttributeProjection implements SimpleQuery {
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object") {
-                var top: any[] = data[i][this.attr1];
+                var top: any[] = data_i[this.attr1];
                 if (top !== undefined) {
                     for (var j = 0; j < top.length; j++) {
                         var queryResult: any = top[j][this.attr2];
@@ -401,11 +406,12 @@ class SimpleTrueSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (data[i] !== false && data[i] !== undefined) {
+            var data_i: any = data[i];
+            if (data_i !== false && data_i !== undefined) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -452,11 +458,12 @@ class SingleAttributeTrueSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (isTrue(data[i][this.attr])) {
+            var data_i: any = data[i];
+            if (isTrue(data_i[this.attr])) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -504,11 +511,12 @@ class SimpleFalseSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (data[i] === false || data[i] === undefined) {
+            var data_i: any = data[i];
+            if (data_i === false || data_i === undefined) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -555,11 +563,78 @@ class SingleAttributeFalseSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (isFalse(data[i][this.attr])) {
+            var data_i: any = data[i];
+            if (typeof(data_i) === "object") {
+                var data_i_attr: any = data_i[this.attr];
+                if (isFalse(data_i_attr) && !isEmptyOS(data_i_attr)) {
+                    if (identifiers !== undefined) {
+                        selectedIdentifiers.push(identifiers[i]);
+                    }
+                    r.push(data_i);
+                    if (selectedPositions !== undefined) {
+                        selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
+                    }
+                }
+            }
+        }
+        return r;
+    }
+
+    testSingle(data: any): boolean {
+        return typeof(data) === "object" && isFalse(data[this.attr]) &&
+               !isEmptyOS(data[this.attr]);
+    }
+
+    testOS(data: any[]): boolean {
+        if (data !== undefined) {
+            for (var i: number = 0; i < data.length; i++) {
+                var d: any = data[i];
+                if (typeof(d) === "object" &&
+                      (!isFalse(d[this.attr]) || isEmptyOS(d[this.attr]))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    isEqual(sq: SimpleQuery): boolean {
+        return sq instanceof SingleAttributeFalseSelection &&
+            this.attr === (<SingleAttributeFalseSelection>sq).attr;
+    }
+
+    isProjection(): boolean {
+        return false;
+    }
+
+    canCache(): boolean {
+        return false;
+    }
+
+    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+        Utilities.error("do not call");
+        return undefined;
+    }
+}
+
+class SingleAttributePresentFalseSelection implements SimpleQuery {
+    attr: string;
+
+    constructor(attr: string) {
+        this.attr = attr;
+        if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeFalseSelection"});
+    }
+
+    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+        var r: any[] = [];
+
+        for (var i: number = 0; i !== data.length; i++) {
+            var data_i: any = data[i];
+            if (typeof(data_i) === "object" && isFalse(data_i[this.attr])) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -575,7 +650,7 @@ class SingleAttributeFalseSelection implements SimpleQuery {
     testOS(data: any[]): boolean {
         if (data !== undefined) {
             for (var i: number = 0; i < data.length; i++) {
-                if (isTrue(data[i][this.attr])) {
+                if (!isFalse(data[i][this.attr])) {
                     return false;
                 }
             }
@@ -627,12 +702,13 @@ class SimpleValueSelection implements SimpleQuery {
         var comp: SimpleValue = this.comp;
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (data[i] === comp ||
-                (data[i] instanceof RangeValue && data[i].match(comp))) {
+            var data_i: any = data[i];
+            if (data_i === comp ||
+                (data_i instanceof RangeValue && data_i.match(comp))) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -683,11 +759,12 @@ class SimpleSubstringSelection implements SimpleQuery {
         if (substr.strings.length === 1) {
             var re: RegExp = substr.regexps[0];
             for (var i: number = 0; i !== data.length; i++) {
-                if (typeof(data[i]) !== "object" && re.test(String(data[i]))) {
+                var data_i: any = data[i];
+                if (typeof(data_i) !== "object" && re.test(String(data_i))) {
                     if (identifiers !== undefined) {
                         selectedIdentifiers.push(identifiers[i]);
                     }
-                    r.push(data[i]);
+                    r.push(data_i);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -695,11 +772,12 @@ class SimpleSubstringSelection implements SimpleQuery {
             }
         } else {
             for (var i: number = 0; i !== data.length; i++) {
-                if (typeof(data[i]) !== "object" && substr.match(String(data[i]))) {
+                var data_i: any = data[i];
+                if (typeof(data_i) !== "object" && substr.match(String(data_i))) {
                     if (identifiers !== undefined) {
                         selectedIdentifiers.push(identifiers[i]);
                     }
-                    r.push(data[i]);
+                    r.push(data_i);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -755,11 +833,12 @@ class ElementReferenceSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (data[i] instanceof ElementReference && data[i].element === this.element) {
+            var data_i: any = data[i];
+            if (data_i instanceof ElementReference && data_i.element === this.element) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -933,11 +1012,12 @@ class SingleAttributeSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (typeof(data[i]) === "object" && this.attr in data[i]) {
+            var d: any = data[i];
+            if (typeof(d) === "object" && !isEmptyOS(d[this.attr])) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -947,13 +1027,14 @@ class SingleAttributeSelection implements SimpleQuery {
     }
 
     testSingle(data: any): boolean {
-        return typeof(data) === "object" && this.attr in data;
+        return typeof(data) === "object" && !isEmptyOS(data[this.attr]);
     }
 
     testOS(data: any[]): boolean {
         if (data !== undefined) {
             for (var i: number = 0; i < data.length; i++) {
-                if (typeof(data[i]) === "object" && this.attr in data[i]) {
+                var d: any = data[i];
+                if (typeof(d) === "object" && !isEmptyOS(d[this.attr])) {
                     return true;
                 }
             }
@@ -992,11 +1073,12 @@ class SingleAttributeAbsentSelection implements SimpleQuery {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
-            if (!(typeof(data[i]) === "object" && this.attr in data[i])) {
+            var data_i: any = data[i];
+            if (typeof(data_i) !== "object" || isEmptyOS(data_i[this.attr])) {
                 if (identifiers !== undefined) {
                     selectedIdentifiers.push(identifiers[i]);
                 }
-                r.push(data[i]);
+                r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -1006,13 +1088,14 @@ class SingleAttributeAbsentSelection implements SimpleQuery {
     }
 
     testSingle(data: any): boolean {
-        return !(typeof(data) === "object" && this.attr in data);
+        return typeof(data) !== "object" || isEmptyOS(data[this.attr]);
     }
 
     testOS(data: any[]): boolean {
         if (data !== undefined) {
             for (var i: number = 0; i < data.length; i++) {
-                if (!(typeof(data[i]) === "object" && this.attr in data[i])) {
+                var data_i: any = data[i];
+                if (typeof(data_i) !== "object" || isEmptyOS(data_i[this.attr])) {
                     return true;
                 }
             }
@@ -1110,8 +1193,9 @@ class SingleAttributeSimpleValueMultipleSelection implements SimpleQuery {
                 this.init();
             }
             for (var i: number = 0; i < data.length; i++) {
-                if (typeof(data[i]) === "object" && this.attr in data[i] &&
-                    data[i][this.attr].some((v: any): boolean => {
+                var data_i: any = data[i];
+                if (typeof(data_i) === "object" && this.attr in data_i &&
+                    data_i[this.attr].some((v: any): boolean => {
                         return v in this.comp ||
                                (v instanceof RangeValue &&
                                 this.compOS.some(function(c: any): boolean {
@@ -2215,7 +2299,7 @@ class SingleAttributeRangeSelection implements SimpleQuery {
             var ids: any[] = result.identifiers;
             var cache: SortedCacheElement[] = [];
             var hasRange: boolean = false;
-            var multipleValuesPerElement: boolean = false;
+            // var multipleValuesPerElement: boolean = false;
             for (var i: number = 0; i < result.value.length && !hasRange; i++) {
                 var d: any = data[i];
                 if (attr in d) {
@@ -2233,9 +2317,9 @@ class SingleAttributeRangeSelection implements SimpleQuery {
                             hasRange = true;
                         }
                     }
-                    if (j > 1) {
-                        multipleValuesPerElement = true;
-                    }
+                    // if (j > 1) {
+                    //     multipleValuesPerElement = true;
+                    // }
                 }
             }
             // TODO: store multipleValuesPerElement
@@ -2352,6 +2436,7 @@ function makeSimpleQuery(query: any, queryIds: any[]): SimpleQuery {
                 } else if (comp instanceof Array && comp.length === 0) { // query = {attr: o()}
                     // Cannot match anything
                     selections = [new SimpleSelectNone()];
+                    sq = selections[0]; // In case this is not the last element
                     break;
                 } else if (comp instanceof Negation) { // query = {attr: n(...)}
                     comp = singleton(comp.queries);
@@ -2406,8 +2491,8 @@ function makeSimpleQuery(query: any, queryIds: any[]): SimpleQuery {
                 } else if (keys.length === 1) { // nquery = n({attr: ...})
                     var attr: string = keys[0];
                     var comp: any = singleton(nquery[0][attr]);
-                    if (comp === true || comp === _) { // nquery = n({attr: true}) or n({attr: _})
-                        sq = new SingleAttributeAbsentSelection(attr);
+                    if (comp === true) { // nquery = n({attr: true})
+                        sq = new SingleAttributePresentFalseSelection(attr);
                     }
                 }
             }

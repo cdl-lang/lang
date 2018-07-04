@@ -52,34 +52,34 @@ class Result {
 
     // If value is used as a query, this is the function that implements it.
     // This is not left undefined, but rather deleted when absent.
-    compiledQuery: CompiledQuery[];
+    compiledQuery?: CompiledQuery[];
     // And the arguments that should  be passed along; these are SimpleQuery
     // objects constructed from the argument values
-    queryArguments: SimpleQuery[][];
+    queryArguments?: SimpleQuery[][];
     // And the number of values that are represented by each compiled query
-    nrQueryElements: number[];
+    nrQueryElements?: number[];
     // And the places where writes should go. For interpretation, see
     // CompiledQueryInfo.
-    writePaths: any;
+    writePaths?: any;
 
     // If the result is to be treated as atomic in a merge, this label is true
-    atomic: boolean;
+    atomic?: boolean;
     // If true, the result should be added to an os in a write
-    push: boolean;
+    push?: boolean;
     // If true, identities should be ignored. This flag is not copied, so
     // use it only directly in the area set data expression.
-    anonymize: boolean;
+    anonymize?: boolean;
     // When true, the destination of a write is deleted. Otherwise it's o().
-    erase: boolean;
+    erase?: boolean;
 
     // The identifiers for the values in the result
-    identifiers: any[];
+    identifiers?: any[];
 
     // Label for generating unique identifiers
-    uniqueIdPrefix: string;
+    uniqueIdPrefix?: string;
 
     // Label for data sources
-    dataSource: DataSourceComposable;
+    dataSource?: DataSourceComposable;
 
     // Label to indicate the status of app data or external sources (foreign
     // interfaces). Its value can be
@@ -87,7 +87,7 @@ class Result {
     // "remote": in sync with server/foreign interface
     // "waiting": waiting for server/foreign interface to return app state
     // "error": not properly synced to server or error during execution
-    remoteStatus: string;
+    remoteStatus?: string;
 
     // Counter for generating unique identifiers
     static nextUniqueIdPrefix: number = 0;
@@ -95,17 +95,17 @@ class Result {
     // The following are precursors to incremental updates. They are currently
     // only set by the areaMonitor (and it even doesn't use "modified").
     // The incremental flag is reset after a call to eval that returns true.
-    incremental: boolean;
-    added: any[];
-    modified: any[];
-    removed: any[];
+    incremental?: boolean;
+    added?: any[];
+    modified?: any[];
+    removed?: any[];
 
     // Points at the foreign interface that is under this path.
-    foreignInterfaceSource: ForeignInterface;
+    foreignInterfaceSource?: ForeignInterface;
 
     // This is space that can be used by a SimpleQuery for caching and sharing
     // information across similar operations on the same result.
-    simpleQueryCache: QueryCache;
+    simpleQueryCache?: QueryCache;
 
     constructor(v: any = undefined) {
         this.value = v;

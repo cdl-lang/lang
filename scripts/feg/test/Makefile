@@ -3,8 +3,8 @@
 
 JS_SOURCES=*.js
 
-ROOTDIR=../../../..
+LANGDIR=../../..
 
-CDLDIR=.
+CDLPATH=.;../../../../cdl-classes-and-applications-dev
 
-include $(ROOTDIR)/lang/util/mmk
+include $(LANGDIR)/util/mmk

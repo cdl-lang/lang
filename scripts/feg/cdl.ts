@@ -1336,6 +1336,56 @@ class NativeObjectWrapper extends NonAV {
     }
 }
 
+class ForeignJavaScriptFunction extends BuiltInFunction {
+    constructor(name: string, public f: (... args: any[]) => any, returnType: ValueType = numOrStrOrBoolValueType) {
+        super(name, 0, Infinity, returnType, false, false, false);
+        this.factory = EFForeignJavaScriptFunction.make;
+    }
+
+    isEqual(v: any): boolean {
+        return v instanceof ForeignJavaScriptFunction && v.name === this.name;
+    }
+
+    copy(): ForeignJavaScriptFunction {
+        return new ForeignJavaScriptFunction(this.name, this.f);
+    }
+
+    typeName(): string {
+        return "JavaScriptFunction";
+    }
+
+    match(v: any): boolean {
+        return v instanceof ForeignJavaScriptFunction && v.name === this.name;
+    }
+
+    marshalValue(xdr: XDR) {
+        throw new Error("Method not implemented.");
+    }
+}
+
+class ForeignJavaScriptObjectFunction extends ForeignJavaScriptFunction {
+    constructor(name: string, public f: (... args: any[]) => any, returnType: ValueType = numOrStrOrBoolValueType) {
+        super(name, f, returnType);
+        this.factory = EFForeignJavaScriptObjectFunction.make;
+    }
+
+    isEqual(v: any): boolean {
+        return v instanceof ForeignJavaScriptObjectFunction && v.name === this.name;
+    }
+
+    copy(): ForeignJavaScriptObjectFunction {
+        return new ForeignJavaScriptObjectFunction(this.name, this.f);
+    }
+
+    typeName(): string {
+        return "JavaScriptObjectFunction";
+    }
+
+    match(v: any): boolean {
+        return v instanceof ForeignJavaScriptObjectFunction && v.name === this.name;
+    }
+}
+
 var jsIdentifierRegExp: RegExp = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 //
@@ -1482,6 +1532,12 @@ function isAV(v: any): boolean {
     return v instanceof Object && !(v instanceof NonAV);
 }
 
+// True when v is a (possibly) normalized av with attribute attr
+function hasAttribute(v: any, attr: string): boolean {
+    return v instanceof Array? v.some(elt => hasAttribute(elt, attr)):
+           v instanceof Object && !(v instanceof NonAV) && !isEmptyOS(v[attr]);
+}
+
 function stripArray(v: any, deep: boolean = false): any {
     var v0 = v instanceof Array && v.length === 1? v[0]: v;
     var repl: any = undefined;
@@ -1550,16 +1606,12 @@ function interpretedBoolMatch(q: any, v: any): boolean {
     var i: number;
 
     if (v instanceof Array) {
-        if ((!(q instanceof Array) || q.length > 0) && isFalse(q)) {
-            return isFalse(v);
-        } else {
-            for (i = 0; i < v.length; i++) {
-                if (interpretedBoolMatch(q, v[i])) {
-                    return true;
-                }
+        for (i = 0; i < v.length; i++) {
+            if (interpretedBoolMatch(q, v[i])) {
+                return true;
             }
-            return false;
         }
+        return false;
     } else {
         switch (typeof(q)) {
           case "object":
@@ -1569,7 +1621,7 @@ function interpretedBoolMatch(q: any, v: any): boolean {
                         return true;
                     }
                 }
-                return q.length === 0 && isFalse(v); // o() matches false
+                return false;
             }
             if (q === _) {
                 return !isFalse(v);
@@ -1626,17 +1678,11 @@ function interpretedQuery(q: any, v: any): any {
         }
         if (v instanceof Array) {
             arres = [];
-            if (v.length === 0) {
-                if ((!(q instanceof Array) || q.length > 0) && isFalse(q)) {
-                    isSel = true;
-                }
-            } else {
-                for (i = 0; i !== v.length; i++) {
-                    m1 = lmatch(q, v[i]);
-                    if (m1 !== undefined) {
-                        arres = arres.concat(m1.res);
-                        isSel = m1.sel; // Only last one...
-                    }
+            for (i = 0; i !== v.length; i++) {
+                m1 = lmatch(q, v[i]);
+                if (m1 !== undefined) {
+                    arres = arres.concat(m1.res);
+                    isSel = m1.sel; // Only last one...
                 }
             }
             return isSel !== undefined? {sel: isSel, res: arres}: undefined;
@@ -1645,7 +1691,7 @@ function interpretedQuery(q: any, v: any): any {
           case "object":
             if (q instanceof Array) { // === o(...), assume no projections inside
                 if (q.length === 0) {
-                    return isFalse(v)? {sel: true, res: v}: undefined;
+                    return undefined;
                 }
                 if (q.length === 1 && q[0] === _) {
                     return { sel: false, res: v };
@@ -1685,7 +1731,7 @@ function interpretedQuery(q: any, v: any): any {
                         }
                         return {sel: true, res: neg}
                     } else {
-                        return isFalse(complement)? 
+                        return isEmptyOS(complement)? 
                                {sel: true, res: v}: undefined;
                     }
                 }
@@ -1767,6 +1813,68 @@ function interpretedQueryWithIdentifiers(q: any, v: any, allIds: any[], selected
     return res;
 }
 
+// Checks if q matches v. Returns true or false. Note that false matches o().
+function interpretedQualifierMatch(q: any, v: any): boolean {
+    var i: number;
+
+    if (v instanceof Array) {
+        // The following three lines make [false, o()] return a true selection,
+        // being o().
+        if (v.length === 0 && q === false) {
+            return true;
+        }
+        for (i = 0; i < v.length; i++) {
+            if (interpretedBoolMatch(q, v[i])) {
+                return true;
+            }
+        }
+        return false;
+    } else {
+        switch (typeof(q)) {
+          case "object":
+            if (q instanceof Array) { // === o(...)
+                for (i = 0; i !== q.length; i++) {
+                    if (interpretedBoolMatch(q[i], v)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            if (q === _) {
+                return !isFalse(v);
+            }
+            if (q instanceof NonAV) {
+                if (q instanceof Negation) {
+                    for (i = 0; i !== q.queries.length; i++) {
+                        if (interpretedBoolMatch(q.queries[i], v)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                } else {
+                    return q.match(v);
+                }
+            }
+            if (!(v instanceof Object)) {
+                return false;
+            }
+            for (var attr in q) {
+                if (!(attr in v) || !interpretedBoolMatch(q[attr], v[attr])) {
+                    return false;
+                }
+            }
+            return true;
+          case "string":
+          case "number":
+            return q === v || (v instanceof RangeValue && v.match(q));
+          case "boolean":
+            return q? isTrue(v): isFalse(v);
+          default:
+            return false;
+        }
+    }
+}
+
 function nrProjSitesInQuery(query: any): number {
     if (query === _) {
         return 1;
@@ -1840,7 +1948,7 @@ function vstringify(v: any): string {
         return "_";
     } else if (v instanceof ChildInfo) {
         return v.toString();
-    } else if (v instanceof BuiltInFunction) {
+    } else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     } else if (v instanceof MoonRange) {
         return "r(" + v.os.map(vstringify).join(", ") + ")";
@@ -1915,7 +2023,7 @@ function cstringify(v: any): string {
         return "_";
     } else if (v instanceof ChildInfo) {
         return v.toString();
-    } else if (v instanceof BuiltInFunction) {
+    } else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     } else if (v instanceof MoonOrderedSet) {
         return "[" + v.os.map(cstringify).join(", ") + "]";
@@ -1955,7 +2063,7 @@ function cdlify(v: any, indent: string = undefined): string {
         return "_";
     } else if (v instanceof ChildInfo) {
         return v.toString();
-    } else if (v instanceof BuiltInFunction) {
+    } else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     } else if (v instanceof RegExp) {
         return v.toString();
@@ -2002,7 +2110,7 @@ function cdlifyLim(v: any, maxNrChar: number): string {
     if (v instanceof Projector || v instanceof ChildInfo ||
           v instanceof BuiltInFunction || v instanceof Negation ||
           v instanceof NonAV || v instanceof Unquote ||
-          !(v instanceof Object)) {
+          v instanceof ForeignJavaScriptFunction || !(v instanceof Object)) {
         var str: string = cdlify(v);
         return str === undefined? undefined:
                str.length <= maxNrChar? str:
@@ -2145,7 +2253,7 @@ function cdlifyNormalized(v: any): string {
         return "_";
     } else if (v instanceof ChildInfo) {
         return v.toString();
-    } else if (v instanceof BuiltInFunction) {
+    } else if (v instanceof BuiltInFunction || v instanceof ForeignJavaScriptFunction) {
         return v.name;
     } else if (v instanceof MoonRange) {
         var sortedOs: any[] = v.os.slice(0).sort(cdlCompare);
@@ -2584,6 +2692,9 @@ abstract class ForeignInterface {
     releaseDiv(): void {
         this.displayOfArea = undefined;
         this.hasDivSet = false;
+    }
+
+    setSize(width: number, height: number): void {
     }
 
     wrapUpVisuals(): void {

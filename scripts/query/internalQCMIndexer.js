@@ -5147,6 +5147,9 @@ function internalQCMIndexerAddKeyToNode(pathNode, elementId, type, key,
     }
 
     if(typeof(key) == "object") {
+        if (key instanceof RegExp) {
+            return; // TODO: regular expressions in string match
+        }
         this.addKeysToRangeNode(pathNode, elementId, type, key, false);
         return;
     }

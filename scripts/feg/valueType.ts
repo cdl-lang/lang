@@ -31,40 +31,40 @@ class ValueType implements EqualityTest {
 
     // Initial value of an expression; only field that can get set to false/be
     // removed
-    unknown: boolean = true;
+    unknown?: boolean = true;
 
     // Meta information about origin of the data: true when is/derives from
     // remote data, which can be of any type except defuns. In combination
     // with unknown, represents data.
-    remote: boolean;
+    remote?: boolean;
 
     // Meta information about the source of the data. When true, the result
     // possibly derives via queries etc. from an indexer.
-    dataSource: boolean;
+    dataSource?: boolean;
 
     // represents any kind of data, but not areas
-    anyData: boolean;
+    anyData?: boolean;
 
     // undefined as a potential value
-    undef: boolean;
+    undef?: boolean;
 
     // Simple, unmergeable values
-    string: boolean;
-    number: boolean;
-    boolean: boolean;
-    defun: ValueType;
-    query: boolean;
-    range: boolean;
-    projector: boolean;
-    terminalSymbol: boolean;
-    comparisonFunction: ValueType[];
-    foreignInterface: boolean;
+    string?: boolean;
+    number?: boolean;
+    boolean?: boolean;
+    defun?: ValueType;
+    query?: boolean;
+    range?: boolean;
+    projector?: boolean;
+    terminalSymbol?: boolean;
+    comparisonFunction?: ValueType[];
+    foreignInterface?: boolean;
 
     // AVs
-    object: {[attribute: string]: ValueType};
+    object?: {[attribute: string]: ValueType};
 
     // Sets of area references
-    areas: Map<number, ValueType>;
+    areas?: Map<number, ValueType>;
 
     // This field indicates the potential size ranges of the result. When it
     // is undefined, there is no information on the size. Note that size may
@@ -1166,19 +1166,11 @@ module ValueTypeSize {
         } else if (s2 === undefined) {
             return s1;
         } else {
-            var sizes: RangeValue[] = undefined;
-            for (var i: number = 0; i < s1.length; i++) {
-                var s1imin = s1[i].intMin();
-                var s1imax = s1[i].intMax();
-                for (var j: number = 0; j < s2.length; j++) {
-                    sizes = insertNewSize(
-                        sizes,
-                        new RangeValue([s1imin + s2[j].intMin(),
-                                        s1imax + s2[j].intMax()],
-                                       true, true));
-                }
-            }
-            return sizes;
+            var s1imin = s1[0].intMin();
+            var s1imax = s1[s1.length - 1].intMax();
+            var s2imin = s2[0].intMin();
+            var s2imax = s2[s2.length - 1].intMax();
+            return [new RangeValue([s1imin + s2imin, s1imax + s2imax], true, true)];
         }
     }
 

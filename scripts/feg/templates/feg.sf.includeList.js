@@ -140,6 +140,7 @@
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.cycleCheck.js>
 // %%include%%: <scripts/feg/minbuild/feg/stringparser.js>
 // %%include%%: <scripts/feg/minbuild/feg/builtInFunctions.js>
+// %%include%%: <scripts/feg/minbuild/feg/foreignJavascriptFunctions.js>
 // %%include%%: <scripts/feg/minbuild/feg/buildEvaluationNode.js>
 // %%include%%: <scripts/feg/minbuild/feg/simpleQuery.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationQueue.js>
@@ -149,6 +150,5 @@
 // %%include%%: <scripts/feg/minbuild/feg/functionExecute.js>
 // %%include%%: <scripts/feg/minbuild/feg/cdlDebugger.js>
 // %%include%%: <scripts/feg/minbuild/feg/debugInterpret.js>
-
 // %%include%%: <scripts/feg/js/event/replayEventHistory.js>
 // %%include%%: <scripts/feg/js/utils/interactiveMode.js>

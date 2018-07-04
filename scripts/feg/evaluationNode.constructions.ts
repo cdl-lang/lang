@@ -617,6 +617,7 @@ class QualifierStateTrue implements QualifierState {
 }
 
 // {undefined: false} does not match in qualifiers
+// false does match o() in qualifiers.
 class QualifierStateFalse implements QualifierState {
     value: any[];
 
@@ -685,7 +686,13 @@ class QualifierStateMatchOS implements QualifierState {
     holds(): boolean {
         return this.value !== undefined &&
                this.value.some((v: any): boolean => {
-                   return this.match.indexOf(v) !== -1;
+                   return this.match.some((m: any): boolean => {
+                       return m === v? true:
+                              v instanceof RangeValue? v.match(m):
+                              m instanceof RangeValue? m.match(v):
+                              m === true? isTrue(v):
+                              isFalse(v);
+                   });
                });
     }
 
@@ -1310,6 +1317,7 @@ class EvaluationVariant extends EvaluationNode
             return false;
         }
         nrMerges = 0;
+        this.prevMerged = variantsToMerge;
         if (resultIsDataSource && this.dataSourceResultMode) {
             for (var i: number = this.firstActive; i < this.lastActive; i++) {
                 if (this.qualifiedVariants[i] &&
@@ -1355,12 +1363,11 @@ class EvaluationVariant extends EvaluationNode
                 }
             }
             if (nrMerges === 1) {
-                this.result.copyLabels(firstResult);
+                this.result.copyLabelsMinusDataSource(firstResult);
             } else {
                 this.result.resetLabels();
             }
             this.result.value = mergeResult;
-            this.prevMerged = variantsToMerge;
             this.variantChange = {};
             return this.result.dataSource !== oldDatasource ||
                    !objectEqual(oldValue, this.result.value);

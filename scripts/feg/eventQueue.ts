@@ -68,13 +68,16 @@ class QueuedEvent {
         /// status. Otherwise, the dragging status is updated with its truthiness.
         public dragging: any[]|FileList|undefined,
         /// List of areas under pointer
-        public overlappingAreas: {recipient: CoreArea; relX: number, relY: number;}[],
+        public overlappingAreas: OverlappingAreaList,
         /// If this is an input change event, changes to the recipient
-        public changes: {[attr: string]: any},
+        public changes: {[attr: string]: any}|undefined,
         /// If this is an input change event, check input element's existence or not
         public checkExistence: boolean,
         /// The touch for this event
-        public touch: Touch|undefined
+        public touch: Touch|undefined,
+        /// The clickable element that was under this event; if this is defined,
+        /// the area's param is updated with this.changes.
+        public clickableElement: Element|undefined
     ) {
         this.hadRecipients = recipients !== undefined && recipients.length > 0;
     }
@@ -85,17 +88,13 @@ class QueuedEvent {
         if (event instanceof ImpersonatedDomEvent) {
             switch (event.type) {
               case "MouseDown":
-              case "KeyDown":
-              case "KeyPress":
-              case "KeyUp":
+              case "FileChoice":
                 return this.hadRecipients;
             }
         } else {
             switch (event.type) {
               case "mousedown":
-              case "keydown":
-              case "keypress":
-              case "keyup":
+              case "drop":
                 return this.hadRecipients;
             }
         }
@@ -363,13 +362,15 @@ class EventQueue {
                             }
                         }
                     }
-                    if (nextEvent.event.type === "inputchange" &&
+                    if (nextEvent.clickableElement !== undefined &&
                           nextEvent.changes !== undefined) {
                         // The InputChange event sets the area's param at the
                         // same time, so they happen at the same time, and so
-                        // they are queued in the same order as the actual changes
-                        areaRecipient.updateParamInput(nextEvent.changes, false,
-                                                       nextEvent.checkExistence);
+                        // they are queued in the same order as the actual
+                        // changes.
+                        areaRecipient.updateParamInput(
+                            nextEvent.changes, nextEvent.type !== "inputchange",
+                            nextEvent.checkExistence);
                     }
                 }
                 lMessage.handledBy = nextEvent.handledBy;
@@ -428,6 +429,14 @@ class EventQueue {
         if (typeof(Event) !== "undefined" && nextEvent.event instanceof Event) {
             clearProgressDiv();
         }
+        if (logEventHistory) {
+            gDomEvent.eventHistory.push({
+                type: "process",
+                event: nextEvent.type,
+                time: Date.now(),
+                queueLen: this.eventQueue.length
+            });
+        }
         if (debugLogEvent("message")) {
             console.log("next event", nextEvent.type, cdlify(nextEvent.message),
                         nextEvent.recipients.map(r => r instanceof CoreArea? r.areaId: r).join(","));
@@ -456,8 +465,9 @@ class EventQueue {
             console.log("end of event");
         }
         this.setMessage(emptyMessage, undefined);
-        if (nextEvent.canChangeFocus()) {
-            gDomEvent.setNextFocussedArea(focussedInputElement);
+        if (nextEvent.canChangeFocus() &&
+              !gDomEvent.focusChanged(focussedInputElement)) {
+            gDomEvent.setNextFocussedArea(focussedInputElement, true);
         }
         if (focussedInputElement !== undefined) {
             nextEvent.dispatchEvent(focussedInputElement);
@@ -522,25 +532,22 @@ class EventQueue {
 
     // Updates property ptrInArea/dragInArea. Returns true when there is a
     // change. Adds foreignManagedAreasUnderPointer in front.
-    updatePointerInArea(areas: {recipient: CoreArea; relX: number; relY: number;}[],
-                        drag: boolean): void
-    {
+    updatePointerInArea(areas: OverlappingAreaList, drag: boolean): void {
         var newPtrInAreas: {[areaReference: string]: CoreArea} = {};
         var areasUnderPointerValue: ElementReference[] = [];
 
         var areaQueue: CoreArea[] = [];
 
-        function addToQueue(area: CoreArea, reason: string, origin: string) {
+        function addToQueue(area: CoreArea, insideVisibleRegion: boolean, reason: string, origin: string) {
             if (!(area.areaId in newPtrInAreas)) {
                 var disp = area instanceof DisplayArea? area.display: undefined;
                 areaQueue.push(area);
-                if (disp !== undefined) {
-                    areasUnderPointerValue.push(area.areaReference);
-                }
+                areasUnderPointerValue.push(area.areaReference);
                 newPtrInAreas[area.areaId] = area;
                 var dbgInfo: any = {};
                 dbgInfo.areaId = area.areaId;
                 dbgInfo.reason = reason;
+                dbgInfo.insideVisibleRegion = insideVisibleRegion;
                 dbgInfo.propagateTo =
                     area.propagatePointerInArea === undefined ||
                     Utilities.isEmptyObj(area.propagatePointerInArea)?
@@ -564,7 +571,7 @@ class EventQueue {
         for (var areaId in this.foreignManagedAreasUnderPointer) {
             var area = allAreaMonitor.getAreaById(areaId);
             if (area !== undefined) {
-                areas = [{recipient: area, relX: undefined, relY: undefined}].
+                areas = [{recipient: area, insideVisibleRegion: true, relX: undefined, relY: undefined}].
                         concat(areas.filter(a => a.recipient !== area));
             }
         }
@@ -586,8 +593,8 @@ class EventQueue {
 
         for (var i = 0; i < areas.length; i++) {
             recipient = areas[i].recipient;
-            addToQueue(recipient, "z-order", undefined);
-            if (recipient.isOpaque()) {
+            addToQueue(recipient, areas[i].insideVisibleRegion, "z-order", undefined);
+            if (areas[i].insideVisibleRegion) {
                 EventQueue.debugPPIAInfo[EventQueue.debugPPIAInfo.length - 1].reason += " opaque";
                 break;
             }
@@ -613,33 +620,33 @@ class EventQueue {
                     switch (ppiaElt) {
                       case "embedding":
                         if (recipient.embedding) {
-                            addToQueue(recipient.embedding,
+                            addToQueue(recipient.embedding, true,
                                        "explicit from embedded", recipientId);
                         }
                         break;
                       case "expression":
                         if (recipient.intersectionChain) {
                             addToQueue(recipient.intersectionChain.expressionArea,
-                                       "explicit from intersection (expression)",
+                                       true, "explicit from intersection (expression)",
                                        recipientId);
                         }
                         break;
                       case "referred":
                         if (recipient.intersectionChain) {
                             addToQueue(recipient.intersectionChain.referredArea,
-                                       "explicit from intersection (referred)",
+                                       true, "explicit from intersection (referred)",
                                        recipientId);
                         }
                         break;
                       default:
                         var explicitArea = allAreaMonitor.getAreaById(ppiaElt);
                         if (explicitArea !== undefined) {
-                            addToQueue(explicitArea, "explicit area", recipientId);
+                            addToQueue(explicitArea, true, "explicit area", recipientId);
                         }
                     }
                 }
             } else if (recipient.embedding) {
-                addToQueue(recipient.embedding, "implicit from embedded",
+                addToQueue(recipient.embedding, true, "implicit from embedded",
                             recipientId);
             }
         }
@@ -723,13 +730,32 @@ class EventQueue {
     }
 
     addEvent(event: QueuedEvent): void {
-        function isMove(evtType: string): boolean {
-            return evtType === "mousemove" || evtType === "pointermove";
+        function isContinuous(evtType: string): boolean {
+            return evtType === "mousemove" || evtType === "pointermove" ||
+                   evtType === "touchmove" || evtType === "wheel";
         }
-        if (this.eventQueue.length > 0 && isMove(event.type) &&
-              isMove(this.eventQueue[this.eventQueue.length - 1].event.type)) {
-            // Keep only the last of a sequence of mouse moves
-            this.eventQueue.pop();
+        function identicalEvent(e1: QueuedEvent, e2: QueuedEvent): boolean {
+            return e1.type === e2.type ||
+                   ((e1.type === "mousemove" || e1.type === "MouseMove" || e1.type === "pointermove" || e1.type === "touchmove") &&
+                    (e2.type === "mousemove" || e2.type === "MouseMove" || e2.type === "pointermove" || e2.type === "touchmove"));
+        }
+        if (isContinuous(event.type)) {
+            // Keep only the last of a sequence of continuous events: mouse
+            // move, pointer move, touch move and wheel
+            for (let i = 0; i < this.eventQueue.length; i++) {
+                const evt = this.eventQueue[i];
+                if (identicalEvent(evt, event)) {
+                    this.eventQueue.splice(i, 1);
+                    if (logEventHistory && logEventComments) {
+                        gDomEvent.eventHistory.push({
+                            type: "comment",
+                            comment: "remove identical event",
+                            index: i
+                        });
+                    }
+                    break;
+                }
+            }
         }
         this.eventQueue.push(event);
         globalNextQueuedEvent.schedule();
@@ -775,12 +801,13 @@ function queueEvent(
     subTypes: { value: string; areas: CoreArea[]; }[],
     recipients: (string|CoreArea)[],
     pointer: MondriaPointer,
-    overlappingAreas: {recipient: CoreArea; relX: number; relY: number;}[],
+    overlappingAreas: OverlappingAreaList,
     dragging: any[]|FileList,
     buttonStateChanges: ButtonStateChange[],
     changes: {[attr: string]: any},
     checkExistence: boolean,
-    touch?: Touch): void
+    touch: Touch,
+    clickableElement: Element): void
 {
     // Debugging the js code that calls this.
     assert(event, "event must be defined");
@@ -810,7 +837,8 @@ function queueEvent(
         overlappingAreas,
         changes,
         checkExistence,
-        touch
+        touch,
+        clickableElement
     ));
 }
 
@@ -831,16 +859,17 @@ function abortMessagePropagation(debugAbortId: string, defaultAbort: boolean): v
 }
 
 function postInputParamChangeEvent(recipient: CoreArea, checkExistence: boolean,
-                                   changes: {[attr: string]: any}): void
+                                   changes: {[attr: string]: any},
+                                   clickableElement: Element): void
 {
     var message: EventObject = {
         type: ["InputChange"],
         time: [Date.now()]
     };
-    var overlappingAreas = [{recipient: recipient, relX: 0, relY: 0}];
+    var overlappingAreas = [{recipient: recipient, insideVisibleRegion: true, relX: 0, relY: 0}];
 
     gDomEvent.recordComment("inputChange");
     queueEvent(new ImpersonatedDomEvent("inputchange"), message, undefined,
-             [recipient], undefined, overlappingAreas, constEmptyOS, undefined,
-             changes, checkExistence);
+              [recipient], undefined, overlappingAreas, constEmptyOS, undefined,
+              changes, checkExistence, undefined, clickableElement);
 }

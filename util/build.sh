@@ -14,12 +14,11 @@
 
 # File must be called via source from app directory
 
-if [ -z "$ROOTDIR" -o -z "$CDLDIR" ]; then
+if [ -z "$LANGDIR" -o -z "$CDLPATH" ]; then
     echo not all variables set
     exit 1
 fi
 
-LANGDIR="$ROOTDIR/lang"
 SCRIPTSDIR="$LANGDIR/scripts"
 FEGDIR="$SCRIPTSDIR/feg"
 TEMPLATEDIR="$FEGDIR/templates"
@@ -42,7 +41,7 @@ function make_comp_file()
     if [ -f lib.conf ]; then
         "$UTIL/genIncJS.py" \
             "--langdir=$LANGDIR" \
-            "--cdldir=$CDLDIR" \
+            "--cdldir=$CDLPATH" \
             "--libConf=lib.conf" \
             "--resourceOutFile=intermediate/$APP.res" \
             "--out_file=$COMPJS.tmp" \
@@ -52,7 +51,7 @@ function make_comp_file()
     else
         "$UTIL/genIncJS.py" \
             "--langdir=$LANGDIR" \
-            "--cdldir=$CDLDIR" \
+            "--cdldir=$CDLPATH" \
             "--resourceOutFile=intermediate/$APP.res" \
             "--out_file=$COMPJS.tmp" \
             "--template=$TEMPLATEDIR/compile.template.js" \
@@ -62,7 +61,7 @@ function make_comp_file()
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    bash "$UTIL/buildInfo.sh" "$ROOTDIR" > "$COMPJS"
+    bash "$UTIL/buildInfo.sh" "$LANGDIR" "$CDLPATH" > "$COMPJS"
     cat "$COMPJS.tmp" >> "$COMPJS"
     /bin/rm "$COMPJS.tmp"
 }
@@ -154,7 +153,7 @@ function check_template() # $1=target $2=input template $3=source file $4=mode
 	    "--out_file=$1.tmp" \
 	    "--resourceUseFile=intermediate/$APP.res" \
         "--langdir=$LANGDIR" \
-        "--cdldir=$CDLDIR" \
+        "--cdldir=$CDLPATH" \
 	    "--template=$2" \
 	    "--title=$APP" \
 	    "--mode=$4" \
@@ -172,7 +171,7 @@ function check_template() # $1=target $2=input template $3=source file $4=mode
 # that includes other sources via %%include%% directives has changed
 function check_html()
 {
-    TEMPLATEFILES=`echo $HTMLTEMPLATE $RUNJSTEMPLATE $SCRIPTSDIR/{positioning,query,utils,utils/trees}/*.js`
+    TEMPLATEFILES=`echo $HTMLTEMPLATE $RUNJSTEMPLATE $SCRIPTSDIR/{positioning,query,utils,utils/trees}/*.js intermediate/$APP.res`
     check_template "$HTML" "$HTMLTEMPLATE" "$RUNJS" html
 }
 
@@ -196,13 +195,11 @@ function check_minhtml()
     $UGLIFY intermediate/common_runtime.js -c -m > "$MINJS"
     # Concat the .run.js file
     egrep -v '^// ' "$RUNJS" >> "$MINJS"
-    # Concat the uglified postlude
-    $UGLIFY "$FEGDIR/minbuild/feg/functionExecute.postlude.js" -c -m >> "$MINJS"
     # Generate the .min.html file
     "$UTIL/genIncJS.py" \
         "--out_file=$MINHTML" \
         "--langdir=$LANGDIR" \
-        "--cdldir=$CDLDIR" \
+        "--cdldir=$CDLPATH" \
         "--resourceUseFile=intermediate/$APP.res" \
         "--commonImageDir=image" \
         "--title=$APP" \
@@ -230,7 +227,7 @@ function build()
     fi
 
     # Get all cdl files the app depends on
-    CDL_FILES=`"$UTIL/genIncJS.py" --template="$TEMPLATEDIR/compile.check.js" --mode=incl --out_file=/dev/null --langdir="$LANGDIR" --cdldir="$CDLDIR" --libConf=lib.conf "$APP.js"`
+    CDL_FILES=`"$UTIL/genIncJS.py" --template="$TEMPLATEDIR/compile.check.js" --mode=incl --out_file=/dev/null --langdir="$LANGDIR" --cdldir="$CDLPATH" --libConf=lib.conf "$APP.js"`
 
     # Build .comp.js file
     COMPJS=intermediate/"$APP.comp.js"
@@ -298,16 +295,16 @@ fi
 for app in $*; do
     case "$app" in
         *.min.html)
-            build ${1%.min.html} minhtml
+            build ${app%.min.html} minhtml
             ;;
         *.html)
-            build ${1%.html} html
+            build ${app%.html} html
             ;;
         *.node.js)
-            build ${1%.node.js} nodejs
+            build ${app%.node.js} nodejs
             ;;
         *.js)
-            build ${1%.js} "$DEFAULTFORMAT"
+            build ${app%.js} "$DEFAULTFORMAT"
             ;;
         *)
             echo unknown target: "$app"

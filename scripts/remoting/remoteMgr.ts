@@ -715,6 +715,9 @@ class RemoteMgr {
             } else if (appName.slice(-4) === ".htm") {
                 appName = appName.slice(0, -4);
             }
+            if (appName.slice(-4) === ".crt" || appName.slice(-4) === ".min") {
+                appName = appName.slice(0, -4);
+            }
 
             RemoteMgr.appName = argParser.getArg("appName", appName);
         }

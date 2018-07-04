@@ -258,9 +258,6 @@ var intFuncMap: {[name: string]: ExecutableFunction} = {
     mod: EFMod.singleton,
     remainder: EFRemainder.singleton,
     pow: EFPow.singleton,
-    ln: EFLn.singleton,
-    exp: EFExp.singleton,
-    log10: EFLog10.singleton,
     logb: EFLogB.singleton,
     round: EFRound.singleton,
     ceil: EFCeil.singleton,
@@ -300,8 +297,7 @@ var intFuncMap: {[name: string]: ExecutableFunction} = {
     dateToNum: EFDateToNum.singleton,
     numToDate: EFNumToDate.singleton,
     testFormula: EFTestFormula.singleton,
-    subStr: EFSubString.singleton,
-    stringToNumber: EFStringToNumber.singleton,
+    subStr: EFSubString.singleton
 };
 
 var gDebugObjClassesInactive: number = 0;
@@ -324,7 +320,7 @@ function debugObjAreaOfClass(area: CoreArea, className: string, forceEvaluation:
         isReady: function(): boolean { return true; }
     };
 
-    if (area.exports !== undefined && "0" in area.exports) {
+    if (area.exports !== undefined && 0 in area.exports) {
         if (area.exports[0] === undefined) {
             if (!forceEvaluation) {
                 gDebugObjClassesInactive++;
@@ -431,7 +427,13 @@ function intFuncAppl(expr: any): any {
                f(r.value);
     }
 
-    if (!(func instanceof BuiltInFunction)) {
+    if (func instanceof ForeignJavaScriptFunction) {
+        var bif: any = {bif: func};
+        var exec = func instanceof ForeignJavaScriptObjectFunction?
+                   EFForeignJavaScriptObjectFunction.make(undefined, bif):
+                   EFForeignJavaScriptFunction.make(undefined, bif);
+        return exec.execute(args);
+    } else if (!(func instanceof BuiltInFunction)) {
         if (args.length !== 1) {
             console.log("cannot interpret function", func);
             return [];

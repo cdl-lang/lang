@@ -38,3 +38,4 @@
 // %%include%%: <scripts/feg/watcherProducer.js>
 // %%include%%: <scripts/feg/result.js>
 // %%include%%: <scripts/feg/builtInFunctions.js>
+// %%include%%: <scripts/feg/foreignJavascriptFunctions.js>

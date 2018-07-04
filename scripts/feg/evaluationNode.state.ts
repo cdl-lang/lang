@@ -279,6 +279,14 @@ class EvaluationStore extends EvaluationNode implements Latchable {
         return false;
     }
 
+    pushToAreaSetContent(value: any): void {
+        if (value !== undefined) {
+            this.lastUpdate.value[0].areaSetContent =
+                this.lastUpdate.value[0].areaSetContent.concat(value);
+            this.markAsChanged();
+        }
+    }
+
     setDataSourceResultMode(dataSourceResultMode: boolean): void {
         if (this.isActive() && this.dataSourceInput !== undefined) {
             if (dataSourceResultMode && !this.dataSourceResultMode) {
@@ -549,18 +557,27 @@ class EvaluationMessageQueue extends EvaluationStore {
         if (debugWrites || debugLogEvent("message")) {
             console.log("set global message", cdlify(message.value));
         }
-        for (let i = 0; i < message.value.length; i++) {
+        for (var i = 0; i < message.value.length; i++) {
             // Map list of recipients to areas
-            var recipients: any[] =
-                !("recipient" in message.value[i])? []:
-                ensureOS(message.value[i].recipient).map(function(recip: any): any {
-                    return recip instanceof ElementReference?
-                           allAreaMonitor.getAreaById(recip.getElement()):
-                           recip;
-                });
+            var messageRecipientList = !("recipient" in message.value[i])? []:
+                                       ensureOS(message.value[i].recipient);
+            var recipients: any[] = [];
+            var recipientIds: any = {};
+            
+            for (var j = 0; j < messageRecipientList.length; j++) {
+                var recip = messageRecipientList[j];
+                if (recip instanceof ElementReference) {
+                    if (!(recip.element in recipientIds)) {
+                        recipients.push(allAreaMonitor.getAreaById(recip.getElement()));
+                        recipientIds[recip.element] = true;
+                    }
+                } else {
+                    recipients.push(recip);
+                }
+            }
             queueEvent(new ImpersonatedDomEvent("message"), message.value[i],
                        undefined, recipients, undefined, undefined, [],
-                       undefined, undefined, false);
+                       undefined, undefined, false, undefined, undefined);
         }
         return this.messageQueue.length === 0;
     }
@@ -666,13 +683,13 @@ class EvaluationParam extends EvaluationStore {
         var self: EvaluationParam = this;
         var area: CoreArea = allAreaMonitor.getAreaById(this.areaId);
 
-        function updateInputAttr(attrib: string, value: any): void {
+        function updateInputAttr(attrib: string, value: any, endValue: any): void {
             var curValue: any = self.latchedValue !== undefined?
                 self.latchedValue.value[0]: self.lastUpdate.value[0];
-            var update: any = mergeValueCopy({input: result.value}, curValue);
+            var update: any = mergeValueCopy({input: value}, curValue);
 
             if (!valueEqual(curValue, update) && 
-                  area.setInputState(attrib, value[0])) {
+                  area.setInputState(attrib, getDeOSedValue(endValue))) {
                 self.latchedValue = new Result(update);
                 self.latch();
             }
@@ -690,12 +707,17 @@ class EvaluationParam extends EvaluationStore {
             return queryObject;
         }
 
-        function unwrapPositions(path: string[], attributes: MergeAttributes, positions: DataPosition[]): void {
+        // For writes to param:input, this functions unwraps the path in
+        // 'positions', and then possible AVs in value, and writes the terminal
+        // value to the appropriate source.
+        //   Writes to param:areaSetContent: are redirected towards the source,
+        // with positions modified to indicated the position in the area set.
+        function unwrapPositions(value: any, path: string[], attributes: MergeAttributes, positions: DataPosition[]): void {
             if (positions === undefined ||
                   (path.length === 1 && path[0] === "areaSetContent")) {
                 switch (path[0]) {
                   case "input":
-                    updateInputAttr(path[1], wrapPathAttr(path, 2, ensureOS(result.value)));
+                    updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(value)), value);
                     break;
                   case "areaSetContent":
                     var sub: DataPosition[] =
@@ -709,28 +731,28 @@ class EvaluationParam extends EvaluationStore {
                 }
             } else if (positions !== undefined && positions.length === 1 &&
                   positions[0].index === 0 && positions[0].path !== undefined) {
-                unwrapPositions(path.concat(positions[0].path[0]),
+                unwrapPositions(value, path.concat(positions[0].path[0]),
                                 attributes.popPathElement(positions[0].path[0]),
                                 positions[0].sub);
             } else if (positions !== undefined && positions.length === 1 &&
                     positions[0].index === 0 && positions[0].path === undefined) {
-                var v: any = getDeOSedValue(result.value);
+                var v: any = getDeOSedValue(value);
                 if (!(v instanceof Array) && isAV(v)) {
                     self.lastUpdate.value[0] = shallowCopy(self.lastUpdate.value[0]);
                     for (var attrib in v) {
-                        unwrapPositions(path.concat(attrib),
+                        unwrapPositions(v[attrib], path.concat(attrib),
                                         attributes.popPathElement(attrib),
                                         undefined);
                     }
                 } else {
-                    unwrapPositions(path, attributes, undefined);
+                    unwrapPositions(value, path, attributes, undefined);
                 }
             } else {
                 Utilities.warn("dead ended write to param in " + self.local.getOwnId() + " at " + gWriteAction);
             }
         }
 
-        unwrapPositions([], attributes, positions);
+        unwrapPositions(result.value, [], attributes, positions);
 
         if (debugWrites) {
             console.log("write to param", cdlify(result.value));
@@ -830,25 +852,25 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
     setInitialValue(initialValue: FunctionNode, local: EvaluationEnvironment,
                     templateId: number, indexId: number, path: string[]): void
     {
-        if (typeof(templateId) === "undefined") {
-            this.appStateIdentifier = undefined;
-        } else {
-            this.appStateIdentifier = new AppStateIdentifier(
-                templateId, indexId, String(path));
-        }
-
         var persistenceValue: any = undefined;
+
+        this.appStateIdentifier = templateId === undefined? undefined:
+            new AppStateIdentifier(templateId, indexId, String(path));
 
         // an undefined appStateIdentifier indicates a local writable variable,
         // which has no business with gAppStateMgr; otherwise, register with
         // gAppStateMgr for updates to this identifier's value;
         // updates result in calls to '.remoteUpdate()' defined below
-        if (typeof(this.appStateIdentifier) !== "undefined") {
+        if (this.appStateIdentifier !== undefined) {
             gAppStateMgr.register(this.appStateIdentifier, this);
-
             // if there's already a value for this identifier get it..
             persistenceValue = gAppStateMgr.get(this.appStateIdentifier);
-            this.result.remoteStatus = "waiting";
+            if (persistenceValue !== xdrDeleteIdent) {
+                this.result.remoteStatus = "waiting";
+            } else {
+                persistenceValue = undefined;
+                this.result.remoteStatus = "local";
+            }
         } else {
             this.result.remoteStatus = "local";
         }
@@ -860,61 +882,52 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
             this.valueOrigin = "remote";
         } else if (initialValue !== undefined) {
             // Construct initial value expression if necessary and copy result
-            this.initialValue = getEvaluationNode(initialValue, local);
-            this.result.value = this.initialValue.result.value;
-            if (!this.initialValue.isConstant()) {
-                this.initialValue.activate(this, false);
-                this.initialValue.addWatcher(this, "initialValue", true, false, false);
-                if ("schedulingError" in this.prototype) {
-                    this.inputs.push(this.initialValue);
-                }
-            } else {
-                if (this.result.value !== undefined) {
-                    this.markAsChanged();
-                }
-            }
-            this.valueOrigin = "init";
+            this.registerInitialValue(initialValue, local);
         } else {
             this.inputHasChanged = false;
         }
         this.lastUpdate = this.result.value;
     }
 
+    /// This function makes the write value a live (copy of the initial)
+    /// expression again. It is also called by the appState manager when the
+    /// value was not present on the server after logging in, i.e. when the
+    /// persisted app state assumed a live expression.
     reinitialize(): void {
-        var templateId: number;
-        var indexId: number;
+        var lastValue = this.result.value;
 
-        gAppStateMgr.unregister(this.appStateIdentifier);
-        if (this.prototype.remoteWritable) {
-            if (this.local instanceof CoreArea) {
-                templateId = this.local.getPersistentTemplateId();
-                indexId = this.local.getPersistentIndexId();
-            } else {
-                templateId = gPaidMgr.getGlobalPersistentTemplateId();
-                indexId = gPaidMgr.getGlobalPersistentIndexId();
-            }
-        }
         this.lastUpdate = undefined;
         this.latchedValue = undefined;
         this.isLatched = false;
         this.valueOrigin = undefined;
-        this.appStateIdentifier = undefined;
-        this.setInitialValue(this.prototype.initialValue, this.local,
-                             templateId, indexId, this.prototype.path);
+        this.registerInitialValue(this.prototype.initialValue, this.local);
+        if (!valueEqual(lastValue, this.lastUpdate)) {
+            this.markAsChanged();
+        }
+        // This function can be called outside of the evaluation loop, and
+        // therefore must force the content task to run.
+        globalContentTask.schedule();
     }
 
     destroy(): void {
-        if (typeof(this.appStateIdentifier) !== "undefined") {
+        if (this.appStateIdentifier !== undefined) {
             // no longer interested in remote-update notifications..
             gAppStateMgr.unregister(this.appStateIdentifier);
         }
+        this.unregisterInitialValue();
         super.destroy();
     }
 
     activateInputs(): void {
+        if (this.initialValue !== undefined) {
+            this.initialValue.activate(this, false);
+        }
     }
 
     deactivateInputs(): void {
+        if (this.initialValue !== undefined) {
+            this.initialValue.deactivate(this, false);
+        }
     }
 
     // Determines and sets the result of the write operation without altering
@@ -925,9 +938,20 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
                             this.latchedValue: this.lastUpdate;
         var oldPct: PositionChangeTracker = this.positionChangeTracker.clone();
 
-        if (debugWrites && debugWritesEval) {
-            console.log("WRITE", this.prototype.idStr(), cdlify(result.value)); // !!!
+        // When the top level value is erased, the initial expression becomes
+        // live again.
+        if (attributes.erase === true) {
+            if (this.initialValue === undefined) {
+                if (this.appStateIdentifier !== undefined) {
+                    gAppStateMgr.markDeleted(this.appStateIdentifier);
+                }
+                this.reinitialize();
+            }
+            return;
         }
+        // Otherwise, terminate the live update (if still alive) and determine
+        // the new value
+        this.unregisterInitialValue();
         newValue = determineWrite(curValue, result, mode, attributes, positions, this.positionChangeTracker);
         if (debugWrites && newValue !== curValue) {
             var cv: any = debugWritesString? cdlify(curValue): curValue;
@@ -978,13 +1002,13 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
             this.lastUpdate = result.value;
             this.markAsChanged();
         }
-        this.unregisterInitialValue();
     }
 
+    /// Unregisters the write's initial/live value and with it the live update.
+    /// Called upon a remote update or a (local) write.
     unregisterInitialValue(): void {
         if (this.initialValue !== undefined) {
-            this.initialValue.removeWatcher(this, false, false);
-            this.initialValue.deactivate(this, false);
+            this.initialValue.removeWatcher(this, true, false);
             this.initialValue = undefined;
             if ("schedulingError" in this.prototype) {
                 this.inputs.length = 0;
@@ -1051,29 +1075,24 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
     //  be removed. Revert to the (current value of the) default value, if
     //  one is defined
     remoteDelete(): void {
-        var initVal: any = constEmptyOS;
+        this.registerInitialValue(this.prototype.initialValue, this.local);
+    }
 
-        if (this.initialValue === undefined) {
-            this.initialValue = getEvaluationNode(this.prototype.initialValue, this.local);
-        }
-        if (this.initialValue !== undefined) {
-            if (!this.initialValue.isConstant()) {
-                this.initialValue.activate(this, false);
-                this.initialValue.addWatcher(this, "initialValue", true, false, false);
-                if ("schedulingError" in this.prototype) {
-                    this.inputs.push(this.initialValue);
-                }
-            } else {
-                if (this.result.value !== undefined) {
-                    this.markAsChanged();
-                }
+    registerInitialValue(initialValue: FunctionNode, local: EvaluationEnvironment): void {
+        this.initialValue = getEvaluationNode(initialValue, local);
+        this.result.value = this.initialValue.result.value;
+        if (!this.initialValue.isConstant()) {
+            this.initialValue.addWatcher(this, "initialValue", true, true, false);
+            if ("schedulingError" in this.prototype) {
+                this.inputs.push(this.initialValue);
             }
-            initVal = this.initialValue.result.value;
-        } else {
-            this.markAsChanged();
         }
-        this.lastUpdate = initVal;
-        this.valueOrigin = "reinitialized";
+        else {
+            if (this.result.value !== undefined) {
+                this.markAsChanged();
+            }
+        }
+        this.valueOrigin = "init";
         this.result.remoteStatus = "local";
     }
 

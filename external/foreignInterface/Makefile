@@ -5,7 +5,8 @@ TSC=tsc --noImplicitAny --noImplicitReturns -t es2015
 
 .PHONY: clean tsc
 
-TSSOURCES=getGeoJSON.foreign.ts graphCanvas.foreign.ts googlemaps.foreign.ts
+TSSOURCES=getGeoJSON.foreign.ts graphCanvas.foreign.ts googlemaps.foreign.ts \
+          svg.foreign.ts
 
 tsc: $(TSSOURCES:%.foreign.ts=%.foreign.js)
 

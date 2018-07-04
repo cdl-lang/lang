@@ -192,6 +192,8 @@ class TaskQueue implements TimedOut {
     static visualWrapupPriority: number = 60;
     // After the visuals have been updated, allow processing of queued events.
     static queuedEventPriority: number = 50;
+    // After normal content, check if there's anything left on the path node queue
+    static executePathNodeQueuePriority: number = 45;
     // At this point, all normal content is done, and the debugger can be
     // updated. This should trigger only debugger related content changes. If
     // not, it could cause an undetected infinite loop.

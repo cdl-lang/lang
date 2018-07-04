@@ -429,14 +429,14 @@ class EvaluationApply extends EvaluationFunctionApplication
     */
     state: number = 0;
     active: boolean = false;
-    fun: EvaluationDefun;
+    fun?: EvaluationDefun;
     parameters: EvaluationDefunParameter[];
     body: EvaluationNode;
     bodyResult: Result;
     environment: LocalEvaluationEnvironment;
-    query: any;
-    queryIds: any[];
-    queryIsProjection: boolean;
+    query?: any;
+    queryIds?: any[];
+    queryIsProjection?: boolean;
     testSimpleQuery: boolean = false; // When true, check for a SimpleQuery
     simpleQuery: SimpleQuery;
     compiledQuery: CompiledQuery;
@@ -445,7 +445,7 @@ class EvaluationApply extends EvaluationFunctionApplication
     arguments: Result[] = [];
     prevResultFromSameDefun: boolean = false;
     changedArguments: boolean[];
-    foreignInterface: ForeignInterface;
+    foreignInterface?: ForeignInterface;
     /** When true, one of the watchers needs the result in order. */
     resultRequirements: MinimumResultRequirements = MinimumResultRequirements.ordered;
     /** When the result requirements ask for an ordered result, this object
@@ -1421,6 +1421,10 @@ class EvaluationApply extends EvaluationFunctionApplication
 }
 internalApply.classConstructor = EvaluationApply;
 
+/// When this variable is false, the bodies in constant maps will not be
+/// removed, so they will be open to debugging.
+var debugNoConstMaps: boolean = true;
+
 // Like apply, but creates one instance of the function application for each
 // element in the input os. There are two modes: setMode and non setMode. In the
 // first mode, there is one environment that processes the entire os; in the
@@ -1429,9 +1433,9 @@ internalApply.classConstructor = EvaluationApply;
 // and that all input ids must appear in the output, with value undefined if
 // it is o().
 class EvaluationMap extends EvaluationFunctionApplication {
-    fun: EvaluationDefun;
-    query: any;
-    funResultIsConstant: boolean;
+    fun?: EvaluationDefun;
+    query?: any;
+    funResultIsConstant?: boolean;
 
     parameters: EvaluationDefunParameter[];
     bodies: EvaluationNode[];
@@ -1609,12 +1613,14 @@ class EvaluationMap extends EvaluationFunctionApplication {
             }
         }
         if (paramIsConstant && allBodiesConstant) {
-            // NOTE: [map] doesn't appear constant to its watchers. To achieve
-            // that, we should determine if the function body guarantees a
-            // constant result on the first call to addArgument. Since this will
-            // have a very, very small benefit, we limit the use of constancy to
-            // cleaning up all bodies[].
-            this.funResultIsConstant = true;
+            // NOTE: a constant [map] may not appear constant to *all* its
+            // watchers. To achieve that, we should determine if the function
+            // body guarantees a constant result on the first call to
+            // addArgument. Since this will have a small benefit, it's not
+            // considered worth the effort.
+            this.funResultIsConstant = debugNoConstMaps;
+            this.becomesConstant();
+            this.constant = true;
         } else {
             this.activateSingleFun(from, to);
         }
@@ -1973,9 +1979,6 @@ class EvaluationMultiQuery extends EvaluationFunctionApplication {
     }
 
     destroy(): void {
-        if ("query" in this) {
-            this.setDataSourceInput(undefined);
-        }
         if (linearMultiQuery && this.dataSourceChainEnd !== undefined) {
             this.dataSourceChainEnd.removeResultReceiver(this);
         }
