@@ -809,6 +809,8 @@ def process_directive(line, directive_fn, linenr, basedir):
         filename = find_file_in_path(directive, stdmatch.group(1))
     elif quotematch != None:
         filename = os.path.join(basedir, quotematch.group(1))
+        if not os.path.isfile(filename):
+            filename = find_file_in_path(directive, quotematch.group(1))
     elif basename == 'source':
         filename = get_cdl_source()
         if source_dir is not None:
@@ -944,7 +946,7 @@ def process_title_macro(macro_name, macro_args):
 
 def process_splash_screen_url_macro(macro_name, macro_args):
     global splash_screen_url
-    return find_file_in_path('url', splash_screen_url)
+    return normalize_path(find_file_in_path('url', splash_screen_url))
 
 def process_classes_macro(macro_name, macro_args):
     global conf_lib_by_priority

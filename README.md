@@ -7,27 +7,94 @@ CDL is a mature functional programming language for web-based applications.
 
 ## Dependencies
 
-In order to develop cdl programs, you have to install the following via npm:
+In order to compile CDL programs, you need to have the following installed on your computer:
+
+* node.js (version v8.9.1 or higher)
+* python (version 2.7.14 or higher)
+* make (GNU Make version 4.2.1 or higher)
+
+Further, you would need the following npm packages (npm is part of the node.js installation):
 
 * typescript@2.2.2
 * uglify-js@2.7.5
 
-### Dependencies Notes
+After installing node.js, run the following to install these packages:
 
-* uglifyjs is only needed when you want to build a minified/uglified version of
-  the runtime.
+      npm install typescript
+      npm install uglify-js
 
-* The Makefile assumes `tsc` and `uglifyjs` are the commands to invoke
-  them and that they are installed globally. If your system is organized
-  differently, please change the definitions of the makefile variables `TSC` in
-  `scripts/feg/Makefile` and scripts/remoting/Makefile, and/or `UGLIFY` in
-  `utils/mmk`.
+### Dependency Notes
 
-* Building a persistence server or running tests downloads node
-  modules via npm, and that the persistence server depends on websockets, which
-  in turn requires a C compiler to build.
+* uglify-js is only needed when you want to build a minified/uglified version of the runtime.
 
-## Third party source code
+* The Makefile assumes `tsc` and `uglifyjs` are the commands to invoke the Typescript compiler and uglify and that they are installed globally. If your system is organized differently, please change the definitions of the makefile variables `TSC` in `scripts/feg/Makefile` and `scripts/remoting/Makefile`, and/or `UGLIFY` in `util/mmk`.
+
+* Building a persistence server or running tests downloads node modules via npm. Note that the persistence server depends on websockets, which in turn requires a C compiler to build.
+
+## Getting Started
+
+### Directories and Makefiles
+
+Having installed the above, place a copy of this respository anywhere on your computer (for example, under `/opt/cdl-lang`). A CDL application can now be compiled in any directory by putting the following `Makefile` in the directory.
+
+```
+LANGDIR=/opt/cdl-lang
+CDLPATH=.
+include $(LANGDIR)/util/mmk
+```
+
+`LANGDIR` should point at the directory where this repository was placed (`/opt/cdl-lang` in our example). `CDLPATH` should point at all directories where CDL code used by your CDL program is found. Initially, this may only be the local directory, but if your code uses external CDL classes, the directory where these classes are defined should also be added to the list of directories under `CDLPATH`. For example, if you have CDL classes defined in directory `/home/<user>/cdl-classes` you should add this directory to `CDLPATH`, as follows:
+
+    CDLPATH=.;/home/<user>/cdl-classes
+
+### Hello World
+
+CDL code is written in files with a `.js` suffix. The CDL base syntax is valid JavaScript an is read in this way directly as JavaScript data into the compiler. This allows one to use JavaScript functions and variables for preprocessing.
+
+A CDL application must contain a screen area. The following CDL program displays the string "Hello World": 
+
+```
+var screenArea = {
+    display: {
+        text: { value: "Hello World" }
+    }
+}
+```
+
+Assuming this code is in a file `helloWorld.js`, place a Makefile (as described above) in the same directory and then run (in that directory):
+
+    make helloWorld.html
+
+This will generate the HTML file `helloWorld.html`. Load this file into your browser to run the application.
+
+To use classes, it is recommended to define these classes in separate files and include these files in the main application file. A class file, whose name should also end with a `.js` suffix, can be placed in any of the directories appearing in the `CDLPATH` your makefile defines. For example, create a class file `helloWorldClasses.js` containing the following class definitions:
+
+```
+var classes = {
+    HelloWorldStyle: {
+        display: {
+            background: "lightblue",
+            text: {
+                fontSize: 48
+            }
+        }
+    }
+}
+```
+
+You can then use this file in your hello world application by including this file and referring to the `HelloWorldStyle` class defined in it:
+
+```
+// %%classfile%%: "helloWorldClasses.js"
+var screenArea = {
+    "class": "HelloWorldStyle",
+    display: {
+        text: { value: "Hello World" }
+    }
+}
+```
+
+## Third Party Source Code
 
 For printing and saving to SVG the following libraries are used
 
@@ -43,4 +110,4 @@ For printing and saving to SVG the following libraries are used
 
 ## License
 
-[Apache 2.0](./link_to_license_file)
+[Apache 2.0](https://choosealicense.com/licenses/apache-2.0/)
