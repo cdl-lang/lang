@@ -53,7 +53,7 @@ Classes and the screenArea are variants, and a variant is an ordered set of (AV)
 - Single identifiers:
 
   - Most identifiers refer to the local context label with that name, i.e. `id` is identical to `[{id: _}, [me]]`.
-  - When an identifier `f` is used as a function, i.e. in `f(...)` or `[f, ...]`, predefined function names are not translated to local context label, so `last(first)` translates to `[last, [{first: _}, [me]]]`. This keeps the syntax backwards compatibel.
+  - When an identifier `f` is used as a function, i.e. in `f(...)` or `[f, ...]`, predefined function names are not translated to local context label, so `last(first)` translates to `[last, [{first: _}, [me]]]`. This keeps the syntax backwards compatible.
   - If the identifier is one of a short list of functions that do not require arguments, and can be considered "constant-ish", it refers to that function rather than the local context label of that. E.g., `me` translate to `[me]`. This goes for identifiers: embedded, embeddedStar, embedding, embeddingStar, expressionOf, me, message, myMessage, and referredOf. This allows expressions such as `embedding.attr`.
   - Predefined symbols are left alone: true, false, Infinity, mustBeDefined ascending, descending, null, unmatched. They are forbidden as functions or as value for a simple projection, i.e. `null(x)` and `true.attr` are not allowed.
 
@@ -67,9 +67,3 @@ Classes and the screenArea are variants, and a variant is an ordered set of (AV)
         ...
         upon: ::myClickEvent
 ```
-
-Notes:
-- remove difference between include and class?
-- remove comment from include line?
-- alternative syntax for 'var =' for classes and screenArea?
-- Allow identifiers in areaOfClass call?
