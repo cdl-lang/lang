@@ -465,7 +465,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
      * @type {Map<number, Map<number, DataSourceQueryByData>>}
      * @memberof DataSourceComposable
      */
-    dataQueryDSMap: Map<number, Map<number, DataSourceQueryByData>>;
+    dataQueryDSMap?: Map<number, Map<number, DataSourceQueryByData>>;
 
     // Applies a query to this data source
     applyDataQuery(query: any, resultReceiver: ReceiveDataSourceResult, querySourceId: number, ownerId: number = DataSourceComposable.globalId): DataSourceQueryByData {
@@ -515,7 +515,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
                this.dataQueryDSMap.get(ownerId).get(sourceId): undefined;
     }
 
-    elementIdQueryDSMap: Map<number, DataSourceQueryByElementId>;
+    elementIdQueryDSMap?: Map<number, DataSourceQueryByElementId>;
 
     applyElementIdQuery(elementIDs: number[], resultReceiver: ReceiveDataSourceResult, watcherId: number): DataSourceQueryByElementId {
         var qds: DataSourceQueryByElementId;
@@ -540,7 +540,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    functionDSMap: Map<string, DataSourceFunctionApplication>;
+    functionDSMap?: Map<string, DataSourceFunctionApplication>;
 
     // Applies an aggregate function to this data source
     applyAggregateFunction(functionName: string, resultReceiver: ReceiveDataSourceResult): DataSourceFunctionApplication {
@@ -565,7 +565,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    orderingDSMap: Map<number, DataSourceOrdering>;
+    orderingDSMap?: Map<number, DataSourceOrdering>;
 
     // Applies a query to this data source.
     // TODO: more than single ranges
@@ -587,7 +587,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    sortDSMap: Map<number, DataSourceSort>;
+    sortDSMap?: Map<number, DataSourceSort>;
 
     // Applies a query to this data source.
     // TODO: more than single ranges
@@ -612,7 +612,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    identityDSMap: Map<string, DataSourceIdentityApplication>;
+    identityDSMap?: Map<string, DataSourceIdentityApplication>;
 
     // Applies an identity attribute to this data source
     applyIdentity(identityAttribute: string, resultReceiver: ReceiveDataSourceResult, querySourceId: number): DataSourceIdentityApplication {
@@ -637,7 +637,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    elementIdTransformationMapDSMap: Map<string, DataSourceElementIdTransformation>;
+    elementIdTransformationMapDSMap?: Map<string, DataSourceElementIdTransformation>;
 
     // Applies an element id transformation to this data source
     applyElementIdTransformation(transformationName: string, resultReceiver: ReceiveDataSourceResult): DataSourceElementIdTransformation {
@@ -669,7 +669,7 @@ abstract class DataSourceComposable extends DataSource implements DataSourceKeyU
         this.checkEndOfUse();
     }
 
-    mergeUnderIdentityWithPathDSMap: Map<number, DataSourceMergeUnderIdentityWithPath>;
+    mergeUnderIdentityWithPathDSMap?: Map<number, DataSourceMergeUnderIdentityWithPath>;
 
     // Applies an mergeUnderIdentityWithPath attribute to this data source
     applyMergeUnderIdentityWithPath(path: string, resultReceiver: ReceiveDataSourceResult): DataSourceMergeUnderIdentityWithPath {

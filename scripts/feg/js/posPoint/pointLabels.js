@@ -308,7 +308,7 @@ function getEdgeSuffixFunction(edge, isContent, isIntersection)
                                                          isIntersection); };
                 break;
             default:
-                mondriaInternalError("suffix function type not supported: ",
+                cdlInternalError("suffix function type not supported: ",
                                      edge);
                 return undefined;
         }

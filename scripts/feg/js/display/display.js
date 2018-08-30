@@ -1326,7 +1326,7 @@ ContentDisplay.prototype.refreshArc = function(displayDesc, width, height) {
     var twoPI = Math.PI * 2;
     if (relativeRadius.length > 0 && radius.length === 0) {
         var normRadius = Math.min(w, h) / 2;
-        radius = relativeRadius.map(val => val * normRadius);
+        radius = relativeRadius.map(function(val) { return val * normRadius; });
     }
     var nr = radius.length === 0 || color.length === 0? 0: // no defaults
              end.length !== 0? end.length: // pick end over range
@@ -1368,7 +1368,7 @@ ContentDisplay.prototype.checkArcHit = function(displayDesc, px, width, py, heig
     var twoPI = Math.PI * 2;
     if (relativeRadius.length > 0 && radius.length === 0) {
         var normRadius = Math.min(w, h) / 2;
-        radius = relativeRadius.map(val => val * normRadius);
+        radius = relativeRadius.map(function(val) { return val * normRadius; });
     }
     var nr = radius.length === 0 || color.length === 0? 0: // no defaults
              end.length !== 0? end.length: // pick end over range
@@ -1442,7 +1442,7 @@ ContentDisplay.prototype.refreshLine = function(displayDesc, width, height) {
     ctx.lineCap = typeof(lineCap) === "string"? lineCap: "round";
     ctx.beginPath();
     if (dash.length > 0) {
-        ctx.setLineDash(dash.filter(v => typeof(v) === "number"));
+        ctx.setLineDash(dash.filter(function(v) { return typeof(v) === "number"; }));
         if (typeof(dashOffset) === "number") {
             ctx.lineDashOffset = dashOffset;
         }
@@ -1708,7 +1708,7 @@ ContentDisplay.prototype.imageUpdateHeightWidth = function(img) {
         }
     }
     if (isNaN(requestedRatio)) {
-        mondriaAuthorError('Illegal size=' + vstringify(imageDescr.size));
+        cdlAuthorError('Illegal size=' + vstringify(imageDescr.size));
     }
 
     var widthRotScale = parentWidth / naturalWidth;
@@ -1898,7 +1898,7 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
       case "empty":
         break;
       default:
-        mondriaInternalError("setting element pos for unknown type: ",
+        cdlInternalError("setting element pos for unknown type: ",
                              this.displayType);
     }
 }

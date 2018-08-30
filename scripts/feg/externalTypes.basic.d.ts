@@ -25,7 +25,7 @@ declare function requirePerformanceNow(): any;
 declare function requireBtoaAtob(): any;
 declare function requireXMLHttpRequest(): any;
 
-declare function mondriaInternalError(msg: string): void;
+declare function cdlInternalError(msg: string): void;
 declare function mMessage(msg: string): void;
 declare function unsubcribeResourceHook(): void;
 

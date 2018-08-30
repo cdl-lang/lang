@@ -1,3 +1,4 @@
+// Copyright 2018 Yoav Seginer, Theo Vosse.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -2234,6 +2235,7 @@ class EvaluationChanged extends EvaluationFunctionApplication implements TimeSen
 
     lastInput: any = undefined;
     currentInput: any = undefined;
+    falseNotified: boolean = true; // initially, yes
     status: boolean = false;
     isOnTimeQueue: boolean = false;
 
@@ -2254,6 +2256,12 @@ class EvaluationChanged extends EvaluationFunctionApplication implements TimeSen
     }
 
     eval(): boolean {
+
+        if(!this.falseNotified) {
+            this.falseNotified = true;
+            return true;
+        }
+        
         var status: boolean = !objectEqual(this.lastInput, this.currentInput); 
 
         this.inputHasChanged = false;
@@ -2264,13 +2272,21 @@ class EvaluationChanged extends EvaluationFunctionApplication implements TimeSen
         }
         return false;
     }
-
+    
     public preWriteNotification(cycle: number): void {
     }
 
     endOfEvaluationCycleNotification(cycle: number): void {
-        this.lastInput = this.currentInput;
-        if (this.status) {
+        
+        if(this.status) {
+            this.lastInput = this.currentInput;
+            this.status = false;
+            this.result.set(constFalseOS);
+            this.falseNotified = false;
+            evaluationQueue.addTimeSensitiveNode(this);
+            this.markAsChanged();
+        } else if(!objectEqual(this.lastInput, this.currentInput)) {
+            evaluationQueue.addTimeSensitiveNode(this);
             this.markAsChanged();
         }
     }
@@ -2638,6 +2654,11 @@ class EvaluationDisplayOffset extends EvaluationFunctionApplication {
         triangle: true,
         line: true,
         arc: true,
+        padding: true,
+        paddingLeft: true,
+        paddingRight: true,
+        paddingTop: true,
+        paddingBottom: true,
         boxShadow: true,
         background: true,
         borderRadius: true,
@@ -4596,7 +4617,8 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
             language: [navigator.language],
             languages: ensureOS((<any>navigator).languages),
             maxTouchPoints: [navigator.maxTouchPoints],
-            connectionStatus: [this.connectionStatus]
+            connectionStatus: [this.connectionStatus],
+            waitBusyTime: [gWaitBusyTime1]
         };
 
         if (this.powerDisconnected !== undefined) {
@@ -4611,7 +4633,7 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
 
     static writeObjType: ValueTypeDescription = 
         vtd("av", {
-            url: vtd("string"),
+            url: [vtd("string"), vtd("undefined")],
             newWindow: [vtd("boolean"), vtd("undefined")],
             target: [vtd("string"), vtd("undefined")],
             arguments: [
@@ -4620,15 +4642,24 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
                 }),
                 vtd("undefined")
             ],
-            useSameAppState: [vtd("boolean"), vtd("undefined")]
+            useSameAppState: [vtd("boolean"), vtd("undefined")],
+            waitBusyTime: vtd("number")
         });
 
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
         var pct = new PositionChangeTracker();
         var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
 
-        if (newValue.length === 1 && EvaluationSystemInfo.writeObjType.matches(newValue)) {
-            var url: any = singleton(newValue[0].url);
+        if (newValue.length !== 1 || !EvaluationSystemInfo.writeObjType.matches(newValue)) {
+            return;
+        }
+        var waitBusyTime: any = singleton(newValue[0].waitBusyTime);
+        if (typeof(waitBusyTime) === "number") {
+            gWaitBusyTime1 = waitBusyTime;
+            this.markAsChanged();
+        }
+        var url: any = singleton(newValue[0].url);
+        if (typeof(url) === "string") {
             var args: any[] = newValue[0].arguments;
             if (isTrue(newValue[0].useSameAppState) && gAppStateMgr.appStateHandle !== undefined) {
                 args = args === undefined? []: ensureOS(args);
@@ -4650,7 +4681,7 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
                             var val: any = arg[attr];
                             if (val !== undefined && !(val instanceof Array && val.length === 0)) {
                                 url += (hasArguments? "&": "?") + encodeURIComponent(attr) +
-                                       "=" + encodeURIComponent(singleton(val));
+                                        "=" + encodeURIComponent(singleton(val));
                             }
                             hasArguments = true;
                         }
@@ -4663,7 +4694,7 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
                 var target: any = singleton(newValue[0].target);
                 if (typeof(target) === "string") {
                     if (!openWindowReferencesPerTarget[target] ||
-                          openWindowReferencesPerTarget[target].closed) {
+                            openWindowReferencesPerTarget[target].closed) {
                         openWindowReferencesPerTarget[target] =
                             window.open(singleton(url));
                     } else {

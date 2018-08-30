@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Dependencies for automated testing",
   "dependencies": {
+    "@types/node": "^10.9.3",
     "xmlhttprequest": "^1.8.0"
   },
   "engine": "node >= 8.9.1"

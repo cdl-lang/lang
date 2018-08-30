@@ -132,7 +132,7 @@ function allPosConstraintsMakeAutomaticPointConstraint(entry)
             break;
             
         default:
-            mondriaInternalError("unexpected type '" + entry.type + "'");
+            cdlInternalError("unexpected type '" + entry.type + "'");
             break;
     }
 }

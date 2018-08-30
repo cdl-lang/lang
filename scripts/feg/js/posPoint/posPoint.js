@@ -344,7 +344,7 @@ PosPoint.prototype.registerHandler = posPointRegisterHandler;
 function posPointRegisterHandler(handler)
 {
     if(!handler || typeof(handler.call) != "function") {
-        mondriaInternalError("registering improper handler object: ", handler);
+        cdlInternalError("registering improper handler object: ", handler);
         return undefined;
     }
     

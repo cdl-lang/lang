@@ -247,7 +247,7 @@ ContentPosManager.prototype.setContentOffset =
 function contentPosManagerSetContentOffset(edge, offset)
 {
     if(!(edge in ContentPosManager.edgeNames)) {
-        mondriaInternalError("unknown edge name for content offset: ", edge);
+        cdlInternalError("unknown edge name for content offset: ", edge);
         return false;
     }
     

@@ -1,3 +1,4 @@
+// Copyright 2018 Yoav Seginer, Theo Vosse.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +14,7 @@
 // limitations under the License.
 
 /// <reference path="../query/fegValueIndexer.ts" />
+/// <reference path="dataParsers.ts" />
 
 abstract class EvaluationDataSource extends EvaluationFunctionApplication
     implements IndexerDataSupplier
@@ -93,47 +95,28 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
         this.infoUpdate(state, attributes, this.debugName(), undefined);
     }
 
-    // TODO: Now always loads data into indexer. Not ideal when the original
-    // data is first put through processing steps before being queried. Possible
-    // solution: indexer after 'map' or whatever, or index this anyway and
-    // use merge indexers.
-    setData(data: any[], attributes: DataSourceAttributesInfo[]): void {
-        this.data = data;
-        this.endedLoading("loaded", attributes);
-        if (this.dataSourceResultMode) {
-            this.releaseDataPathNode();
-            this.indexer.clear();
-            if (this.data !== undefined) {
-                for (var i: number = 0; i < data.length; i++) {
-                    this.indexer.addRawObject(this.data[i], undefined);
-                }
-            }
-        } else {
-            this.result.value = data;
-            this.informAllWatchers();
-        }
-    }
-
-    dataPerFacet: {[facetName: string]: SimpleValue[]} = undefined;
-    attributes: DataSourceAttributesInfo[] = undefined;
+    dataParser: DataParser = undefined;
+    // the following fields are loaded from the data parser (if the data
+    // is parsed, otherwise they should not be used).
+    dataPerFacet: {[facetName: string]: SimpleValue[]};
+    attributes: DataSourceAttributesInfo[];
     nrDataRows: number = 0;
     topLevelDataElementId: number = undefined;
 
-    provideDataSupplier(nrRows: number, dataPerFacet: {[facetName: string]: any[]},
-                        attributes: DataSourceAttributesInfo[]): void {
+    provideDataSupplier(): void {
         var topLevelData: any = {
             state: "loaded",
             fullName: (this.uri instanceof NativeObjectWrapper? this.uri.file.name: this.sourceName),
             name: extractBaseName(this.sourceName),
             revision: getDeOSedValue(this.revision),
             lastUpdate: Date.now(),
-            attributes: attributes,
+            attributes: this.dataParser.attributes,
             data: []
         };
 
-        this.dataPerFacet = dataPerFacet;
-        this.nrDataRows = nrRows;
-        this.attributes = attributes;
+        this.dataPerFacet = this.dataParser.dataPerFacet;
+        this.nrDataRows = this.dataParser.nrRows;
+        this.attributes = this.dataParser.attributes;
         this.releaseDataPathNode();
         if (this.indexer !== undefined) {
             this.indexer.clear();
@@ -147,12 +130,12 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
             this.indexer.setTopLevelAttributeValue(topLevelData, undefined);
         this.indexer.setDataSupplier(this);
         this.indexer.announceNewDataElementsForPathId(
-            dataPathId, this.topLevelDataElementId, 0, nrRows);
+            dataPathId, this.topLevelDataElementId, 0, this.nrDataRows);
         // don't release dataPathId: it can change the path id for "data"
         this.dataPathNode = this.indexer.pathNodesById[dataPathId];
         this.indexer.incPathNodeTracing(this.dataPathNode);
 
-        this.endedLoading("loaded", attributes);
+        this.endedLoading("loaded", this.attributes);
     }
 
     // datasource and datatable can switch mode, but aren't dataSourceAware
@@ -254,303 +237,6 @@ abstract class EvaluationDataSource extends EvaluationFunctionApplication
         }];
     }
 }
-
-//
-// 'datasource' provides access to an external data source
-//
-// a data-source is identified by a name, which is interpreted as a file-name.
-//
-// the implementation below expects/assumes that the included file is prefixed
-//   with 'g_datasource.<source-name> =", where <source-name> is also the
-//   filename (without the .js), e.g. file xxx.js would contain
-//   var g_datasource.xxx = o({...}, ...);
-//   and would be used as [datasource, "xxx"]
-//
-// a refresh can be affected by changing the value of the optional 2nd argument
-//
-class EvaluationDataSourceFunction extends EvaluationDataSource {
-
-    scriptElem: HTMLScriptElement = undefined;
-    baseName: string;
-    windowErrorHandler: any;
-    errorTriggered: boolean;
-
-    actualSrcHint: string; // which resource was actually used
-
-    constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
-        super(prototype, local);
-        this.dataSourceAware = false;
-    }
-
-    updateInput(pos: any, result: Result): void {
-        // pos 0 is the datasource name
-        if (pos === 0) {
-            var sourceNameArr: string[];
-            var sourceName: string;
-            sourceNameArr = (typeof(result) !== "object") ? [] :
-                ((result.value instanceof Array) ? result.value : []);
-            if ((sourceNameArr.length === 1) &&
-                (typeof(sourceNameArr[0]) === "string")) {
-                sourceName = sourceNameArr[0];
-                if (sourceName !== this.sourceName) {
-                    this.sourceName = sourceName;
-                    this.reload();
-                }
-            } else {
-                sourceName = undefined;
-                this.data = constEmptyOS;
-                this.markAsChanged();
-            }
-        } else if (pos === 1) {
-            if (!objectEqual(result.value, this.revision)) {
-                this.revision = result.value;
-                this.reload();
-            }
-        }
-    }
-
-    eval(): boolean {
-        if (this.dataSourceResultMode) {
-            return true;
-        } else if (!objectEqual(this.data, this.result.value)) {
-            this.result.value = this.data;
-            return true;
-        }
-        return false;
-    }
-
-    // callback for <script> load error - print an error to the console and
-    //  set an error state on the datasourceInfo element
-    onLoadError(err: any): void {
-        var errDetail: string = "(" + this.sourceName + ")";
-
-        window.onerror = this.windowErrorHandler;
-        this.errorTriggered = true;
-
-        if (typeof(err) === "string") {
-            errDetail += ": " + err;
-        }
-        this.errorInLoading(errDetail);
-        console.log("EvaluationDataSourceFunction: error: failed to load '" +
-                    this.actualSrcHint + "' " + errDetail);
-    }
-
-    // callback for <script> tag - load complete; also gets called when there
-    // is a syntax error, which is why onLoadError() sets the flag
-    // this.errorTriggered.
-    //
-    // call this.markAsChanged() to get eval() called and notify watchers
-    onLoad(): void {
-        window.onerror = this.windowErrorHandler;
-
-        this.resumeQueue();
-        if (!this.errorTriggered) {
-            if (this.baseName !== undefined) {
-                this.data = g_datasource[this.baseName];
-            } else {
-                this.data = g_datasource[this.sourceName];
-            }
-            if (this.data !== undefined) {
-                this.setData(normalizeObject(this.data), undefined);
-            }
-            this.endedLoading("loaded", undefined);
-        }
-    }
-
-    // refresh the datasource
-    reload(): void {
-        this.suspendQueue();
-        if (typeof(requireFS()) !== "undefined") {
-            this.nodejsReload();
-        } else {
-            this.browserReload();
-        }
-    }
-
-    //
-    // (re)load the datasource by adding a <script> element at the end
-    //  of <head>. If reloading, the previous <script> element is removed first
-    //
-    browserReload(): void {
-        var self = this;
-        var scriptElem: HTMLScriptElement;
-        var srcStr: string;
-
-        srcStr = this.makeDataSrc();
-
-        this.actualSrcHint = srcStr;
-
-        this.infoUpdate(this.scriptElem === undefined? "initialLoad": "reload",
-                        undefined, this.debugName(), 0);
-
-        if (typeof(this.scriptElem) !== "undefined") {
-            this.scriptElem.parentNode.removeChild(this.scriptElem);
-            this.scriptElem = undefined;
-        }
-
-        // window.onerror is called when there is a syntax error in the js file
-        this.windowErrorHandler = window.onerror;
-        this.errorTriggered = false;
-        window.onerror = function (err) {
-            self.onLoadError(err);
-        }
-
-        scriptElem = document.createElement("script");
-        scriptElem.type = "text/javascript";
-        scriptElem.onerror = function (err) {
-            self.onLoadError(err);
-        }
-        scriptElem.onload = function () {
-            self.onLoad();
-        }
-
-        var head: Node = document.head;
-        if (typeof(head) === "undefined") {
-            head = document.getElementsByTagName("head")[0];
-        }
-
-        this.scriptElem = scriptElem;
-
-        head.appendChild(this.scriptElem);
-
-        this.scriptElem.src = srcStr;
-    }
-
-    //
-    // construct a filename from 'this.sourceName', read it into memory,
-    //  parse it to a name and a JSON object. assign the parsed JSON object
-    //  into g_datasource[<name>]
-    //
-    // XXX the format of the datasource file must follow a specific, rather ugly
-    //     pattern
-    // XXX the datasource file must be located at a specific location relative
-    //      to the location of the script containing this code (__dirname)
-    //
-    nodejsReload(): void {
-        var self = this;
-        var fn: string = this.getDataSourceFilename();
-
-        var fs = requireFS();
-
-        this.infoUpdate(
-            this.actualSrcHint === undefined? "initialLoad": "reload",
-            undefined, this.debugName(), 0
-        );
-
-        this.actualSrcHint = fn;
-
-        fs.readFile(fn, 'utf8', function (err: any, data: any) {
-            if  (err) {
-                self.onLoadError(err);
-            } else {
-                var prefixLen: number = data.indexOf("[");
-                if (prefixLen < 0) {
-                    self.onLoadError("Invalid Format: '['");
-                    return;
-                }
-                var prefix: string = data.slice(0, prefixLen);
-
-                var matchList: string[];
-
-                var re: RegExp;
-                re = new RegExp(
-                    '^g_datasource[.]([a-zA-Z0-9_]*)[ \t\n]*=[ \t\n]*$',
-                    'm'
-                );
-                matchList = re.exec(prefix);
-
-                if (matchList.length !== 2) {
-                    self.onLoadError("Invalid Format: datasource name");
-                    return;
-                }
-
-                data = data.slice(prefixLen);
-
-                // remove trailing white space and ';'
-                re = new RegExp('^[ \t\n;]*$', 'm');
-
-                var suffLen: number;
-                for (suffLen = 0; suffLen < data.length; suffLen++) {
-                    var result: any;
-
-                    result = re.exec(data.slice(-suffLen - 2, -1));
-
-                    if (result === null) {
-                        break;
-                    }
-
-                    // the anchors ^$ may match a single line, rather than
-                    //  the complete string
-                    if (result[0].length < suffLen) {
-                        break;
-                    }
-                }
-
-                data  = data.slice(0, -suffLen - 1);
-
-                var varName: string = matchList[1];
-
-                try {
-                    g_datasource[varName] = JSON.parse(data);
-                } catch(ex) {
-                    self.onLoadError("Invalid format: not JSON");
-                    return;
-                }
-
-                self.onLoad();
-            }
-        });
-    }
-
-    // construct the data file url; assumptions about file/server structure are
-    //  hard-coded below, unless the source name starts with an explicit
-    //  protocol (although the .js must still be left off).
-    makeDataSrc(): string {
-        var re = new RegExp('^(file|https?|[st]?ftp)://.*/(.*)\.js$', 'm');
-        var matchList = re.exec(this.sourceName);
-
-        if (matchList !== null && matchList.length === 3) {
-
-            this.baseName = matchList[2];
-            return this.sourceName;
-
-        } else {
-
-            var loc: LocationObject = getWindowLocation();
-            var stripCount: number;
-            var proto = loc.protocol;
-
-            if (proto === "file:") {
-                stripCount = 5;
-            } else {
-                stripCount = 1;
-            }
-
-            var path = loc.pathname.split('/').slice(0, -stripCount).join('/');
-
-            return proto + "//" + loc.host + path + "/data/" +
-                encodeURIComponent(this.sourceName + ".js");
-        }
-    }
-
-    // construct data file name;
-    // assumes specific location of script and data
-    getDataSourceFilename(): string {
-        var path = requirePath();
-
-        var scriptPath = __dirname;
-        var basePath = scriptPath.split(path.sep).slice(0, -4).join(path.sep);
-        return [basePath, "data", this.sourceName + ".js"].join(path.sep);
-    }
-
-    debugName(): string {
-        return "datasource";
-    }
-}
-datasource.classConstructor = EvaluationDataSourceFunction;
-
-// jsonp should direct data into members of this object:
-var g_datasource: {[src: string]: any} = {};
 
 //
 // datasourceInfo - provide some information about data sources
@@ -669,20 +355,23 @@ datasourceInfo.classConstructor = EvaluationDatasourceInfo;
 enum DataSourceFileType {
     unknown,
     text,
+    tsv,
     csv,
-    json,
-    // jsonStat
+    json
 }
 
-var dataTableMaxNrRows: number = undefined;
-var dataTableMaxNrColumns: number = undefined;
-var dataTableFacetRestriction: string = undefined;
+// datasource provides general access to external data (that is, not from
+// the CDL server). The data may be parsed or not (depending on specification
+// provided by the user).
 
-class EvaluationDataTable extends EvaluationDataSource
+class EvaluationDataSourceFunction extends EvaluationDataSource
     implements IndexerDataSupplier
 {
     client: XMLHttpRequest;
     fileReader: FileReader;
+    // in case the input is a local file, the last modified time for which
+    // the file was parsed
+    fileLastModified:number = undefined;
     errorInLoad: boolean = false;
     fileMode: DataSourceFileType;
     dataParsed: boolean = false;
@@ -693,7 +382,17 @@ class EvaluationDataTable extends EvaluationDataSource
     queueRunning: boolean = true; // false when this node has stopped the queue
     withCredentialsFlag: boolean|undefined;
     waitForReply: boolean = false;
+    // if this is set to true and the input is a (local) file handle, the
+    // system re-reads the file when it is modified while the file handle
+    // is being held by this object.
+    watchFile:boolean = false;
 
+    // if the content type is not given and cannot be determined by the
+    // suffix of the source name (e.g. .csv), then if this proeprty is true,
+    // the class will try to determine the type of the input based on the
+    // content of the raw data loaded.
+    protected useContentToDecideMode: boolean = false;
+    
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
         super(prototype, local);
         this.createIndexer();
@@ -737,6 +436,9 @@ class EvaluationDataTable extends EvaluationDataSource
                 this.onlyFirstBlock = checkValue(this.onlyFirstBlock, "onlyFirstBlock");
                 this.withCredentialsFlag = checkValue(this.withCredentialsFlag, "withCredentials");
                 this.waitForReply = checkValue(this.waitForReply, "waitForReply");
+                this.watchFile = checkValue(this.watchFile, "watchFile");
+                if(!this.watchFile) // just to be on the safe side
+                    gFileHandleScanner.removeFileHandle(this);
             }
         }
     }
@@ -796,231 +498,59 @@ class EvaluationDataTable extends EvaluationDataSource
         this.resumeQueue();
     }
 
-    // These two regular expressions match anglo and euro number formats, and
-    // put the (optional) sign in the first field, the leading digits in the
-    // second field, the remaining integer digits in the third field (where it's
-    // safe to remove comma or dot), and the optional fractional part in the
-    // fifth field (including leading dot/comma).
-    static angloNumberFormat = /^([+-])?([0-9][0-9]?[0-9]?)((,[0-9][0-9][0-9])*)(\.[0-9]*)?$/;
-    static euroNumberFormat = /^([+-])?([0-9][0-9]?[0-9]?)((\.[0-9][0-9][0-9])*)(,[0-9]*)?$/;
-    static dateTest = /^[0-9][0-9]?[/-][0-9][0-9]?[/-][0-9][0-9][0-9][0-9]$/;
-
     load(response: string, async: boolean): void {
-        if (this.fileMode === DataSourceFileType.unknown) {
-            var firstChar: string = response[0];
-            if (firstChar === '[' || firstChar === '{' || firstChar === ' ') {
-                this.fileMode = DataSourceFileType.json;
-            } else {
-                this.fileMode = DataSourceFileType.text;
-            }
-        }
+        if (this.useContentToDecideMode &&
+            this.fileMode === DataSourceFileType.unknown)
+            this.determineFileModeByContent(response);
+
+        var noIndexer: boolean =
+            (this.arguments[1] !== undefined &&
+             isTrue(interpretedQuery({noIndexer: _},this.arguments[1].value)));
+        // in case there is no indexer
+        var data: any[] = undefined;
+        
         switch (this.fileMode) {
-          case DataSourceFileType.json:
-            this.loadJSON(response);
+        case DataSourceFileType.json:
+            this.dataParser = new JsonDataParser(response);
             break;
-        //   case DataSourceFileType.jsonStat:
-        //     this.loadJSONStat(response);
-        //     break;
-          default:
-            this.loadMatrix(response);
+        case DataSourceFileType.csv:
+            this.dataParser = new CsvMatrixDataParser(response,
+                                                      this.onlyFirstBlock);
             break;
+        case DataSourceFileType.tsv:
+            this.dataParser = new TsvMatrixDataParser(response,
+                                                      this.onlyFirstBlock);
+            break;
+        case DataSourceFileType.text:
+        default:
+            // as this is a single string, we never use an indexer
+            this.setNoIndexerData([], [response]);
         }
+
+        if(this.dataParser !== undefined) {
+            this.dataParser.loadData();
+            if(noIndexer) {
+                this.setNoIndexerData(this.dataParser.attributes,
+                                      this.dataParser.getDataAsOSOfAVs());
+            } else if (this.dataParser.useDataSupplyMechanism) {
+                // reads values from data parser
+                this.provideDataSupplier();
+            } else { // only in JSON mode
+                this.indexer.clear();
+                this.indexer.addRawObject({
+                    attributes: this.dataParser.attributes,
+                    data: this.dataParser.getDataAsOSOfAVs()
+                }, undefined);
+            }
+            this.endedLoading("loaded", this.dataParser.attributes);
+        }
+
+        // remove the parser (to allow the memory to be garbage collected)
+        this.dataParser = undefined;
+        
         if (async) {
             this.resumeQueue();
             this.informAllWatchers();
-        }
-    }
-
-    loadJSON(response: string): void {
-        var data: any[];
-        var attributeToIndex: {[attr: string]: number} = {};
-        var attributes: DataSourceAttributesInfo[] = [];
-        var columnHeaders: string[] = [];
-        var type: string[] = [];
-        var typeFrequencies: any[] = [];
-        var nrColumns: number = 0;
-        var min: number[] = [];
-        var max: number[] = [];
-        var uniqueValues: any[][] = [];
-        var valueCount: {[v: string]: number}[] = [];
-        var integerValued: boolean[] = [];
-        var dataSize: number = 0;
-        var dataPerFacet: {[facetName: string]: any[]} = {};
-        var useDataSupplyMechanism: boolean = true;
-
-        try {
-            // First try to parse it as one line
-            data = ensureOS(JSON.parse(response));
-        }
-        catch (ignoreError) {
-            try {
-                // On failure, split the data into lines, and JSON.parse them
-                // individually; skip empty lines and lines starting with the
-                // JS comment symbol
-                data = response.split(/[\n\r]+/).map(function(line: string, lineNr: number): any {
-                    if (line === "" || line.startsWith("//")) {
-                        return undefined;
-                    }
-                    try {
-                        return JSON.parse(line);
-                    } catch (err) {
-                        throw err + " in line " + String(lineNr + 1);
-                    }
-                });
-            } catch (errMsg) {
-                this.setResult("error", errMsg, undefined, undefined);
-                return;
-            }
-        }
-        var maxExpectedUniqueValues: number = Math.max(data.length / 50, 12 * Math.log(data.length));
-        dataPerFacet["recordId"] = [];
-        for (var i: number = 0; i < data.length; i++) {
-            var obj: any = data[i];
-            var empty: boolean = true;
-            if (typeof(obj) !== "object" || obj === null) {
-                continue;
-            }
-            for (var attr in obj) {
-                var v_ij: any = obj[attr];
-                var j: number = attributeToIndex[attr];
-                if (j === undefined) {
-                    j = nrColumns++;
-                    attributeToIndex[attr] = j;
-                    type[j] = "undefined";
-                    typeFrequencies[j] = {
-                        number: 0,
-                        string: 0,
-                        object: 0,
-                        undefined: 0,
-                        boolean: 0,
-                        currency: 0
-                    };
-                    uniqueValues[j] = [];
-                    valueCount[j] = {};
-                    integerValued[j] = true;
-                    columnHeaders[j] = attr;
-                    dataPerFacet[attr] = [];
-                }
-                var type_j: string = type[j];
-                if (v_ij !== null && v_ij !== undefined &&
-                      (!(v_ij instanceof Object) ||
-                        (v_ij instanceof Array && v_ij.length === 1))) {
-                    // Determine type and value of cell i,j; note that unlike
-                    // csv, v_ij can be an array or object. The latter case is
-                    // not handled.
-                    if (v_ij instanceof Array) {
-                        v_ij = v_ij[0];
-                    }
-                    var type_ij: string = typeof(v_ij);
-                    if (type_ij !== "number") {
-                        var n_ij: number = Number(v_ij);
-                        if (!isNaN(n_ij)) {
-                            v_ij = n_ij;
-                            type_ij = "number";
-                        }
-                    }
-                    if (integerValued[j] &&
-                         (type_ij !== "number" || v_ij !== Math.floor(v_ij))) {
-                        integerValued[j] = false;
-                    }
-                    empty = false;
-                    dataPerFacet[attr][dataSize] = v_ij;
-                } else {
-                    if (v_ij !== null && v_ij !== undefined) {
-                        // It's an AV or an array
-                        useDataSupplyMechanism = false;
-                    }
-                    type_ij = "undefined";
-                }
-                // Determine attributes of column j
-                if (type_j !== type_ij) {
-                    if (type_j === "undefined") {
-                        type[j] = type_ij;
-                        if (type_ij === "number") {
-                            min[j] = v_ij;
-                            max[j] = v_ij;
-                        }
-                        if (type_ij === "object") {
-                            uniqueValues[j] = undefined;
-                            valueCount[j] = undefined;
-                        }
-                    } else if (type_j !== "mixed") {
-                        type[j] = "mixed";
-                        min[j] = undefined;
-                        max[j] = undefined;
-                    }
-                } else if (type_ij === "number") {
-                    if (min[j] > v_ij)
-                        min[j] = v_ij;
-                    if (max[j] < v_ij)
-                        max[j] = v_ij;
-                }
-                typeFrequencies[j][type_ij]++;
-                if (valueCount[j] !== undefined) {
-                    if (v_ij in valueCount[j]) {
-                        valueCount[j][v_ij]++;
-                    } else if (type_ij !== "undefined") {
-                        if (uniqueValues[j].length > maxExpectedUniqueValues) {
-                            // Stop counting at size dependent number of different values
-                            uniqueValues[j] = undefined;
-                            valueCount[j] = undefined;
-                        } else {
-                            uniqueValues[j].push(v_ij);
-                            valueCount[j][v_ij] = 1;
-                        }
-                    }
-                }
-            }
-            if (!empty) {
-                dataPerFacet["recordId"][dataSize] = dataSize;
-                dataSize++;
-            }
-        }
-        for (var j: number = 0; j < nrColumns; j++) {
-            var name: string = columnHeaders[j];
-            var attrInfo: DataSourceAttributesInfo = {
-                name: name === undefined? []: [name],
-                type: type[j] === "number" && integerValued[j]?
-                      ["integer"]: [type[j]],
-                typeCount: normalizeObject(typeFrequencies[j])
-            };
-            if (min[j] !== undefined) {
-                attrInfo.min = [min[j]];
-                attrInfo.max = [max[j]];
-            }
-            if (uniqueValues[j] !== undefined) {
-                attrInfo.uniqueValues = uniqueValues[j];
-            }
-            attributes.push(attrInfo);
-        }
-        attributes.push({
-            name: ["recordId"],
-            type: ["integer"],
-            min: [1],
-            max: [data.length],
-            typeCount: [{
-                number: [data.length],
-                string: [0],
-                object: [0],
-                undefined: [0],
-                boolean: [0],
-                currency: [0]
-            }]
-        });
-        this.endedLoading("loaded", attributes);
-        if (this.arguments[1] !== undefined &&
-              isTrue(interpretedQuery({noIndexer: _}, this.arguments[1].value))) {
-            this.setNoIndexerData(attributes, data);
-        } else if (useDataSupplyMechanism) {
-            this.dataPerFacet = dataPerFacet;
-            this.provideDataSupplier(dataSize, dataPerFacet, attributes);
-        } else {
-            this.indexer.clear();
-            this.indexer.addRawObject({
-                attributes: attributes,
-                data: data
-            }, undefined);
-            this.endedLoading("loaded", attributes);
         }
     }
 
@@ -1044,626 +574,22 @@ class EvaluationDataTable extends EvaluationDataSource
         this.informAllWatchers();
     }
 
-    // loadJSONStat(response: string): void {
-    // }
-
-    loadMatrix(response: string): void {
-
-        function isHeaderRow(r: string[]): boolean {
-            return r.every(s => s !== undefined && /[^0-9]/.test(s));
-        }
-
-        function isEmptyRow(r: string[]): boolean {
-            return r.every(s => s === undefined);
-        }
-
-        function findHeaders(m: string[][]): string[][] {
-            var headerStart: number = 0;
-
-            while (headerStart < m.length - 2 && isEmptyRow(m[headerStart])) {
-                headerStart++;
-            }
-            while (headerStart < m.length - 2 &&
-                   m[headerStart].length < m[headerStart + 1].length &&
-                   isHeaderRow(m[headerStart + 1])) {
-                headerStart++;
-            }
-            return headerStart === 0? m: m.slice(headerStart);
-        }
-
-        var matrix: string[][] = findHeaders(this.parseResponse(response));
-        var columnHeaders: string[] = matrix[0].map(function(value: string, i: number): string {
-            return value === undefined? "column " + i: value;
-        });
-        var currencySymbols = { "¥": 1, "$": 1, "£": 1, "€": 1 };
-        var attributes: DataSourceAttributesInfo[] = [];
-        var dataPerFacet: {[facetName: string]: any[]} = {};
-        var maxExpectedUniqueValues: number = 12 * Math.log(matrix.length - 1);
-        var recordIds: number[] = [];
-        var facetRestrictionQuery: any = undefined;
-        var nrRows = dataTableMaxNrRows !== undefined && dataTableMaxNrRows < matrix.length?
-                     dataTableMaxNrRows: matrix.length - 1;
-        var stringCache = new Map<string, string>();
-        var originalAttributes: {[attr: string]: string} = { recordId: "recordId" };
-        var numTest1 = EvaluationDataTable.angloNumberFormat;
-        var numTest2 = EvaluationDataTable.euroNumberFormat;
-        var dateTest = EvaluationDataTable.dateTest;
-        var possibleDate: boolean[] = [];
-        var fixedUpNames: string[] = [];
-
-        function convertToOS(): any[] {
-            var res: any[] = [];
-
-            for (var attr in dataPerFacet) {
-                var col = dataPerFacet[attr];
-                for (var i: number = 0; i < col.length; i++) {
-                    var dataElement = col[i];
-                    if (dataElement !== undefined) {
-                        if (res[i] === undefined) {
-                            res[i] = {};
-                        }
-                        res[i][attr] = dataElement;
-                    }
-                }
-            }
-            return res;
-        }
-
-        function fixUpAttribute(attr: string): string {
-            if (attr === "") {
-                attr = "unknown";
-            }
-            if (!(attr in originalAttributes)) {
-                originalAttributes[attr] = attr;
-                return attr;
-            }
-            var suffix: number = 0;
-            var nAttr: string;
-            do {
-                suffix++;
-                nAttr = attr + " " + suffix;
-            }
-            while (nAttr in originalAttributes);
-            originalAttributes[nAttr] = attr;
-            return nAttr;
-        }
-
-        // Removes the currency marking from the column, and puts back the
-        // original strings.
-        function cancelCurrency(row: number, column: any[], j: number): void {
-            for (var i: number = 0; i < row - 1; i++) {
-                column[i] = matrix[i + 1][j];
-            }
-        }
-
-        function convertDates(): void {
-            var min1 = Number.MAX_VALUE, min2 = Number.MAX_VALUE, min3 = Number.MAX_VALUE;
-            var max1 = 0, max2 = 0, max3 = 0;
-            var dateSplit = /^([0-9][0-9]?)[/-]([0-9][0-9]?)[/-]([0-9][0-9][0-9][0-9])$/;
-            var fmt: (matches: RegExpExecArray) => number;
-
-            function dmy(matches: RegExpExecArray): number {
-                var date: Date = new Date(1, 0);
-
-                date.setDate(Number(matches[1]));
-                date.setMonth(Number(matches[2]) - 1);
-                date.setFullYear(Number(matches[3]));
-                return date.getTime() / 1000;
-            }
-
-            function mdy(matches: RegExpExecArray): number {
-                var date: Date = new Date(1, 0);
-
-                date.setDate(Number(matches[2]));
-                date.setMonth(Number(matches[1]) - 1);
-                date.setFullYear(Number(matches[3]));
-                return date.getTime() / 1000;
-            }
-
-            function ymd(matches: RegExpExecArray): number {
-                var date: Date = new Date(1, 0);
-
-                date.setDate(Number(matches[3]));
-                date.setMonth(Number(matches[2]) - 1);
-                date.setFullYear(Number(matches[1]));
-                return date.getTime() / 1000;
-            }
-
-            for (var j = 0; j < possibleDate.length; j++) {
-                if (possibleDate[j]) {
-                    for (var i: number = 1; i <= nrRows; i++) {
-                        var v_ij: any = matrix[i][j];
-                        if (typeof(v_ij) === "string") {
-                            var matches = dateSplit.exec(v_ij);
-                            if (matches !== null) {
-                                var f1 = Number(matches[1]);
-                                var f2 = Number(matches[2]);
-                                var f3 = Number(matches[3]);
-                                if (f1 > max1) {
-                                    max1 = f1;
-                                }
-                                if (f1 < min1) {
-                                    min1 = f1;
-                                }
-                                if (f2 > max2) {
-                                    max2 = f2;
-                                }
-                                if (f2 < min2) {
-                                    min2 = f2;
-                                }
-                                if (f3 > max3) {
-                                    max3 = f3;
-                                }
-                                if (f3 < min3) {
-                                    min3 = f3;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if ((12 < max1 && max1 <= 31 && max2 <= 12 && 1500 <= max3 && max3 <= 2100) ||
-                (max1 === min1 && min2 === 1 && max2 === 12 && 1500 <= max3 && max3 <= 2100)) {
-                fmt = dmy;
-            } else if ((12 < max2 && max2 <= 31 && max1 <= 12 && 1500 <= max3 && max3 <= 2100) ||
-                       (max2 === min2 && min1 === 1 && max1 === 12 && 1500 <= max3 && max3 <= 2100)) {
-                fmt = mdy;
-            } else if ((12 < max3 && max3 <= 31 && max2 <= 12 && 1500 <= max1 && max1 <= 2100) ||
-                       (max3 === min3 && min2 === 1 && max2 === 12 && 1500 <= max1 && max1 <= 2100)) {
-                fmt = ymd;
-            } else {
-                return;
-            }
-            for (var j = 0; j < possibleDate.length; j++) {
-                if (possibleDate[j]) {
-                    var min = Number.MAX_VALUE;
-                    var max = -Number.MAX_VALUE;
-                    var attr = attributes[j];
-                    var typeCount = attr.typeCount[0];
-                    var column = dataPerFacet[fixedUpNames[j]];
-                    attributes[j].type = ["date"];
-                    typeCount.date = typeCount.string;
-                    typeCount.string = [0];
-                    typeCount.nrUniqueValuesPerType[0].date = typeCount.nrUniqueValuesPerType[0].string;
-                    typeCount.nrUniqueValuesPerType[0].string = [0];
-                    for (var i: number = 1; i <= nrRows; i++) {
-                        var v_ij: any = matrix[i][j];
-                        if (typeof(v_ij) === "string") {
-                            var matches = dateSplit.exec(v_ij);
-                            var conv = fmt(matches);
-                            column[i - 1] = conv;
-                            if (conv < min) {
-                                min = conv;
-                            }
-                            if (conv > max) {
-                                max = conv;
-                            }
-                        }
-                    }
-                    attributes[j].min = [min];
-                    attributes[j].max = [max];
-                    if (attributes[j].uniqueValues !== undefined) {
-                        attributes[j].uniqueValues = attributes[j].uniqueValues.map((v: any): any =>
-                            typeof(v) === "string"? fmt(dateSplit.exec(v)): v
-                        );
-                    }
-                }
-            }
-        }
-
-        function convertNumberFormat(numStr: string): any {
-            var matches: string[];
-
-            if ((((matches = numTest1.exec(numStr)) !== null) ||
-                ((matches = numTest2.exec(numStr)) !== null))) {
-               var convStr: string = matches[1] === undefined? "": matches[1];
-               convStr += matches[2];
-               if (matches[3] !== undefined) {
-                   convStr += matches[3].replace(/,/g, "");
-               }
-               if (matches[5] !== undefined) {
-                   convStr += "." + matches[5].substr(1);
-               }
-               return Number(convStr);
-           }
-           return numStr;
-        }
-
-        this.dataParsed = true;
-        if (this.onlyFirstBlock) {
-            for (var i = 1; i <= nrRows; i++) {
-                var row_i: string[] = matrix[i];
-                if (row_i.every(s => s === undefined)) {
-                    nrRows = i - 1;
-                    break;
-                }
-            }
-        }
-        if (dataTableFacetRestriction !== undefined) {
-            var facetqs = dataTableFacetRestriction.split(",");
-            facetRestrictionQuery  = {};
-            for (var i = 0; i < facetqs.length; i++) {
-                var facetq = facetqs[i];
-                var qvalue: any = facetq[0] === "+"? new RangeValue([1,Infinity], true, false): 0;
-                var qattr: string = facetq.slice(1);
-                facetRestrictionQuery[qattr] = qvalue;
-            }
-        }
-        for (var j: number = 0; j < columnHeaders.length; j++) {
-            var originalName: string = columnHeaders[j];
-            var name: string = fixUpAttribute(originalName);
-            var column: any[] = new Array(nrRows);
-            // Maintain type, min, max, etc. information
-            var type_j: string = "undefined";
-            var currency_j: string = undefined;
-            var integerValued_j: boolean = true;
-            var min_j: number = undefined;
-            var max_j: number = undefined;
-            var valueCount_j = new Map<any, number>();
-            var uniqueValues_j: any[] = [];
-            var possibleDateCount: number = 0;
-            var typeCount: any = {
-                number: 0,
-                string: 0,
-                object: 0,
-                undefined: 0,
-                boolean: 0,
-                currency: 0,
-                nrPositive: 0,
-                nrNegative: 0,
-                nrUnique: 0,
-                nrUniqueValuesPerType: {
-                    number: 0,
-                    string: 0,
-                    object: 0,
-                    boolean: 0,
-                    currency: 0
-                }
-            };
-            fixedUpNames.push(name);
-            for (var i: number = 0; i < nrRows; i++) {
-                var v_ij: any = matrix[i + 1][j];
-                if (v_ij !== "NULL" && v_ij !== "" &&
-                      v_ij !== "undefined" && v_ij !== undefined) {
-                    // Determine type and value of cell i,j
-                    var n_ij: number = Number(v_ij);
-                    var type_ij: string;
-                    var currency_ij: string = undefined;
-                    // Try more costly currency and locale conversions only when
-                    // the column is not mixed already.
-                    if (type_j !== "mixed" && v_ij !== undefined && isNaN(n_ij)) {
-                        currency_ij = v_ij.charAt(0);
-                        if (currency_ij in currencySymbols) {
-                            var numStr: string = v_ij.substr(1);
-                            n_ij = Number(numStr);
-                            if (isNaN(n_ij)) {
-                                n_ij = convertNumberFormat(numStr);
-                            }
-                        } else {
-                            currency_ij = undefined;
-                            n_ij = convertNumberFormat(v_ij);
-                        }
-                    }
-                    if (!isNaN(n_ij) && n_ij !== -Infinity && n_ij !== Infinity) {
-                        v_ij = n_ij;
-                        if (currency_ij === undefined) {
-                            type_ij = "number";
-                            column[i] = n_ij;
-                        } else {
-                            type_ij = "currency";
-                            if (currency_j === undefined) {
-                                currency_j = currency_ij;
-                                column[i] = n_ij;
-                            } else if (currency_j !== "" &&
-                                       currency_j !== currency_ij) {
-                                cancelCurrency(i, column, j);
-                                currency_j = "";
-                                type_ij = "string";
-                                column[i] = v_ij;
-                            } else {
-                                column[i] = n_ij;
-                            }
-                        }
-                        if (integerValued_j && n_ij !== Math.floor(n_ij)) {
-                            integerValued_j = false;
-                        }
-                    } else {
-                        type_ij = "string";
-                        if (stringCache.has(v_ij)) {
-                            v_ij = stringCache.get(v_ij);
-                        } else {
-                            stringCache.set(v_ij, v_ij);
-                        }
-                        if (dateTest.test(v_ij)) {
-                            possibleDateCount++;
-                        }
-                        column[i] = v_ij;
-                    }
-                } else {
-                    type_ij = "undefined";
-                }
-                // Determine attributes of column j
-                if (type_j !== type_ij) {
-                    if (type_j === "undefined") {
-                        type_j = type_ij;
-                        if (type_ij === "number" || type_ij === "currency") {
-                            min_j = n_ij;
-                            max_j = n_ij;
-                        }
-                    } else if (v_ij !== undefined && type_j !== "mixed") {
-                        if (type_j === "currency") {
-                            cancelCurrency(i, column, j);
-                            currency_j = "";
-                            if (type_ij !== "string") {
-                                type_j = "mixed";
-                            } else {
-                                type_j = "string";
-                            }
-                        } else {
-                            type_j = "mixed";
-                        }
-                        min_j = undefined;
-                        max_j = undefined;
-                    }
-                } else if (type_ij === "number" || type_ij === "currency") {
-                    if (min_j > n_ij)
-                        min_j = n_ij;
-                    if (max_j < n_ij)
-                        max_j = n_ij;
-                }
-                typeCount[type_ij]++;
-                if (type_ij === "number" || type_ij === "currency") {
-                    if (n_ij > 0) {
-                        typeCount.nrPositive++;
-                    } else if (n_ij < 0) {
-                        typeCount.nrNegative++;
-                    }
-                }
-                if (type_ij !== "undefined") {
-                    var cnt = valueCount_j.get(v_ij);
-                    if (cnt !== undefined) {
-                        valueCount_j.set(v_ij, cnt + 1);
-                    } else {
-                        valueCount_j.set(v_ij, 1);
-                        typeCount.nrUnique++;
-                        typeCount.nrUniqueValuesPerType[type_ij]++;
-                        if (uniqueValues_j !== undefined) {
-                            if (uniqueValues_j.length > maxExpectedUniqueValues) {
-                                // Stop storing at 12*ln(size) different values
-                                uniqueValues_j = undefined;
-                            } else {
-                                uniqueValues_j.push(v_ij);
-                            }
-                        }
-                    }
-                }
-            }
-            if (facetRestrictionQuery !== undefined &&
-                  !interpretedBoolMatch(facetRestrictionQuery, typeCount)) {
-                continue;
-            }
-            dataPerFacet[name] = column;
-            // Define attribute records
-            var attr: DataSourceAttributesInfo = {
-                name: [name],
-                type: type_j === "number" && integerValued_j?
-                      ["integer"]: [type_j],
-                typeCount: normalizeObject(typeCount)
-            };
-            if (name !== originalName){
-                attr.originalName = [originalName];
-            }
-            if (min_j !== undefined) {
-                attr.min = [min_j];
-                attr.max = [max_j];
-            }
-            if (uniqueValues_j !== undefined && type_j !== "currency") {
-                attr.uniqueValues = uniqueValues_j;
-            }
-            if (type_j === "currency") {
-                attr.currency = [currency_j];
-            }
-            attributes.push(attr);
-            possibleDate.push(possibleDateCount === typeCount.string &&
-                           typeCount.number === 0 && typeCount.object === 0 &&
-                           typeCount.boolean === 0 && typeCount.currency === 0);
-            if (attributes.length >= dataTableMaxNrColumns) {
-                break;
-            }
-        }
-        convertDates();
-        for (var i: number = 0; i < nrRows; i++) {
-            recordIds.push(i);
-        }
-        dataPerFacet["recordId"] = recordIds;
-        attributes.push({
-            name: ["recordId"],
-            type: ["integer"],
-            min: [1],
-            max: [nrRows],
-            typeCount: [{
-                number: [nrRows],
-                string: [0],
-                object: [0],
-                undefined: [0],
-                boolean: [0],
-                currency: [0],
-                nrPositive: [nrRows],
-                nrNegative: [0],
-                nrUnique: [nrRows],
-                nrUniqueValuesPerType: [{
-                    number: [nrRows],
-                    string: 0,
-                    object: 0,
-                    boolean: 0,
-                    currency: 0
-                }]
-            }]
-        });
-        if (this.arguments[1] !== undefined &&
-              isTrue(interpretedQuery({noIndexer: _}, this.arguments[1].value))) {
-            this.setNoIndexerData(attributes, convertToOS());
-        } else {
-            this.provideDataSupplier(nrRows, dataPerFacet, attributes);
-        }
-    }
-    
-    parseResponse(response: string): string[][] {
-        if (this.fileMode !== DataSourceFileType.csv) {
-            return response.split(/\r?\n/).map(function(line: string): string[] {
-                return line.split('\t');
-            });
-        }
-        var matrix: any[][] = [];
-        var row: any[] = undefined;
-        
-        function addRow(): void {
-            if (row !== undefined) {
-                matrix.push(row);
-                row = undefined;
-            }
-        }
-
-        var startPos: number = undefined;
-        var endPos: number = undefined;
-        var percentPos: number = undefined;
-        var doubleQuote: boolean;
-
-        function addField(): void {
-            var val: any;
-
-            if (startPos === undefined || endPos === undefined) {
-                val = undefined;
-            } else if (percentPos !== endPos) {
-                val = response.substring(startPos, endPos + 1);
-                if (doubleQuote) {
-                    val = val.replace(/""/g, '"');
-                }
-            } else {
-                var numVal: number = Number(response.substring(startPos, endPos));
-                if (isNaN(numVal) || numVal === Infinity || numVal === -Infinity) {
-                    val = response.substring(startPos, endPos + 1);
-                    if (doubleQuote) {
-                        val = val.replace(/""/g, '"');
-                    }
-                } else {
-                    val = numVal / 100;
-                }
-            }
-            if (row === undefined) {
-                row = [val];
-            } else {
-                row.push(val);
-            }
-            startPos = undefined;
-            endPos = undefined;
-        }
-
-        // Parse CSV with a finite state machine
-        var l: number = response.length;
-        var state: number = 0;
-        var prevCh: string;
-        for (var i: number = 0; i !== l; i++) {
-            var ch: string = response[i];
-            switch (state) {
-              case 0: // initial state, start of a field
-                doubleQuote = false;
-                percentPos = undefined;
-                switch (ch) {
-                  case '"':
-                    startPos = i + 1;
-                    state = 1;
-                    break;
-                  case ",":
-                    addField();
-                    break;
-                  case "\n": case "\r":
-                    if (prevCh !== "\n" && prevCh !== "\r") {
-                        addField();
-                        addRow();
-                    }
-                  case " ": case "\t":
-                    break;
-                  default:
-                    startPos = endPos = i;
-                    state = 3;
-                    break;
-                }
-                break;
-              case 1: // start quoted string
-                switch (ch) {
-                  case '"': // double quote or terminate string
-                    endPos = i - 1;
-                    state = 2;
-                    break;
-                }
-                break;
-              case 2: // escaped character in double quoted string
-                switch (ch) {
-                  case '"': // double quote
-                    doubleQuote = true;
-                    state = 1;
-                    break;
-                  case ",":
-                    addField();
-                    state = 0;
-                    break;
-                  case "\n": case "\r":
-                    if (prevCh !== "\n" && prevCh !== "\r") {
-                        addField();
-                        addRow();
-                    }
-                    state = 0;
-                    break;
-                }
-                break;
-              case 3: // unquoted field
-                switch (ch) {
-                  case ",":
-                    addField();
-                    state = 0;
-                    break;
-                  case " ": case "\t":
-                    break;
-                  case "%":
-                    percentPos = i;
-                    endPos = i;
-                    break;
-                  case "\n": case "\r":
-                    if (prevCh !== "\n" && prevCh !== "\r") {
-                        addField();
-                        addRow();
-                    }
-                    state = 0;
-                    break;
-                  default:
-                    endPos = i;
-                    break;
-                }
-                break;
-            }
-            prevCh = ch;
-        }
-        if (prevCh !== "\n" && prevCh !== "\r") {
-            addField();
-            addRow();
-        }
-        return matrix;
-    }
-
     eval(): boolean {
         this.errorInLoad = false;
         this.dataParsed = false;
-        if (this.uri instanceof NativeObjectWrapper &&
-              this.uri.file !== undefined) {
+        var isFileHandle:boolean = (this.uri instanceof NativeObjectWrapper &&
+                                    this.uri.file !== undefined);
+        if(!isFileHandle)
+            gFileHandleScanner.removeFileHandle(this);
+        if (isFileHandle) {
             this.infoUpdate("loading", [], "datatable", 0, undefined);
             this.determineFileMode(this.uri.file.name, false);
             this.fileReader = new FileReader();
             this.fileReader.onabort = (): void => {
                 this.abort();
             }
-            this.fileReader.onerror = (errorEvent: ErrorEvent): void => {
-                this.error(errorEvent);
+            this.fileReader.onerror = (ev: FileReaderProgressEvent): any => {
+                this.error(new ErrorEvent(ev.toString()));
             }
             this.fileReader.onloadend = (): void => {
                 if (this.fileReader !== undefined) {
@@ -1674,7 +600,10 @@ class EvaluationDataTable extends EvaluationDataSource
             if (this.waitForReply) {
                 this.suspendQueue();
             }
+            this.fileLastModified = this.uri.file.lastModified;
             this.fileReader.readAsText(this.uri.file);
+            if(this.watchFile)
+                gFileHandleScanner.addFileHandle(this);
         } else if (typeof(this.uri) === "string") {
             this.infoUpdate("loading", [], "datatable", 0, undefined);
             var uri: string = /^\.\.?\//.test(this.uri)?
@@ -1720,7 +649,9 @@ class EvaluationDataTable extends EvaluationDataSource
 
     determineFileMode(str: string, isURL: boolean): void {
         if (this.arguments[1] !== undefined) {
-            var fileType: any = getDeOSedValue(interpretedQuery({fileType: _}, this.arguments[1].value));
+            var fileType: any =
+                getDeOSedValue(interpretedQuery({fileType: _},
+                                                this.arguments[1].value));
             switch (fileType) {
               case "csv":
                 this.fileMode = DataSourceFileType.csv;
@@ -1728,11 +659,11 @@ class EvaluationDataTable extends EvaluationDataSource
               case "json":
                 this.fileMode = DataSourceFileType.json;
                 return;
-            //   case "json-stat":
-            //     this.fileMode = DataSourceFileType.jsonStat;
-            //     return;
-              case "txt": case "tsv":
+              case "txt":
                 this.fileMode = DataSourceFileType.text;
+                return;
+              case "tsv":
+                this.fileMode = DataSourceFileType.tsv;
                 return;
               case false: case undefined:
                 break;
@@ -1742,18 +673,50 @@ class EvaluationDataTable extends EvaluationDataSource
             }
         }
         if (isURL) {
-            this.fileMode = /\.[Cc][Ss][Vv](\?.*)?$/.test(str)? DataSourceFileType.csv:
-                            /\.[Jj][Ss][Oo][Nn](\?.*)?$/.test(str)? DataSourceFileType.json:
-                            /\.[Tt][SsXx][VvTt](\?.*)?$/.test(str)? DataSourceFileType.text:
-                            DataSourceFileType.unknown;
+            this.fileMode = /\.[Cc][Ss][Vv](\?.*)?$/.test(str)?
+                DataSourceFileType.csv:
+                /\.[Jj][Ss][Oo][Nn](\?.*)?$/.test(str)?
+                DataSourceFileType.json:
+                /\.[Tt][Ss][Vv](\?.*)?$/.test(str)?
+                DataSourceFileType.tsv:
+                /\.[Tt][Xx][Tt](\?.*)?$/.test(str)?
+                DataSourceFileType.text: DataSourceFileType.unknown;
         } else {
-            this.fileMode = /\.[Cc][Ss][Vv]$/.test(str)? DataSourceFileType.csv:
-                            /\.[Jj][Ss][Oo][Nn]$/.test(str)? DataSourceFileType.json:
-                            /\.[Tt][SsXx][VvTt]$/.test(str)? DataSourceFileType.text:
-                            DataSourceFileType.unknown;
+            this.fileMode = /\.[Cc][Ss][Vv]$/.test(str)?
+                DataSourceFileType.csv:
+                /\.[Jj][Ss][Oo][Nn]$/.test(str)?
+                DataSourceFileType.json:
+                /\.[Tt][Ss][Vv]$/.test(str)?
+                DataSourceFileType.tsv:
+                /\.[Tt][Xx][Tt]$/.test(str)?
+                DataSourceFileType.text: DataSourceFileType.unknown;
         }
     }
 
+    // If could not determine the file mode using the file name (or parameters
+    // provided by the CDL) try to guess using the content of the raw data.
+    
+    determineFileModeByContent(response: string) {
+        var firstChar: string = response[0];
+        if (firstChar === '[' || firstChar === '{' || firstChar === ' ') {
+            this.fileMode = DataSourceFileType.json;
+        } else {
+            this.fileMode = DataSourceFileType.text;
+        }
+    }
+
+    checkFileLastModified():void {
+        var isFileHandle:boolean = (this.uri instanceof NativeObjectWrapper &&
+                                    this.uri.file !== undefined);
+        if(!isFileHandle)
+            return;
+
+        if(this.uri.file.lastModified !== this.fileLastModified) {
+            // mark input as modified
+            this.markAsChanged();
+        }
+    }
+    
     debugName(): string {
         return "datatable";
     }
@@ -1788,7 +751,82 @@ class EvaluationDataTable extends EvaluationDataSource
         }];
     }
 }
+datasource.classConstructor = EvaluationDataSourceFunction;
+
+// 'datatable' is the same as 'datasource' except that it makes an extra
+// effort to parse the data by attempting to detect the format of the data
+// based on the raw content in cases where no explicit indication
+// of the data format is given.
+
+class EvaluationDataTable extends EvaluationDataSourceFunction
+    implements IndexerDataSupplier
+{
+    constructor(prototype: FunctionApplicationNode,
+                local: EvaluationEnvironment) {
+        super(prototype, local);
+        this.useContentToDecideMode = true;
+    }
+}
+
 datatable.classConstructor = EvaluationDataTable;
+
+//
+// Open file handle scanner
+//
+
+// Class for global object which scans registered open file handles for
+// changes in their 'lastModified' time and then triggers their re-processing.
+// The file handles themselves are not registered here, only the evaluation
+// node.
+
+class FileHandleScanner
+{
+    evaluators: Set<EvaluationDataSourceFunction>;
+    timerId: number|NodeJS.Timer = undefined;
+    scanInterval: number = 1000; // scan interval in ms
+
+    constructor() {
+        this.evaluators = new Set<EvaluationDataSourceFunction>();
+    }
+
+    // add new evaluator which should scan for updates of its file handle.
+    addFileHandle(evaluator: EvaluationDataSourceFunction) {
+        this.evaluators.add(evaluator);
+        // set timeout if this is the first registration
+        if(this.timerId === undefined)
+            this.timerId = setInterval(() => this.scheduleNextScan(),
+                                       this.scanInterval);
+    }
+
+    removeFileHandle(evaluator: EvaluationDataSourceFunction) {
+        if(this.evaluators.size === 0)
+            return;
+        this.evaluators.delete(evaluator);
+        // remove timeout if this is the last one
+        if(this.evaluators.size === 0) {
+            clearInterval(<any>this.timerId);
+            this.timerId = undefined;
+        }
+    }
+    
+    // This function is called periodically to check whether the last modified
+    // time of the file has changed. The actual test is performed by the
+    // evaluation node.
+
+    scanFileHandles(): void {
+        this.evaluators.
+            forEach(function(evaluator: EvaluationDataSourceFunction) {
+                evaluator.checkFileLastModified();
+            });
+    }
+
+    // called after timeout to schedule the scanning of the files
+    scheduleNextScan() {
+        globalFileHandleScanTask.schedule();
+    }
+}
+
+var gFileHandleScanner = new FileHandleScanner();
 
 abstract class EvaluationRemoteData extends EvaluationFunctionApplication
     implements RemoteResourceUpdateClientToServer

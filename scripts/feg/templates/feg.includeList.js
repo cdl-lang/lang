@@ -94,7 +94,6 @@
 // %%include%%: <scripts/query/compCalc.js>
 // %%include%%: <scripts/query/compCalcKeys.js>
 // %%include%%: <scripts/query/compValueQueryCalc.js>
-// %%include%%: <scripts/query/internalQueryResult.js>
 // %%include%%: <scripts/query/partitionCompResult.js>
 // %%include%%: <scripts/query/partitionCompCalc.js>
 // %%include%%: <scripts/query/comparison.js>
@@ -135,6 +134,7 @@
 // %%include%%: <scripts/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/evaluationNode.areaFunctions.js>
 // %%include%%: <scripts/feg/evaluationNode.database.js>
+// %%include%%: <scripts/feg/dataParsers.js>
 // %%include%%: <scripts/feg/evaluationNode.debugger.js>
 // %%include%%: <scripts/feg/evaluationNode.label.js>
 // %%include%%: <scripts/feg/evaluationNode.cycleCheck.js>

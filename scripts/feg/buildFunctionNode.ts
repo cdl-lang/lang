@@ -966,7 +966,7 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
         }
         break;
       case "map":
-        if (args.length !== 2) {
+        if (args.length < 2) {
             Utilities.syntaxError("too few arguments for: " + fun.name);
         }
         if (args[0] === undefined || args[0].valueType.isNotData()) {
@@ -977,7 +977,8 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
         } else {
             valueType = new ValueType().addAnyData();
         }
-        if (args.length === 2) {
+        if (args.length >= 2) {
+            // This could use some refinement for more than 1 argument.
             valueType.sizes = args[1].valueType.sizes;
         }
         break;
@@ -1053,6 +1054,10 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
       case "internalApply":
         var appl = args[0];
         var arg: FunctionNode = args[1];
+        if (appl === undefined || arg === undefined) {
+            Utilities.error("wrong number of arguments in application");
+            return new ValueType();
+        }
         if (appl instanceof ConstNode) {
             valueType = determineQueryValueType(appl.origExpr, arg);
         } else if (appl.valueType.isData()) {

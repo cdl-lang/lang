@@ -777,8 +777,6 @@ declare module FS {
 
 declare var process: NodeJS.Process;
 
-declare function require(moduleName: string): any;
-
 declare var __dirname: string;
 
 declare module OS {
@@ -790,7 +788,7 @@ declare interface WebSocketConnection {
     state: string;
     remoteAddress: string;
 
-    send(data: any): void;
+    send(data: string | ArrayBuffer | ArrayBufferView | Blob): void;
     close(): void;
     on(event: string, handler: any): void;
 }

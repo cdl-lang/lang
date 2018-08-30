@@ -135,6 +135,7 @@
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.areaFunctions.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.database.js>
+// %%include%%: <scripts/feg/minbuild/feg/dataParsers.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.debugger.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.label.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.cycleCheck.js>

@@ -465,7 +465,7 @@ function absolutePosManagerAddOffset(point1, point2, areaId, offset, isContent)
     var pairId = pair.id;
 
     if (pairId in this.pairToOffset) {
-        mondriaInternalError("already have a registered pair for offset <",
+        cdlInternalError("already have a registered pair for offset <",
                              point1, ";", point2, ">");
         return;
     }

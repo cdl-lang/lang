@@ -1,4 +1,4 @@
-// Copyright 2018 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
+// Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

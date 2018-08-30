@@ -369,7 +369,7 @@ function suffixPosPointGetSuffixFunc(type, isContent, isIntersection)
       default:
         // If you get here with type = {}, perhaps the type label is not
         // supported by the configDescription.
-        mondriaInternalError("unsupported point type: ", type);
+        cdlInternalError("unsupported point type: ", type);
         return undefined;
     }
 }

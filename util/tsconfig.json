@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "removeComments": true,
+        "preserveConstEnums": true,
+        "sourceMap": true,
+        "strictNullChecks": true,
+        "target": "es2018",
+        "lib": [
+            "es2018"
+        ]
+    },
+    "compileOnSave": true,
+    "files": [
+        "genIncJS.ts",
+        "pyth2jscompat/misc.ts",
+        "pyth2jscompat/os.ts",
+        "pyth2jscompat/sys.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}

@@ -179,7 +179,7 @@ function allPosConstraintsSetAutoContentConstraint(edge, offset)
                                                [edge], offset, offset);
             break;
         default:
-            mondriaInternalError("unknown auto content constraint edge: ",
+            cdlInternalError("unknown auto content constraint edge: ",
                                  edge);
             return;
     }

@@ -743,11 +743,11 @@ function initialize(): void {
 // TODO: fixed id of screen area
 function createGlobalObjects(): void {
     initDebugObjMgr();
+    initTaskQueue();
 
     gArgParser = getArgParser();
     initDefaultArgs();
 
-    initTaskQueue();
 
     initPositioning();
     initAbsolutePosManager();
@@ -809,6 +809,11 @@ function initDefaultArgs(): void {
     }
     g_noTryAndCatchUpdate = gArgParser.getArg("noTryAndCatch", g_noTryAndCatchUpdate);
     noTimeOut = gArgParser.getArg("noTimeOut", false);
+    slowDownFactor = gArgParser.getArg<number>("slowDownFactor", undefined);
+    if (slowDownFactor !== undefined) {
+        globalTaskQueue.iterationTimeout = 1; 
+        globalTaskQueueIterationTimeout = 1;
+    }
     debugAreaConstruction = gArgParser.getArg("debugAreaConstruction", false);
     debugDelayLoad = gArgParser.getArg("debugDelayLoad", debugDelayLoad);
     gMaxMessageSize = gArgParser.getArg("gMaxMessageSize", gMaxMessageSize);

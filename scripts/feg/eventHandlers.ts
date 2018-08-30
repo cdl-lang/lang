@@ -63,7 +63,7 @@ var domEventFalseResult = new Result(constEmptyOS);
 // DomEvents are also used to set the pointer location. On each event the
 // pointer object is set to be located at the reported coordinates.
 // 
-// The domEvents received from the browser are formatted as mondria messages,
+// The domEvents received from the browser are formatted as CDL messages,
 // with the recipient set sequentially to the elements of the overlapping area
 // set. For each recipient, the messageObject is set, and
 // contentTask.processEvent is called to process all write entries, with their
@@ -1315,7 +1315,7 @@ class MondriaDomEvent {
     // --------------------------------------------------------------------------
     // keyEventHandler
     // 
-    // translate the domEvent to a mondria message
+    // translate the domEvent to a CDL message
     //   type: <KeyDown/KeyPress/KeyUp>,
     //   modifier: an ordered-set holding a subset of "alt", "control",
     //             "meta", "shift"
@@ -1425,6 +1425,22 @@ class MondriaDomEvent {
     }
 
     resizeScreenArea(width: number, height: number): void {
+        globalScreenWidthConstraint.newDescription({
+            point1: { type: "left" },
+            point2: { type: "right" },
+            equals: width,
+            priority: 10000
+        }, 10000);
+        globalScreenHeightConstraint.newDescription({
+            point1: { type: "top" },
+            point2: { type: "bottom" },
+            equals: height,
+            priority: 10000
+        }, 10000);
+        scheduleGeometryTask();
+        // if this resize was really a zoom in/out, re-measure all display
+        // queries
+        scheduleDisplayQueryRecalculation();
         if (logEventHistory) {
             this.eventHistory.push({
                 type: "resizeScreenArea",
@@ -1433,6 +1449,7 @@ class MondriaDomEvent {
                 time: Date.now()
             });
         }
+
     }
     
     recordHandlerCalled(name: string): void {
@@ -1519,12 +1536,13 @@ function debugEventFilter(msg: EventObject): boolean {
 }
 
 var lastEventDescription: string = undefined;
+var globalTaskQueueIterationTimeout: number = 50;
 
 function markEventStart(msg: string, timeOutPerm: number = undefined) {
     if (timeOutPerm !== undefined) {
         globalTaskQueue.iterationTimeout = timeOutPerm;
     } else {
-        globalTaskQueue.iterationTimeout = 50;
+        globalTaskQueue.iterationTimeout = globalTaskQueueIterationTimeout;
     }
     if (gInitPhase || !logEventTimes)
         return;

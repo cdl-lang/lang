@@ -481,7 +481,7 @@ implements RemoteResourceUpdate
         var xdr = this.getXDR(resource, XDRDirection.Marshal);
     
         if (typeof(xdr) !== "function") {
-            mondriaInternalError("sendUpdate: undefined XDR");
+            cdlInternalError("sendUpdate: undefined XDR");
             return;
         }
     

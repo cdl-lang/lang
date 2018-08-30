@@ -515,8 +515,10 @@ if (mode === "dump") {
     
     console.log("\ninitAreaTemplate()");
     exportAreaTemplates();
-    console.log("_mss(0, " + getMaxScheduleStep(0) + ")");
-    console.log("_mss(1, " + getMaxScheduleStep(1) + ")");
+
+    for (let prio = 0; prio <= Priority.maxPriority; prio++) {
+        console.log("_mss(" + String(prio) + ", " + getMaxScheduleStep(prio) + ")");
+    }
 
     if (typeof(test) !== "undefined") {
         endTestCompilation(false);

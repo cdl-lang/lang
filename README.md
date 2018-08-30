@@ -10,13 +10,12 @@ CDL is a mature functional programming language for web-based applications.
 In order to compile CDL programs, you need to have the following installed on your computer:
 
 * node.js (version v8.9.1 or higher)
-* python (version 2.7.14 or higher)
 * make (GNU Make version 4.2.1 or higher)
 
 Further, you would need the following npm packages (npm is part of the node.js installation):
 
-* typescript@2.2.2
-* uglify-js@2.7.5
+* typescript@2.9.2
+* uglify-js@2.8.29
 
 After installing node.js, run the following to install these packages:
 
@@ -47,27 +46,27 @@ include $(LANGDIR)/util/mmk
 
     CDLPATH=.;/home/<user>/cdl-classes
 
-### Hello World
+### Hello, World
 
-CDL code is written in files with a `.js` suffix. The CDL base syntax is valid JavaScript an is read in this way directly as JavaScript data into the compiler. This allows one to use JavaScript functions and variables for preprocessing.
+CDL code is written in files with a `.cdl` suffix.
 
-A CDL application must contain a screen area. The following CDL program displays the string "Hello World": 
+A CDL application must contain a screen area. The following CDL program displays the string "Hello, world": 
 
 ```
 var screenArea = {
     display: {
-        text: { value: "Hello World" }
+        text: { value: "Hello, world" }
     }
 }
 ```
 
-Assuming this code is in a file `helloWorld.js`, place a Makefile (as described above) in the same directory and then run (in that directory):
+Assuming this code is in a file `helloWorld.cdl`, place a Makefile (as described above) in the same directory and then run (in that directory):
 
     make helloWorld.html
 
 This will generate the HTML file `helloWorld.html`. Load this file into your browser to run the application.
 
-To use classes, it is recommended to define these classes in separate files and include these files in the main application file. A class file, whose name should also end with a `.js` suffix, can be placed in any of the directories appearing in the `CDLPATH` your makefile defines. For example, create a class file `helloWorldClasses.js` containing the following class definitions:
+To use classes, it is recommended to define these classes in separate files and include these files in the main application file. A class file, whose name should also end with a `.cdl` suffix, can be placed in any of the directories appearing in the `CDLPATH` your makefile defines. For example, create a class file `helloWorldClasses.cdl` containing the following class definitions:
 
 ```
 var classes = {
@@ -85,9 +84,9 @@ var classes = {
 You can then use this file in your hello world application by including this file and referring to the `HelloWorldStyle` class defined in it:
 
 ```
-// %%classfile%%: "helloWorldClasses.js"
+// %%classfile%%: "helloWorldClasses.cdl"
 var screenArea = {
-    "class": "HelloWorldStyle",
+    class: HelloWorldStyle,
     display: {
         text: { value: "Hello World" }
     }

@@ -213,6 +213,9 @@ class TaskQueue implements TimedOut {
     // Once the queue is empty, and we're sure everything is visible, update the
     // app's focus.
     static setFocusPriority: number = 12;
+    // Scanning open file handles for modifications should happen only
+    // when the system has time to do so.
+    static fileHandleScanPriority: number = 11;
     // And finally run the next test, which will insert an event or put some
     // test on the content queue. This task should run when everything else has
     // finished.
@@ -275,7 +278,7 @@ class TaskQueue implements TimedOut {
         if (!this.iterationRunning && executeAtOnce)
             this.executePendingTasks(false);
         else // schedule execution of the task
-            this.scheduleNextIteration();
+            this.scheduleNextIteration(false);
     }
 
 
@@ -284,7 +287,7 @@ class TaskQueue implements TimedOut {
     // the task queue and the type of task 
 
     // This function schedules the next iteration of the task execution loop
-    scheduleNextIteration(): void {
+    scheduleNextIteration(isTimedOut: boolean): void {
         if (this.isSuspended || this.nextTaskScheduled) {
             // Don't schedule when suspended, nor when already scheduled
             return;
@@ -294,7 +297,13 @@ class TaskQueue implements TimedOut {
             return;
         }
         if (debugTasks && this.yieldToBrowser) console.log("scheduling after yield");
-        this.timeoutId = setTimeout(timedExecutePendingTasks, this.yieldToBrowser? 2: 0);
+        if (isTimedOut && slowDownFactor !== undefined) {
+            var delay = (Date.now() - this.iterationStartTime) * (slowDownFactor - 1);
+            this.timeoutId = setTimeout(timedExecutePendingTasks, delay);
+        } else {
+            this.timeoutId = setTimeout(timedExecutePendingTasks,
+                                        this.yieldToBrowser? 2: 0);
+        }
         this.nextTaskScheduled = true;
     }
 
@@ -319,7 +328,7 @@ class TaskQueue implements TimedOut {
     // Resumes all tasks.
     resume(): void {
         this.isSuspended = false;
-        this.scheduleNextIteration();
+        this.scheduleNextIteration(false);
     }
 
     // This function executes a sequence of pending tasks until the execution
@@ -393,11 +402,6 @@ class TaskQueue implements TimedOut {
                 breakIntoDebugger();
         }
 
-        // Set a timeout for the next iteration. This should be done now
-        // (rather than at the end of the task execution) because otherwise
-        // there may be a small delay before the next iteration is performed.
-        this.scheduleNextIteration();
-
         this.iterationStartTime = Date.now();
 
         // execute the tasks in the queue until the timeout is reached (or the
@@ -445,7 +449,7 @@ class TaskQueue implements TimedOut {
 
             if (this.timedOut()) {
                 if (!this.nextTaskScheduled) {
-                    this.scheduleNextIteration();
+                    this.scheduleNextIteration(true);
                 }
                 return; // will continue as a result of a timed event
             }
@@ -455,6 +459,7 @@ class TaskQueue implements TimedOut {
     }
 
     // See interface TimedOut
+    
     timedOut(): boolean {
         if (this.yieldToBrowser) {
             if (debugTasks) console.log("yielding to browser");

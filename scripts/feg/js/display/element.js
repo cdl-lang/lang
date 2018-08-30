@@ -535,7 +535,7 @@ function copyDisplayCssProp(display, attrib, value) {
             if(typeof(value) == "string" &&
                (value.indexOf("-webkit-") != -1 ||
                 value.indexOf("gradient") != -1)) {
-                mondriaAuthorError("Unsupported attribute: " +
+                cdlAuthorError("Unsupported attribute: " +
                                    attrib + "=" + vstringify(value));
             } else {
                 assignCSSStyleProp(display.displayDiv.style,
@@ -638,7 +638,7 @@ function copyDisplayCssProp(display, attrib, value) {
         display.applyHTMLTransform(value);
         return;
       default:
-        mondriaAuthorError("Unsupported attribute: " + attrib + "=" +
+        cdlAuthorError("Unsupported attribute: " + attrib + "=" +
                            vstringify(value));
         return;
     }
@@ -847,7 +847,7 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
         }
         break;
       default:
-        mondriaAuthorError('Unsupported attribute: ' + attrib + '=' +
+        cdlAuthorError('Unsupported attribute: ' + attrib + '=' +
                            JSON.stringify(value));
         return;
     }

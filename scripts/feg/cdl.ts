@@ -2005,7 +2005,7 @@ function vstringifyLim(v: any, maxNrChar: number): string {
         str.slice(str.length - Math.floor(maxNrChar / 2));
 }
 
-class Unquote implements Compare {
+class Unquote implements Compare<Unquote> {
     str: string;
 
     constructor(str: string) {

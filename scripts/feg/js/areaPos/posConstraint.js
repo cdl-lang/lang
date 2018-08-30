@@ -1004,7 +1004,7 @@ PosConstraint.prototype.pairHandler = posConstraintPairHandler;
 function posConstraintPairHandler(posPair, pairNum)
 {
     if(!this.pairs[pairNum]) {
-        mondriaInternalError("callback for non-existing pair: ", pairNum);
+        cdlInternalError("callback for non-existing pair: ", pairNum);
         return;
     }
 

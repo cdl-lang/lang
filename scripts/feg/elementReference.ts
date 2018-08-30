@@ -16,7 +16,7 @@
 /// <reference path="cdl.ts" />
 /// <reference path="utilities.ts" />
 
-abstract class ValueReference extends NonAV implements Compare {
+abstract class ValueReference extends NonAV implements Compare<ValueReference> {
     abstract compare(v: ValueReference): number;
 }
 

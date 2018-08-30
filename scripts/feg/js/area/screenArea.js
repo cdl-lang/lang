@@ -37,18 +37,6 @@ function createScreenArea()
 function updateScreenAreaPosition() {
     var pos = determineScreenAreaSize();
 
-    globalScreenWidthConstraint.newDescription({
-        point1: { type: "left" },
-        point2: { type: "right" },
-        equals: pos.width,
-        priority: 10000
-    }, 10000);
-    globalScreenHeightConstraint.newDescription({
-        point1: { type: "top" },
-        point2: { type: "bottom" },
-        equals: pos.height,
-        priority: 10000
-    }, 10000);
     gDomEvent.resizeScreenArea(pos.width, pos.height);
 }
 

@@ -689,7 +689,7 @@ class EvaluationParam extends EvaluationStore {
             var update: any = mergeValueCopy({input: value}, curValue);
 
             if (!valueEqual(curValue, update) && 
-                  area.setInputState(attrib, getDeOSedValue(endValue))) {
+                  area.setInputState(attrib, singleton(endValue))) {
                 self.latchedValue = new Result(update);
                 self.latch();
             }

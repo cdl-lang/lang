@@ -49,7 +49,7 @@ var equal: BuiltInFunction = new BuiltInFunction("equal", 2, 2, boolValueType.ad
 var notEqual: BuiltInFunction = new BuiltInFunction("notEqual", 2, 2, boolValueType.addSize(1));
 var greaterThanOrEqual: BuiltInFunction = new BuiltInFunction("greaterThanOrEqual", 2, 2, boolValueType);
 var greaterThan: BuiltInFunction = new BuiltInFunction("greaterThan", 2, 2, boolValueType);
-var map: BuiltInFunction = new BuiltInFunction("map", 2, 2, undefined);
+var map: BuiltInFunction = new BuiltInFunction("map", 2, Infinity, undefined);
 var filter: BuiltInFunction = new BuiltInFunction("filter", 2, 2, undefined);
 var first: BuiltInFunction = new BuiltInFunction("first", 1, 1, undefined);
 var prev: BuiltInFunction = new BuiltInFunction("prev", 0, 2, undefined, true, true);
@@ -104,6 +104,7 @@ var systemInfo: BuiltInFunction = new BuiltInFunction("systemInfo", 0, 0,
         addAttribute("maxTouchPoints", new ValueType().addNumber().addSize(1)).
         addAttribute("connectionStatus", new ValueType().addString().addSize(1)).
         addAttribute("powerDisconnected", new ValueType().addNumber().addSize(0, 1)).
+        addAttribute("waitBusyTime", new ValueType().addNumber().addSize(1)).
     addSize(1));
 var loginInfo: BuiltInFunction = new BuiltInFunction("loginInfo", 0, 1, 
     new ValueType().
@@ -176,8 +177,53 @@ var debuggerContextInfo: BuiltInFunction =
     new BuiltInFunction("debuggerContextInfo", 1, 1, anyDataValueType.copy().addSize(1));
 
 // data access
-var datasource: BuiltInFunction =
-    new BuiltInFunction("datasource", 1, 2, anyDataValueType.copy().addSize(0, Infinity));
+
+// external data access value type
+
+var dataSourceValueType = new ValueType().
+    addAttribute("name", new ValueType().addString().addSize(1)).
+    addAttribute("fullName", new ValueType().addString().addSize(1)).
+    addAttribute("state", new ValueType().addString().addSize(1)).
+    addAttribute("info", new ValueType().addString().addSize(1)).
+    addAttribute("revision", new ValueType().addAnyData().addSize(0, Infinity)).
+    addAttribute("lastUpdate", new ValueType().addNumber().addSize(1)).
+    addAttribute("attributes", new ValueType().
+                 addAttribute("name", new ValueType().addString().addSize(1)).
+                 addAttribute("originalName", new ValueType().addString().addSize(1)).
+                 addAttribute("type", new ValueType().addString().addSize(1)).
+                 addAttribute("typeCount", new ValueType().
+                              addAttribute("number", new ValueType().addNumber().addSize(1)).
+                              addAttribute("date", new ValueType().addNumber().addSize(1)).
+                              addAttribute("string", new ValueType().addNumber().addSize(1)).
+                              addAttribute("object", new ValueType().addNumber().addSize(1)).
+                              addAttribute("undefined", new ValueType().addNumber().addSize(1)).
+                              addAttribute("boolean", new ValueType().addNumber().addSize(1)).
+                              addAttribute("currency", new ValueType().addNumber().addSize(1)).
+                              addAttribute("nrPositive", new ValueType().addNumber().addSize(1)).
+                              addAttribute("nrNegative", new ValueType().addNumber().addSize(1)).
+                              addAttribute("nrUnique", new ValueType().addNumber().addSize(1)).
+                              addAttribute("nrUniqueValuesPerType", new ValueType().
+                                           addAttribute("number", new ValueType().addNumber().addSize(1)).
+                                           addAttribute("date", new ValueType().addNumber().addSize(1)).
+                                           addAttribute("string", new ValueType().addNumber().addSize(1)).
+                                           addAttribute("object", new ValueType().addNumber().addSize(1)).
+                                           addAttribute("boolean", new ValueType().addNumber().addSize(1)).
+                                           addAttribute("currency", new ValueType().addNumber().addSize(1)).
+                                           addSize(1)).
+                              addSize(1)).
+                 addAttribute("uniqueValues", new ValueType().addAnyData().addSizeRange(new RangeValue([0, 64], true, false))).
+                 addAttribute("min", new ValueType().addString().addSize(0, 1)).
+                 addAttribute("max", new ValueType().addString().addSize(0, 1)).
+                 addAttribute("currency", new ValueType().addString().addSize(0, 1)).
+                 addSize(0, Infinity)).
+    addAttribute("data", new ValueType().addAnyData().addDataSource().addSize(0, Infinity)).
+    addSize(1);
+
+var datasource: BuiltInFunction = new BuiltInFunction("datasource", 1, 2,
+                                                      dataSourceValueType);
+
+var datatable: BuiltInFunction = new BuiltInFunction("datatable", 1, 2,
+                                                     dataSourceValueType);
 
 var datasourceInfo: BuiltInFunction = new BuiltInFunction("datasourceInfo", 0, 0,
     new ValueType().
@@ -217,47 +263,6 @@ var datasourceInfo: BuiltInFunction = new BuiltInFunction("datasourceInfo", 0, 0
             addSize(1)).
         addAttribute("progress", new ValueType().addString().addSize(0, 1)).
         addSize(0, Infinity));
-
-var datatable: BuiltInFunction = new BuiltInFunction("datatable", 1, 2,
-    new ValueType().
-        addAttribute("name", new ValueType().addString().addSize(1)).
-        addAttribute("fullName", new ValueType().addString().addSize(1)).
-        addAttribute("state", new ValueType().addString().addSize(1)).
-        addAttribute("info", new ValueType().addString().addSize(1)).
-        addAttribute("revision", new ValueType().addAnyData().addSize(0, Infinity)).
-        addAttribute("lastUpdate", new ValueType().addNumber().addSize(1)).
-        addAttribute("attributes", new ValueType().
-            addAttribute("name", new ValueType().addString().addSize(1)).
-            addAttribute("originalName", new ValueType().addString().addSize(1)).
-            addAttribute("type", new ValueType().addString().addSize(1)).
-            addAttribute("typeCount", new ValueType().
-                addAttribute("number", new ValueType().addNumber().addSize(1)).
-                addAttribute("date", new ValueType().addNumber().addSize(1)).
-                addAttribute("string", new ValueType().addNumber().addSize(1)).
-                addAttribute("object", new ValueType().addNumber().addSize(1)).
-                addAttribute("undefined", new ValueType().addNumber().addSize(1)).
-                addAttribute("boolean", new ValueType().addNumber().addSize(1)).
-                addAttribute("currency", new ValueType().addNumber().addSize(1)).
-                addAttribute("nrPositive", new ValueType().addNumber().addSize(1)).
-                addAttribute("nrNegative", new ValueType().addNumber().addSize(1)).
-                addAttribute("nrUnique", new ValueType().addNumber().addSize(1)).
-                addAttribute("nrUniqueValuesPerType", new ValueType().
-                    addAttribute("number", new ValueType().addNumber().addSize(1)).
-                    addAttribute("date", new ValueType().addNumber().addSize(1)).
-                    addAttribute("string", new ValueType().addNumber().addSize(1)).
-                    addAttribute("object", new ValueType().addNumber().addSize(1)).
-                    addAttribute("boolean", new ValueType().addNumber().addSize(1)).
-                    addAttribute("currency", new ValueType().addNumber().addSize(1)).
-                    addSize(1)).
-                addSize(1)).
-            addAttribute("uniqueValues", new ValueType().addAnyData().addSizeRange(new RangeValue([0, 64], true, false))).
-            addAttribute("min", new ValueType().addString().addSize(0, 1)).
-            addAttribute("max", new ValueType().addString().addSize(0, 1)).
-            addAttribute("currency", new ValueType().addString().addSize(0, 1)).
-            addSize(0, Infinity)).
-        addAttribute("data", new ValueType().addAnyData().addDataSource().addSize(0, Infinity)).
-        addSize(1)
-);
 
 // Database functions
 var database: BuiltInFunction = new BuiltInFunction(

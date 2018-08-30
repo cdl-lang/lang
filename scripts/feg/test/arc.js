@@ -179,7 +179,17 @@ var classes = {
             height: 120,
             width: 20
         }
-    }
+    },
+    HighlightPointerInArea: o({
+        context: {
+            pointerInArea: [{param: {pointerInArea: _}}, [me]]
+        }
+    }, {
+        qualifier: {pointerInArea: true},
+        display: {
+            opacity: 0.5
+        }
+    })
 };
 
 var screenArea = {
@@ -210,8 +220,9 @@ var screenArea = {
                     },
                     arc: {
                         description: {
+                            "class": "HighlightPointerInArea",
                             display: {
-                                background: "white",
+                                // background: "white",
                                 arc: {
                                     color: "red",
                                     range: [div, [{children: {range: {value: _}}}, [embedding]], 100],

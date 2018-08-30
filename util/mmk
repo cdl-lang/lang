@@ -99,7 +99,8 @@ ifndef SFJS_TEMPLATE_FILE
 SFJS_TEMPLATE_FILE=$(FEGTEMPLATEDIR)/$(SFJS_TEMPLATE_NAME)
 endif
 
-GENINCJS=$(UTIL)/genIncJS.py
+# GENINCJS=$(UTIL)/genIncJS.py
+GENINCJS=node $(UTIL)/genIncJS.js
 
 JS_SOURCES += $(NODETEST)
 
@@ -241,6 +242,15 @@ BUILDINFO_CMD = \
 	cat $@.tmp >> $@ ; \
 	$(RM) $@.tmp
 
+$(INTERMEDIATE)/%.comp.js: %.cdl tsc $(INTERMEDIATE)
+	$(COMP_INCJS_COMMON) \
+		"--out_file=$@.tmp" \
+		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
+		"--template=$(COMPTEMPLATE)" \
+		"--mode=js" \
+		$<
+	$(BUILDINFO_CMD)
+
 $(INTERMEDIATE)/%.comp.js: %.js tsc $(INTERMEDIATE)
 	$(COMP_INCJS_COMMON) \
 		"--out_file=$@.tmp" \
@@ -250,7 +260,29 @@ $(INTERMEDIATE)/%.comp.js: %.js tsc $(INTERMEDIATE)
 		$<
 	$(BUILDINFO_CMD)
 
+$(INTERMEDIATE)/%.sfcomp.js: %.cdl tsc $(INTERMEDIATE)
+	$(COMP_INCJS_COMMON) \
+		"--out_file=$@.tmp" \
+		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
+		"--template=$(COMPTEMPLATE)" \
+		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
+		"--mode=js" \
+		$<
+	$(BUILDINFO_CMD)
+
 $(INTERMEDIATE)/%.sfcomp.js: %.js tsc $(INTERMEDIATE)
+	$(COMP_INCJS_COMMON) \
+		"--out_file=$@.tmp" \
+		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
+		"--template=$(COMPTEMPLATE)" \
+		"--commonImageDir=$(COMMON_IMAGE_DIR)" \
+		"--commonDataDir=$(COMMON_DATA_DIR)" \
+		"--mode=js" \
+		$<
+	$(BUILDINFO_CMD)
+
+$(INTERMEDIATE)/%.crtcomp.js: %.cdl tsc $(INTERMEDIATE)
 	$(COMP_INCJS_COMMON) \
 		"--out_file=$@.tmp" \
 		"--resourceOutFile=$(INTERMEDIATE)/$*.res" \
@@ -271,6 +303,14 @@ $(INTERMEDIATE)/%.crtcomp.js: %.js tsc $(INTERMEDIATE)
 		"--mode=js" \
 		$<
 	$(BUILDINFO_CMD)
+
+$(INTERMEDIATE)/%.comp_pp.js: %.cdl tsc
+	@-mkdir intermediate
+	$(COMP_INCJS_COMMON) \
+		"--template=$(COMPHTMLPPTEMPLATE)" \
+		"--out_file=$@" \
+		"--mode=js" \
+		$<
 
 $(INTERMEDIATE)/%.comp_pp.js: %.js tsc
 	@-mkdir intermediate
@@ -301,9 +341,10 @@ $(INTERMEDIATE)/%.cst: $(INTERMEDIATE)/%.comp.js
 	node $< mode=constraints > $@
 
 tsc: force
-	$(MAKE) -C $(FEGSRCDIR) tsc
-	$(MAKE) -C $(REMOTINGSRCDIR) tsc
-	$(MAKE) -C $(FOREIGNINTERFACEDIR) tsc
+	@$(MAKE) -C $(UTIL) -f Makefile.util
+	@$(MAKE) -C $(FEGSRCDIR) tsc
+	@$(MAKE) -C $(REMOTINGSRCDIR) tsc
+	@$(MAKE) -C $(FOREIGNINTERFACEDIR) tsc
 
 tscmin: force
 	$(MAKE) -C $(FEGSRCDIR) fegruntime

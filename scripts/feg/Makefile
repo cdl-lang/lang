@@ -18,7 +18,7 @@ TSSOURCES=area.ts areaMonitor.ts areaTemplate.ts buildEvaluationNode.ts	 \
 	pathTreeNode.ts pointer.ts eventQueue.ts eventHandlers.ts            \
 	evaluationNode.apply.ts evaluationNode.areaFunctions.ts              \
 	evaluationNode.constructions.ts evaluationNode.cycleCheck.ts         \
-	evaluationNode.database.ts evaluationNode.debugger.ts                \
+	dataParsers.ts evaluationNode.database.ts evaluationNode.debugger.ts \
 	evaluationNode.functions.ts evaluationNode.label.ts systemEvents.ts  \
 	evaluationNode.state.ts evaluationNode.values.ts paidMgrInterface.ts \
 	posConstraintSynchronizer.ts ../remoting/wsAuth.ts                   \
@@ -33,6 +33,7 @@ MAIN=functionGraph.postlude.ts functionExecute.ts
 	tsc --noImplicitAny --out $@ $<
 
 tsc: $(COMPILED_TS)
+	@:
 
 clean:
 	-@rm $(COMPILED_TS) pathFunctions.d.ts
@@ -45,8 +46,9 @@ pathFunctions.d.ts: pathFunctions.ts
 	$(TSC) $<
 
 tsc_intermediate: $(TSSOURCES) pathFunctions.d.ts
+	npm update
 	$(TSC) $(MAIN)
 
 fegruntime:
-	-tsc --lib es6,dom --outDir minbuild functionExecute.ts > /dev/null 2>&1
-	-tsc --lib es6,dom --outDir minbuild/feg pathFunctions.ts
+	-tsc --lib es6,dom --target ES3 --outDir minbuild functionExecute.ts > /dev/null 2>&1
+	-tsc --lib es6,dom --target ES3 --outDir minbuild/feg pathFunctions.ts

@@ -14,7 +14,10 @@ COMPILED_TS = $(TSSOURCES:%.ts=%.js)
 
 D_TS_FILES=mongojs.d.ts
 
+.PHONY: tsc
+
 tsc: $(COMPILED_TS)
+	@:
 
 $(COMPILED_TS): tsc_intermediate
 

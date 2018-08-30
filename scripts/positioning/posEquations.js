@@ -1636,7 +1636,7 @@ function posEquationsFindFeasibleSolution()
                               "resistance", "variablesByResistance"]);
         
         if(++reductionSteps > posEquationsMaxReductionStepNum) {
-            mondriaInternalError("too many error reduction steps");
+            cdlInternalError("too many error reduction steps");
             return;
         }
     }
@@ -1710,7 +1710,7 @@ function posEquationsFindOptimalSolution()
     while(node = nodeIter.next()) {
 
         if(++optimizationSteps > posEquationsMaxOptimizationSteps){
-            mondriaInternalError("too many optimization steps");
+            cdlInternalError("too many optimization steps");
             return;
         }
 
@@ -1810,7 +1810,7 @@ function posEquationsFindOptimalSolution()
             
             if(++optimizationSteps > posEquationsMaxOptimizationSteps) {
                 nodeIter.destroy();
-                mondriaInternalError("too many optimization error steps");
+                cdlInternalError("too many optimization error steps");
                 return;
             }
         }
@@ -2526,7 +2526,7 @@ function posEquationsSetBlockedVarEntry(blockedVar, blockingEq, blockedEq)
             this.resistance.addToRequireOrGroupResistance(blockedVar,
                                                           "blocked");
         else
-            mondriaInternalError("blocked variable's priority too low");
+            cdlInternalError("blocked variable's priority too low");
     }
     
     // equations from which blocking by this variable has been removed
@@ -3901,14 +3901,14 @@ function posEquationsReduceError()
     
     if(move == -Infinity || move == Infinity) {
         if(this.optimizationVar == undefined) {
-            mondriaInternalError("unbound move in feasible solution step");
+            cdlInternalError("unbound move in feasible solution step");
         } else if(Math.abs(this.optimizationTarget) == Infinity) {
             // in an optimization step where the target is infinite,
             // this means that the target was reached
             this.debugMessage("unbound optimium reached, not moving");
         } else {
             // bound optimization but move is unbound - an error
-            mondriaInternalError("unbound move in bound optimization");
+            cdlInternalError("unbound move in bound optimization");
         }
         
         return 0;

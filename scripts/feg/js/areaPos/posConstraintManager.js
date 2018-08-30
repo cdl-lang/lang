@@ -377,7 +377,7 @@ function posConstraintManagerAddConstraint(name, constraintDesc,
         return;
     } else if(typeof(constraintDesc) !="object") {
         // report an author error and remove the constraint
-        mondriaAuthorError("constraint \"",
+        cdlAuthorError("constraint \"",
                            isAutomatic ? name : this.makeConfName(name),
                            "\" is not a reserved constraint name");
         this.removeConstraint(name);

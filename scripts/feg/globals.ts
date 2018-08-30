@@ -122,3 +122,13 @@ var productStatus: ProductStatus = ProductStatus.development;
 
 /// When defined, the "running" div is suppressed until Date.now() surpasses it
 var suppressRunningUntil: number;
+
+/// When defined (and > 1), adds a timeout for the next queued task
+var slowDownFactor: number|undefined = undefined;
+
+/// time in ms before unhiding the "running div"
+var gWaitBusyTime1: number = 250;
+/// time before unhiding the spinner element in the running div
+var gWaitBusyTime2: number = 1000;
+/// time before switching to watch clock pointer when there is no running div
+var gWaitBusyTime3: number = 500;

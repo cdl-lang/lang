@@ -20,13 +20,6 @@ var debugCounter = 0;
 var maxDebugCount = 4000; // set this to 0 to disable this bound
 var gProfiling;
 
-function mhelp() {
-    var winRef = window.open(
-            "https://docs0.google.com/a/agora-mobile.com/document/edit?id=1ZfgB-F0OeRwuNc-tDz3E8F1SF5gAdSzt1CWmuPlz0lg#",
-            "Mondria Help");
-    winRef.focus();
-}
-
 function initializeDebugging()
 {
     initDebugObjMgr();

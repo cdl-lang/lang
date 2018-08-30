@@ -9,6 +9,7 @@ TSSOURCES=getGeoJSON.foreign.ts graphCanvas.foreign.ts googlemaps.foreign.ts \
           svg.foreign.ts
 
 tsc: $(TSSOURCES:%.foreign.ts=%.foreign.js)
+	@:
 
 %.foreign.js: %.foreign.ts ../../scripts/feg/include/feg/cdl.d.ts
 	$(TSC) $<

@@ -273,8 +273,8 @@ class NetworkConnection {
 
     // this holds the queue timeout-id, the timeout that would flush the
     //  message-queue once a message has been sitting there longer than
-    //  this.poolDelay miliseconds
-    queueTimeoutId: number = undefined;
+    //  this.poolDelay miliseconds; type differs between browser and nodejs.
+    queueTimeoutId: any = undefined;
 
     // this stores event handlers for events such as 'error', 'open' and 'close'
     eventHandlerObj: {[event: string]: (evtData?: any) => void} = {};
@@ -310,7 +310,7 @@ class NetworkConnection {
     poolDelay: number;
 
     messageBuffer: string = undefined;
-    delayedMessageQueue: any[] = [];
+    delayedMessageQueue: { transmissionTime: number; message: string; }[] = [];
     delayedSendTaskId: any = undefined;
 
     // errorStatus is true when there is a connection error; used to send the
@@ -398,7 +398,7 @@ class NetworkConnection {
             self.queueTimeoutHandler();
         }
     
-        if (typeof(this.queueTimeoutId) === "undefined") {
+        if (this.queueTimeoutId === undefined) {
             this.queueTimeoutId =
                 setTimeout(callQueueTimeoutHandler, this.poolDelay);
         }
@@ -831,7 +831,7 @@ class NetworkConnection {
             this.eventHandlerObj[type] = handler;
             break;
           default:
-            mondriaInternalError("NetworkConnection.addEventHandler: " +
+            cdlInternalError("NetworkConnection.addEventHandler: " +
                                  "unknown event type '" + type + "'");
             break;
         }

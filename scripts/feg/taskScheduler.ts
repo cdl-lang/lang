@@ -428,32 +428,10 @@ var globalScreenResizeTask: ScheduledTask = new ScheduledTask(
     "resizeScreen", TaskQueue.screenResizePriority, false,
     function(taskQueue: TaskQueue): boolean {
         globalScreenAreaSize = determineScreenAreaSize();
-
-        setTimeout(function() {
-            if (suppressRunningUntil === undefined) {
-                suppressRunningUntil = Date.now() + 100;
-            }
-            globalScreenWidthConstraint.newDescription({
-                point1: { type: "left" },
-                point2: { type: "right" },
-                equals: globalScreenAreaSize.width,
-                priority: 10000
-            }, 10000);
-            globalScreenHeightConstraint.newDescription({
-                point1: { type: "top" },
-                point2: { type: "bottom" },
-                equals: globalScreenAreaSize.height,
-                priority: 10000
-            }, 10000);
-            gDomEvent.resizeScreenArea(globalScreenAreaSize.width, globalScreenAreaSize.height);
-
-            scheduleGeometryTask();
-
-            // if this resize was really a zoom in/out, re-measure all display
-            // queries
-            scheduleDisplayQueryRecalculation();
-        }, 20);
-
+        if (suppressRunningUntil === undefined) {
+            suppressRunningUntil = Date.now() + 100;
+        }
+        gDomEvent.resizeScreenArea(globalScreenAreaSize.width, globalScreenAreaSize.height);
         return true;
     }    
 );
@@ -539,6 +517,14 @@ var globalSetFocusTask: ScheduledTask = new ScheduledTask(
     "setFocus", TaskQueue.setFocusPriority, false,
     function(taskQueue: TaskQueue): boolean {
         gDomEvent.updateFocus();
+        return true;
+    }    
+);
+
+var globalFileHandleScanTask: ScheduledTask = new ScheduledTask(
+    "fileHandleScan", TaskQueue.fileHandleScanPriority, false,
+    function(taskQueue: TaskQueue): boolean {
+        gFileHandleScanner.scanFileHandles();
         return true;
     }    
 );

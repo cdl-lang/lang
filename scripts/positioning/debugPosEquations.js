@@ -610,7 +610,7 @@ function posEquationsDebugBreakOnOptimizationSuspensionErrors()
 {
     var problems = this.debugCheckOptimizationSuspension();
     if(problems && problems.length > 1)
-        mondriaInternalError(problems);
+        cdlInternalError(problems);
 }
 
 // This function checks whether the values stored in the optimizationSuspension
@@ -1278,7 +1278,7 @@ function rdupObj(obj0, maxDepth, dupObjRecursionDepth)
         maxDepth = 1000;
 
     if (dupObjRecursionDepth > 20) {
-        mondriaInternalError('DupObj recursion level: ' + dupObjRecursionDepth);
+        cdlInternalError('DupObj recursion level: ' + dupObjRecursionDepth);
     }
     dupObjRecursionDepth++;
 

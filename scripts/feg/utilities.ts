@@ -239,8 +239,8 @@ interface EqualityTest {
     isEqual(v: any): boolean;
 }
 
-interface Compare {
-    compare<T>(v: T): number;
+interface Compare<T> {
+    compare(v: T): number;
 }
 
 function arrayEqual(a: EqualityTest[], b: EqualityTest[]): boolean {

@@ -34,7 +34,7 @@ types.setTypeParser(20, function(val: any) {
  */
 class RedShiftClient {
     nrSharingResources: number = 0;
-	readyQueue: ReadyInterface[];
+	readyQueue?: ReadyInterface[];
 
     static clients: {[id: string]: RedShiftClient} = {};
 
@@ -62,7 +62,7 @@ class RedShiftClient {
     query: string;
 
     err: any;
-    data: any[];
+    data?: any[];
     dataRevision: number = Date.now();
 
     constructor(dataSourceSpec: ExternalDataSourceSpecification, public queryParameters: any[], public clientId: string) {

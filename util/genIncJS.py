@@ -238,7 +238,8 @@ fn_stack = []
 dtype_property = {
     'include': {
         'conf_lib': ['design', 'func', 'automated' ],
-        'html': 'script'
+        'html': 'script',
+        'inclusion_cycle_permitted': True
     },
     'classfile': {
         'conf_lib': ['design', 'func', 'automated' ],
@@ -388,11 +389,7 @@ def push_include_file(dtype, fn):
     if dtype not in dtype_property:
         error_exit("unknown type '" + dtype + "'")
 
-    if 'inclusion_cycle_permitted' in dtype_property[dtype]:
-        cycle_permitted = dtype_property[dtype]
-    else:
-        cycle_permitted = True
-
+    cycle_permitted = dtype_property[dtype]['inclusion_cycle_permitted'] if 'inclusion_cycle_permitted' in dtype_property[dtype] else False
     if not cycle_permitted:
         if fn in fn_stack:
             error_exit("inclusion cycle for '" + fn + "'")
@@ -575,7 +572,8 @@ def set_make_target(arg, deflt):
 
 def set_max_include_level(arg):
     global max_include_level
-    max_include_level = arg
+    if arg is not None:
+        max_include_level = arg
 
 def write_str(str):
     global out_file_handle
@@ -803,7 +801,7 @@ def process_directive(line, directive_fn, linenr, basedir):
 
     stdmatch = re.search('^<(.*)>$', basename)
     quotematch = re.search('^"(.*)"$', basename)
-    tildematch = re.search('^~/(.*)$', basename)
+    # tildematch = re.search('^~/(.*)$', basename)
 
     if stdmatch != None:
         filename = find_file_in_path(directive, stdmatch.group(1))
@@ -822,8 +820,8 @@ def process_directive(line, directive_fn, linenr, basedir):
     elif basename == 'fonturls':
         write_font_urls(directive_prefix)
         return
-    elif tildematch != None:
-        filename = os.path.join(get_root_dir(), tildematch.group(1))
+    # elif tildematch != None:
+    #     filename = os.path.join(get_root_dir(), tildematch.group(1))
     else:
         print('basename="' + basename + '"')
 
@@ -1161,6 +1159,7 @@ def process_file(dtype, filename, basedir):
     global processed_files
     global nr_screen_area
     global nr_test
+    global max_include_level
 
     class_found = False
     screen_area_found = False
@@ -1175,7 +1174,7 @@ def process_file(dtype, filename, basedir):
 
     normalized_filename = normalize_path(filename)
 
-    if dtype == 'include' and len(fn_stack) < max_include_level:
+    if dtype == 'include' and len(fn_stack) >= max_include_level:
         return
 
     write_dep(normalized_filename)

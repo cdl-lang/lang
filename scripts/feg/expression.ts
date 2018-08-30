@@ -1118,7 +1118,7 @@ var unmergeableBuiltInFunctions: {[funName: string]: boolean} = {
 };
 
 class ExpressionFunctionApplication extends ExpressionWithArguments {
-    defunArgTypes: ValueType[];
+    defunArgTypes?: ValueType[];
 
     constructor(expression: CdlExpression, type: ExpressionType, args: Expression[]) {
         super(expression, type, args);

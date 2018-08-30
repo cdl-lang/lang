@@ -1234,13 +1234,6 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
         }
         if (this.inputHasChanged && this.isActive()) {
             evaluationQueue.schedule(this, false);
-        } else if (this.awaitingThis !== undefined) {
-            var awaitingThis = this.awaitingThis;
-            awaitingThis.forEach((ev: Evaluator, key: number): void => {
-                ev.undefer();
-                evaluationQueue.schedule(ev, false);
-            });
-            this.awaitingThis = undefined;
         }
     }
 

@@ -62,7 +62,7 @@ var alertMessageCounter = 0;
 // This function should be called to report authoring errors (mainly
 // ill-formed configuration files).
 // Currently this function simply dumps its argument to '_mondriaErrorInternal'.
-function mondriaAuthorError()
+function cdlAuthorError()
 {
     _mondriaErrorInternal.apply(this, arguments);
 
@@ -83,7 +83,7 @@ function mondriaAuthorHint()
 // Currently this function simply dumps its argument to '_mondriaErrorInternal'
 
 var mondriaInternalErrorCounter = 0;
-function mondriaInternalError()
+function cdlInternalError()
 {
     _mondriaErrorInternal.apply(this, arguments);
     if (mondriaInternalErrorCounter == 0) {

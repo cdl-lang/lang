@@ -18,7 +18,6 @@ persistenceServer: persistenceServer.node.js
 persistenceServer.node.js: force
 	make -C ../../feg tsc
 	make -C .. tsc
-	npm update
 	$(GENINCJS) \
 		"--mode=js" \
 		"--langdir=$(LANGDIR)" \
