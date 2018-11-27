@@ -500,14 +500,14 @@ class MondriaDomEvent {
     }
     
     // This function is called by the drop event, and sends a "FileChoice" event
-    // with subType: "drop"
+    // with subType: "Drop"
     dropHandler(domEvent: DragEvent|ImpersonatedDropEvent): void {
         if (blockTaskLoop)
             return;
         domEvent.preventDefault();
         markEventStart("drop");
         // propagate dragInArea over areas overlapping the mouse
-        this.fileChoice(domEvent, "drop", domEvent.dataTransfer.files,
+        this.fileChoice(domEvent, "Drop", domEvent.dataTransfer.files,
                        this.getOverlappingAreas(domEvent.clientX, domEvent.clientY));
         // and clear the drag state once the drop event has been processed
         this.clearDragState();
@@ -515,13 +515,13 @@ class MondriaDomEvent {
     
     // This function is called by the input type=file element after the user picked
     // a file, and sends a "FileChoice" event similar to the drop event, but with
-    // subType: "pick"
+    // subType: "Pick"
     // Note: does not ignore event when !gAppInFront; Safari calls "blur" on the
     // window when the file pick dialog appears.
     pickFile(domEvent: MouseEvent|ImpersonatedDropEvent, inputArea: DisplayArea, fileList: FileList): void {
         domEvent.preventDefault();
         markEventStart("pick");
-        this.fileChoice(domEvent, "pick", fileList, [{
+        this.fileChoice(domEvent, "Pick", fileList, [{
             recipient: inputArea,
             insideVisibleRegion: true,
             relX: 0,

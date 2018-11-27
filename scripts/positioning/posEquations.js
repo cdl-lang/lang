@@ -1,4 +1,4 @@
-// Copyright 2017 Yoav Seginer.
+// Copyright 2017,2018 Yoav Seginer.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1501,7 +1501,7 @@ function posEquationsReduceErrorByNoResistanceBoundVars()
         this.setSolution(boundVar, target);
         // make sure the resulting inner product is zero
         this.innerProductObj.setToZero(eqId);
-        
+
         // re-calculate the resistance
         this.updateOrGroupSatisfaction(boundVar);
         this.resistance.calcResistance(boundVar, this.solution[boundVar]);
@@ -2343,7 +2343,8 @@ function posEquationsRemoveBlockingEquation(eqId)
     for(var selfBlocked in eqEntry.selfBlocked) {
         var entry = this.optimizationSuspension.selfBlocked[selfBlocked];
 
-        delete entry.equations[eqId];
+        if(entry)
+            delete entry.equations[eqId];
         
         if(isEmptyObj(entry.equations))
             delete this.optimizationSuspension.selfBlocked[selfBlocked];
@@ -2521,12 +2522,11 @@ function posEquationsSetBlockedVarEntry(blockedVar, blockingEq, blockedEq)
     var direction = (blockedEntry.resistanceDir > 0) ? "up" : "down";
     if(this.resistance.getResistance(blockedVar, direction) < 
        blockedPriority) {
-        if(this.resistance.getSatOrGroupResistance(blockedVar, direction) >= 
-           blockedPriority)
-            this.resistance.addToRequireOrGroupResistance(blockedVar,
-                                                          "blocked");
-        else
-            cdlInternalError("blocked variable's priority too low");
+        // the resistance of the blocked variable is not, in itself,
+        // high enough (it needs to be half-blocked) so this must be due
+        // to an or-group. Track the resistance due to this or-group.
+        this.resistance.addToRequireOrGroupResistance(blockedVar,
+                                                      "blocked");
     }
     
     // equations from which blocking by this variable has been removed
@@ -4160,7 +4160,8 @@ function posEquationsMoveAllowedByVar(variable, increase)
     // get the next segment constraint to be hit when moving in the given
     // direction
     var nextVal =
-        this.segmentConstraints.nextValue(variable, value, !increase);
+        this.segmentConstraints.nextValue(variable, value, !increase,
+                                          this.resistance);
 
     // if optimizing for a violated constraint on this variable, then move
     // no further than the value of the violated constraint (if any)
@@ -4712,6 +4713,14 @@ function posEquationsSetResistanceForNextRound()
             this.refreshViolation(variable);
             // resistance changed as a result of this operation
             this.optimizationBlockingAfterResistanceChange(variable);
+        }
+        var varEntry = this.segmentConstraints.variables[variable];
+        if(varEntry !== undefined &&
+           varEntry.hasOrGroups && varEntry.stability) {
+            var newValue = this.solutionChanges[variable];
+            this.posCalc.orGroups.updateVariableSatisfaction(variable,
+                                                             newValue,
+                                                             newValue);
         }
     }
 }

@@ -35,8 +35,7 @@ class PosConstraintSynchronizer {
 
     addSegment(point1: string, point2: string, constraintId: string,
                priority: number, extremum1: number, extremum2: number,
-               stability?: boolean, preference?: string, orGroups?: any): void {
-        // globalPos.addSegment(point1, point2, constraintId, priority, extremum1, extremum2, stability, preference, orGroups);
+               stability?: string, preference?: string, orGroups?: any): void {
         this.buffer.push([0, point1, point2, constraintId, priority, extremum1,
                           extremum2, stability, preference, orGroups
                          ]);

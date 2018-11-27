@@ -169,7 +169,7 @@ declare class Positioning {
     needToRefresh(): boolean;
     addSegment(point1: string, point2: string, constraintId: string,
                priority: number, extremum1: number, extremum2: number,
-               stability?: boolean, preference?: string, orGroups?: any): void;
+               stability?: string, preference?: string, orGroups?: any): void;
     removeSegment(point1: string, point2: string, constraintId: string): void;
     addLinear(p1point1: string, p1point2: string, p2point1: string,
           p2point2: string, scalar: number, priority: number, id: number): void;

@@ -132,7 +132,7 @@ class ContentTask extends ScheduledTask {
         if (this.isScheduled) {
             return;
         }
-        if (globalGeometryTask.isScheduled || globalCommitWritesTask.isScheduled) {
+        if (globalGeometryTask.isScheduled) {
             if (blockTaskLoop && !forcedSchedule) {
                 return;
             }
@@ -205,7 +205,7 @@ class GeometryTask extends ScheduledTask {
         if (this.isScheduled) {
             return;
         }
-        if (globalContentTask.isScheduled || globalCommitWritesTask.isScheduled) {
+        if (globalContentTask.isScheduled) {
             if (blockTaskLoop && !forcedSchedule) {
                 return;
             }

@@ -63,6 +63,7 @@ var localeCompare = new ForeignJavaScriptFunction("localeCompare", function(s1: 
 var normalize = new ForeignJavaScriptObjectFunction("normalize", "".normalize, stringValueType);
 var repeat = new ForeignJavaScriptObjectFunction("repeat", "".repeat, stringValueType);
 var replace = new ForeignJavaScriptObjectFunction("replace", "".replace, stringValueType);
+var match = new ForeignJavaScriptObjectFunction("match", "".match, stringValueType);
 var search = new ForeignJavaScriptObjectFunction("search", "".search, numericValueType);
 var slice = new ForeignJavaScriptObjectFunction("slice", "".slice, stringValueType);
 var split = new ForeignJavaScriptObjectFunction("split", "".split, stringValueType);

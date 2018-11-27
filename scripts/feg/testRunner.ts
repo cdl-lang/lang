@@ -125,7 +125,7 @@ class TestDOMEventQueue {
             break;
           case "FileChoice":
             var dropEvent = (<ImpersonatedDropEvent>ev);
-            if (dropEvent.subType === "pick") {
+            if (dropEvent.subType === "Pick") {
                 if (dropEvent.area instanceof ElementReference) {
                     var inputArea = allAreaMonitor.getAreaById(dropEvent.area.getElement());
                     if (inputArea instanceof DisplayArea) {

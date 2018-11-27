@@ -1,3 +1,4 @@
+// Copyright 2018 Yoav Seginer.
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -289,8 +290,14 @@ function debugObjConstraintReadAllSegmentConstraints() {
               }
           }
           
-          if(entry.stability)
-              singleStr += " stability=true";
+          if(entry.stability) {
+              if(entry.stability == "min")
+                  singleStr += " stability=min";
+              else if(entry.stability == "max")
+                  singleStr += " stability=max";
+              else
+                  singleStr += " stability=true";
+          }
           
           if(entry.preference)
               singleStr += " preference=" + entry.preference;

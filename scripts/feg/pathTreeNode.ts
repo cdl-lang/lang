@@ -1481,6 +1481,8 @@ class PathTreeNode {
             min: true,
             max: true,
             stability: true,
+            stableMin: true,
+            stableMax: true,
             preference: true,
             orGroups: false,
             priority: true,

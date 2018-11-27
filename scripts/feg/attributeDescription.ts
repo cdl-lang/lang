@@ -660,6 +660,8 @@ var areaAttributeDescription: any = {
                         min: "numberOrString",
                         max: "number",
                         stability: "boolean",
+                        stableMin: "boolean",
+                        stableMax: "boolean",
                         preference: { string: { "in": ["min", "max"] } },
                         orGroups: pointDescription,
                         priority: "number",

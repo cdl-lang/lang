@@ -393,9 +393,12 @@ function contentPosManagerDetermineMode()
     // check the 'independentContentPosition' property in the description
     var independentContentPosition = this.ipcPropVal;
 
-    // if not defined, initialize to the default value
+    // if not defined, initialize to the default value (false)
+    // (previously this was 'true' if the area was an intersection area,
+    // but this interpretation seems outdated. The code for this option
+    // remains in a comment, as a reminder of this).
     if(independentContentPosition === undefined)
-        independentContentPosition = !!this.baseArea.isIntersection();
+        independentContentPosition = false; // !!this.baseArea.isIntersection();
 
     if(!independentContentPosition) {
         if(isEmptyObj(this.offsets))

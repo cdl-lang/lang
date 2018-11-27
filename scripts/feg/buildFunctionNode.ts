@@ -740,10 +740,6 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
         return nr;
     }
 
-    if (fun.name === "embedding" && origin > 0 &&
-          areaTemplates[origin].embeddingInReferred) {
-        funName = "referredOf";
-    }
     var template: AreaTemplate;
     var nrAreas: RangeValue[];
     switch (funName) {
@@ -809,6 +805,16 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
                             template.partnerExpr === undefined) {
                         Utilities.warnOnce("expressionOf on non-intersection: " +
                                     getShortChildPath(template.areaNode.getPath()));
+                    } else if (fun.name === "embedding" && template.embeddingInReferred) {
+                        if (template.partnerExpr === undefined) {
+                            Utilities.warnOnce("referredOf on non-intersection: " +
+                                        getShortChildPath(template.areaNode.getPath()));
+                        } else {
+                            checkPartnerExpr(template);
+                            if (template.partnerExpr.functionNode.valueType.isStrictlyAreas()) {
+                                valueType.addAreas(template.partnerExpr.functionNode.valueType.areas, true, type.areas);
+                            }
+                        }
                     } else {
                         valueType.addArea(template.parent.id, type.sizes);
                     }

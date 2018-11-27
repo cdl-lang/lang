@@ -5,7 +5,7 @@ import {cdlBuiltInFunctions} from "./aux/cdlBuiltInFunctions";
 export let errors: string[] = [];
 
 function llerror(... args: any[]): void {
-    errors.push(inputFileName + ": " + String(llLineNumber) + ": " + sprintf(args));
+    errors.push(inputFileName + ":" + String(llLineNumber) + ": " + sprintf(args));
 }
 
 let cdlJsFunctions: {[name: string]: boolean} = {
@@ -56,9 +56,9 @@ function lookupFunction(sym: string): LangId {
         case "/": return new LangId("div");
         case "%": return new LangId("mod");
         case "<": return new LangId("lessThan");
-        case "<=": return new LangId("lessThanOrEqualTo");
+        case "<=": return new LangId("lessThanOrEqual");
         case ">": return new LangId("greaterThan");
-        case ">=": return new LangId("greaterThanOrEqualTo");
+        case ">=": return new LangId("greaterThanOrEqual");
         case "==": return new LangId("equal");
         case "!=": return new LangId("notEqual");
         case "~": return new LangId("match");
@@ -1361,6 +1361,8 @@ function cdl_file(follow: LLTokenSet): void {
 			waitForToken(uniteTokenSets(llTokenSet50, follow), follow);
 		} while (tokenInCommon(currSymbol, llTokenSet50));
 	}
+	
+	newline(); 
 }
 
 
@@ -1435,14 +1437,18 @@ function prio0expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio1expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio2expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet59));
-	if (tokenInCommon(currSymbol, llTokenSet59)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio2expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet59));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet59)) {
+			break;
+		}
 		getToken(20/*or_keyword*/, llTokenSet45, llTokenSet45, false);
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio1expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }
@@ -1450,14 +1456,18 @@ function prio1expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio2expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio3expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet60));
-	if (tokenInCommon(currSymbol, llTokenSet60)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio3expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet60));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet60)) {
+			break;
+		}
 		getToken(21/*and_keyword*/, llTokenSet45, llTokenSet45, false);
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio2expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }
@@ -1465,14 +1475,18 @@ function prio2expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio3expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio4expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet61));
-	if (tokenInCommon(currSymbol, llTokenSet61)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio4expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet61));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet61)) {
+			break;
+		}
 		getToken(23/*comparison_sym*/, llTokenSet45, llTokenSet45, false);
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio4expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }
@@ -1480,20 +1494,24 @@ function prio3expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio4expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio5expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet62));
-	if (tokenInCommon(currSymbol, llTokenSet62)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio5expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet62));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet62)) {
+			break;
+		}
 		if (tokenInCommon(currSymbol, llTokenSet63)) {
-			getToken(29/*add_sym*/, llTokenSet45, uniteTokenSets(follow, llTokenSet45), true);
+			getToken(29/*add_sym*/, llTokenSet45, llTokenSet45, false);
 		} else if (tokenInCommon(currSymbol, llTokenSet64)) {
-			getToken(30/*minus_sym*/, llTokenSet45, uniteTokenSets(follow, llTokenSet45), true);
+			getToken(30/*minus_sym*/, llTokenSet45, llTokenSet45, false);
 		} else {
 			llerror("syntax error after %s %.*s", lastSymbol, bufferEnd, scanBuffer);
 		}
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio4expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }
@@ -1501,20 +1519,24 @@ function prio4expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio5expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio6expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet65));
-	if (tokenInCommon(currSymbol, llTokenSet65)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio6expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet65));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet65)) {
+			break;
+		}
 		if (tokenInCommon(currSymbol, llTokenSet66)) {
-			getToken(25/*mult_sym*/, llTokenSet45, uniteTokenSets(follow, llTokenSet45), true);
+			getToken(25/*mult_sym*/, llTokenSet45, llTokenSet45, false);
 		} else if (tokenInCommon(currSymbol, llTokenSet42)) {
-			getToken(26/*asterisk*/, llTokenSet45, uniteTokenSets(follow, llTokenSet45), true);
+			getToken(26/*asterisk*/, llTokenSet45, llTokenSet45, false);
 		} else {
 			llerror("syntax error after %s %.*s", lastSymbol, bufferEnd, scanBuffer);
 		}
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio5expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }
@@ -1522,14 +1544,18 @@ function prio5expression(context: any, inheritSpec: boolean, firstArg: boolean, 
 
 function prio6expression(context: any, inheritSpec: boolean, firstArg: boolean, follow: LLTokenSet): CDLValue {
 	let expr: CDLValue;
-	expr = prio7expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet67));
-	if (tokenInCommon(currSymbol, llTokenSet67)) {
+	
+	let func: LangId|undefined = undefined; 
+	for (;;) {
+		let expr1: CDLValue = prio7expression(context,  inheritSpec,  firstArg, uniteTokenSets(follow, llTokenSet67));
+		
+		expr = func === undefined? expr1: [func, expr!, expr1];
+		if (!tokenInCommon(currSymbol, llTokenSet67)) {
+			break;
+		}
 		getToken(24/*power_sym*/, llTokenSet45, llTokenSet45, false);
 		
-		let func: string = lastSymbol; 
-		let expr1: CDLValue = prio6expression(context,  inheritSpec,  firstArg, follow);
-		
-		expr = [lookupFunction(func), expr, expr1]; 
+		func = lookupFunction(lastSymbol);
 	}
 	return expr;
 }

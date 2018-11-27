@@ -1790,12 +1790,14 @@ class EvaluationOffset extends EvaluationFunctionApplication {
     markAsChanged(): void {
         if (this.highPriority || globalPositioningDependency.isReady()) {
             super.markAsChanged();
-        } else if (!this.deferred) {
+        } else {
             this.inputHasChanged = true;
-            if (this.isScheduled()) {
-                evaluationQueue.unschedule(this);
+            if (!this.deferred) {
+                if (this.isScheduled()) {
+                    evaluationQueue.unschedule(this);
+                }
+                this.defer();
             }
-            this.defer();
         }
     }
 
@@ -2285,7 +2287,8 @@ class EvaluationChanged extends EvaluationFunctionApplication implements TimeSen
             this.falseNotified = false;
             evaluationQueue.addTimeSensitiveNode(this);
             this.markAsChanged();
-        } else if(!objectEqual(this.lastInput, this.currentInput)) {
+        } else if(!objectEqual(this.lastInput, this.currentInput) &&
+                  this.nrActiveWatchers > 0) {
             evaluationQueue.addTimeSensitiveNode(this);
             this.markAsChanged();
         }

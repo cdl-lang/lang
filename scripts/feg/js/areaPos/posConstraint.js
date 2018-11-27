@@ -1,3 +1,4 @@
+// Copyright 2018 Yoav Seginer.
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -80,7 +81,8 @@
 //   // segment constraint definition (undefined if linear constraint)
 //   min: <number, possibly -Infinity> // minimal offset allowed
 //   max: <number, possibly Infinity> // maximal offset allowed
-//   stability: true/false            // is this a stability constraint?
+//   stability: 'min'/'max'/'equals'/ // is this a stability constraint? and,
+//                                    // if it is, in which direction
 //   preference: 'min'/'max'          // preferred value inside allowed range
 //   orGroups: <description of a point> // defines the names of the or-groups
 //                                      // to which this 
@@ -758,14 +760,14 @@ function posConstraintSetSegmentConstraint(constraintDesc, priority)
 
     // get the new values of the various constaint parameters. min, max
     // and preference can have an undefined value. priority must have some
-    // value and stability has a default value of 'false'.
+    // value and stability has a default value of undefined.
 
     var equalPixels = convertValueToPixels(getDeOSedValue(constraintDesc.equals));
     var newMin = ("min" in constraintDesc && constraintDesc.min !== undefined) ?
         convertValueToPixels(getDeOSedValue(constraintDesc.min)) : equalPixels;
     var newMax = ("max" in constraintDesc && constraintDesc.max !== undefined) ?
         convertValueToPixels(getDeOSedValue(constraintDesc.max)) : equalPixels;
-    var newStability = !!getDeOSedValue(constraintDesc.stability);
+    var newStability = this.getStabilityFromDesc(constraintDesc);
     var newPriority;
 
     if(priority != undefined)
@@ -807,6 +809,32 @@ function posConstraintSetSegmentConstraint(constraintDesc, priority)
 
     // clear the changes
     this.pairChanges[0] = {};
+}
+
+// Given a constraint description, this returns the single string which
+// describes the stability part of the constraint. This function
+// returns undefined if there is no stability defined on the constraint.
+
+PosConstraint.prototype.getStabilityFromDesc =
+    posConstraintGetStabilityFromDesc;
+
+function posConstraintGetStabilityFromDesc(constraintDesc)
+{
+    var stability = constraintDesc.stability !== undefined ?
+        !!getDeOSedValue(constraintDesc.stability) : undefined;
+    var stableMin = constraintDesc.stableMin !== undefined ?
+        !!getDeOSedValue(constraintDesc.stableMin) : undefined;
+    var stableMax = constraintDesc.stableMax !== undefined ?
+        !!getDeOSedValue(constraintDesc.stableMax) : undefined;
+
+    if(stability)
+        return "equals"; // stability in both directions
+    else if(stableMin)
+        return stableMax ? "equals" : "min";
+    else if(stableMax)
+        return "max";
+
+    return undefined; // no stability
 }
 
 // This registers all constraints defined by this PosConstraint object afresh.

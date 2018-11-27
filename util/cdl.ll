@@ -61,9 +61,9 @@ function lookupFunction(sym: string): LangId {
         case "/": return new LangId("div");
         case "%": return new LangId("mod");
         case "<": return new LangId("lessThan");
-        case "<=": return new LangId("lessThanOrEqualTo");
+        case "<=": return new LangId("lessThanOrEqual");
         case ">": return new LangId("greaterThan");
-        case ">=": return new LangId("greaterThanOrEqualTo");
+        case ">=": return new LangId("greaterThanOrEqual");
         case "==": return new LangId("equal");
         case "!=": return new LangId("notEqual");
         case "~": return new LangId("match");
@@ -296,7 +296,8 @@ cdl_file:
         semicolon, { output(lastSymbol); newline(); };
         definition;
         top_level_assignment
-    ) SEQUENCE OPTION.
+    ) SEQUENCE OPTION,
+    { newline(); }.
 
 include_line:
     include, { newline(); output(lastSymbol); newline(); }.
@@ -340,46 +341,76 @@ prio0expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLV
     ) OPTION.
 
 prio1expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio2expression(context, inheritSpec, firstArg) -> expr,
-    (   or_keyword, { let func: string = lastSymbol; },
-        prio1expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio2expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        or_keyword, {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio2expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio3expression(context, inheritSpec, firstArg) -> expr,
-    (   and_keyword, { let func: string = lastSymbol; },
-        prio2expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio3expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        and_keyword, {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio3expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio4expression(context, inheritSpec, firstArg) -> expr,
-    (   comparison_sym, { let func: string = lastSymbol; },
-        prio4expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio4expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        comparison_sym, {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio4expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio5expression(context, inheritSpec, firstArg) -> expr,
-    (   (add_sym; minus_sym), { let func: string = lastSymbol; },
-        prio4expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio5expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        (add_sym; minus_sym), {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio5expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio6expression(context, inheritSpec, firstArg) -> expr,
-    (   (mult_sym; asterisk), { let func: string = lastSymbol; },
-        prio5expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio6expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        (mult_sym; asterisk), {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio6expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue:
-    prio7expression(context, inheritSpec, firstArg) -> expr,
-    (   power_sym, { let func: string = lastSymbol; },
-        prio6expression(context, inheritSpec, firstArg) -> expr1,
-        { expr = [lookupFunction(func), expr, expr1]; }
-    ) OPTION.
+    { let func: LangId|undefined = undefined; },
+    (
+        prio7expression(context, inheritSpec, firstArg) -> expr1, {
+            expr = func === undefined? expr1: [func, expr!, expr1];
+        }
+    ) CHAIN (
+        power_sym, {
+            func = lookupFunction(lastSymbol);
+        }
+    ).
 
 prio7expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLValue = {[]}:
     /* Unary op */

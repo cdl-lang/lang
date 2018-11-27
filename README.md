@@ -93,6 +93,10 @@ var screenArea = {
 }
 ```
 
+## Want to Learn More?
+
+Go to [cdl-lang.org](http://cdl-lang.org)
+
 ## Third Party Source Code
 
 For printing and saving to SVG the following libraries are used

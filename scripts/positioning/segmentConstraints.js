@@ -1,4 +1,4 @@
-// Copyright 2017 Yoav Seginer.
+// Copyright 2017,2018 Yoav Seginer.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,8 +21,9 @@
 //
 // In addition to the segment constraints, this object also stores
 // the stability requirements. These requirements do not
-// specify values for the pair offset, but specify the priority for
-// keeping the offset unchanged.
+// specify values for the pair offset, but specify the priorities for
+// keeping the offset unchanged (one not letting it decrease and the
+// other for not letting it increase).
 //
 // The functionality provided by this module is that which is required
 // by the equation solution module. Mainly, this means that for
@@ -109,10 +110,7 @@
 //            priority: <group priority>,
 //            allPrioritiesEqual: true|false,
 //            constraints: {
-//                <pairId>: {
-//                    <constraint ID>: true
-//                    .....
-//                }
+//                <constraintId>: <pair ID>
 //                .....
 //            }
 //        }
@@ -167,10 +165,16 @@
 //           next: <same structure as 'max', for the next (larger) max value>
 //    }
 //    stability: {
-//           priority: <maximal priority among all stability constraints>,
+//           // maximal priorities among stable min/max constraints
+//           // (after flipping into the direction of the point pair)
+//           priority: [<stable min priority (non-decrease)>,
+//                      <stable max priority (non-increase)>],
 //           ids: {
 //              <constraint ID>: {
-//                  priority: <stability priority for this constraint>,
+//                  // stability priorities for this constraint (they may
+//                  // be the same in both directions or one may be -Infinity)
+//                  priority: [<stable min priority (non-decrease)>,
+//                             <stable max priority (non-increase)>],
 //                  orGroups: <pointer to the 'labels' table of the or-group
 //                             object of the constraint (if exists)>
 //              }
@@ -192,8 +196,10 @@
 // defined for this variable. Since multiple stability constraints may be
 // defined on the same variable (they do not conflict) all such constraints
 // are stored under the 'ids' list of the stability entry. The 'priority'
-// of the stability entry is the maximal priority of all non-or-group stability
-// constraints. 
+// of the stability entry is an array of two priorities: one for the stability
+// in each direction (non-decrease first and non-increase second). These
+// priorities are the maximal priority (in each direction) of all non-or-group
+// stability constraints. 
 // The 'orGroups' stored here for each constraint is an optional field which
 // appears only when an or-groups object is defined on the constraint entry
 // in the pair table (see below). If such or-groups are defined, then they
@@ -219,7 +225,7 @@
 //           // undefined for min/max means -/+ infinity (respectively).
 //           min: <min for this pair>,
 //           max: <max for this pair>,
-//           stability: true|false,
+//           stability: "min"|"max"|"equals"|undefined,
 //           cloneIndex: <variable index of clone variable (if any) assigned
 //                        to the min/max constraint>
 //           orGroups: <a PosPoint object defining the or-groups (see below)>,
@@ -267,8 +273,9 @@
 //
 // Finally, the orGroups table (stored directly under the main object)
 // stores an index from group names to constraints which are assigned to
-// those groups. For each group name, the table lists the pair IDs and
-// constraint IDs of all constraints which are assigned to that group.
+// those groups. For each group name, the table lists the constraint IDs
+// of all constraints which are assigned to that group and the pair ID
+// on which the constraint is defined.
 // In addition, the table stores the priority of each group, which is the
 // maximal priority of all constraints in the group. In addition to the
 // priority itself, the entry also stores a flag 'allPrioritiesEqual'
@@ -406,8 +413,8 @@ function segmentConstraintsClearIndexEntry(index)
 // the two is taken to be the minimum. If one of extremum1 or extremum2
 // is undefined, we take extremum1 to be the minimum and extremum2 as
 // the maximum.
-// If 'stability' is set, this is also a stability constraint (for the
-// given pair and priority).
+// If 'stability' is not undefined, this is also a stability constraint (for the
+// given pair, direction(s), and priority).
 // If the argument 'preference' is set to either "min" or "max",
 // this defines the following constraint:
 // 1. "min": min = 0 and max = 0
@@ -483,7 +490,8 @@ function segmentConstraintsSetConstraint(point1, point2, constraintId,
     }
     
     idEntry.priority = priority;
-    idEntry.stability = !!stability;
+    idEntry.stability = (!stability || stability == "equals" || pair.dir == 1) ?
+        stability : (stability == "min" ? "max" : "min");
 
     // preference 
     if(preference == "min") {
@@ -618,9 +626,9 @@ function segmentConstraintsAssignConstraintToVariable(pairEntry, constraintId,
             (varEntry.min.idNum > 1 || !varEntry.min.ids[constraintId])) ||
            (varEntry.stability &&
             (maxVal != undefined || minVal != undefined))) {
-            // there is a conflict, remove any previous values for this
-            // constraint from this variable and assign the constraint to
-            // a clone variable
+            // there is a (potential) conflict, remove any previous values
+            // for this constraint from this variable and assign the
+            // constraint to a clone variable
             this.replaceConstraintOnVariable(constraintId, pairEntry.index,
                                              true);
             this.replaceConstraintOnVariable(constraintId, pairEntry.index,
@@ -753,8 +761,8 @@ function segmentConstraintsReplaceConstraintOnVariable(constraintId, index,
 
     // update the or-group assignment to this variable
     if(origOrGroups || newOrGroups)
-        this.refreshOrGroupsOnVariable(index, varEntry, origOrGroups,
-				       newOrGroups);
+        this.refreshOrGroupsOnVariable(index, varEntry, constraintId,
+                                       origOrGroups, newOrGroups);
 }
 
 // This function adds a constraint with the given ID, value, priority and
@@ -824,8 +832,8 @@ function segmentConstraintsAddConstraintToVariable(index, constraintId,
         this.addChange(index);
 
     if(origOrGroups || orGroups)
-        this.refreshOrGroupsOnVariable(index, varEntry, origOrGroups,
-                                       orGroups);
+        this.refreshOrGroupsOnVariable(index, varEntry, constraintId,
+                                       origOrGroups, orGroups);
 }
 
 // This function updates a variable entry with the stability
@@ -876,7 +884,7 @@ function segmentConstraintsUpdateVariableStability(pairEntry, constraintId)
             }
             
             stabilityEntry = indexEntry.stability = {
-                priority: -Infinity,
+                priority: [-Infinity, -Infinity],
                 ids: {}
             };
         }
@@ -888,7 +896,10 @@ function segmentConstraintsUpdateVariableStability(pairEntry, constraintId)
 
         origOrGroups = entry.orGroups;
         
-        entry.priority = idEntry.priority;
+        entry.priority = idEntry.stability == "min" ?
+            [idEntry.priority, -Infinity] :
+            (idEntry.stability == "max" ? [-Infinity, idEntry.priority] :
+             [idEntry.priority, idEntry.priority]);
         
         if(!idEntry.orGroups) {
             if(entry.orGroups) {
@@ -905,7 +916,8 @@ function segmentConstraintsUpdateVariableStability(pairEntry, constraintId)
     this.recalcStabilityPriority(index);
 
     if(origOrGroups || idEntry.orGroups)
-        this.refreshOrGroupsOnVariable(index, indexEntry, origOrGroups,
+        this.refreshOrGroupsOnVariable(index, indexEntry, constraintId,
+                                       origOrGroups,
                                        idEntry.orGroups ?
                                        idEntry.orGroups.labels : undefined);
 }
@@ -931,7 +943,7 @@ function segmentConstraintsRecalcStabilityPriority(index)
         return; // the entry may have been deleted
     
     // recalculate priority
-    var newPriority = -Infinity;
+    var newPriority = [-Infinity,-Infinity];
 
     for(var id in stabilityEntry.ids) {
 
@@ -940,11 +952,15 @@ function segmentConstraintsRecalcStabilityPriority(index)
         if(s.orGroups && !isEmptyObj(s.orGroups))
             continue; // ignore or-group constraints
 
-        if(newPriority < s.priority)
-            newPriority = s.priority;
+        if(newPriority[0] < s.priority[0])
+            newPriority[0] = s.priority[0];
+        if(newPriority[1] < s.priority[1])
+            newPriority[1] = s.priority[1];
     }
 
-    if(newPriority != stabilityEntry.priority) {
+    if(stabilityEntry.priority == undefined ||
+       newPriority[0] != stabilityEntry.priority[0] ||
+       newPriority[1] != stabilityEntry.priority[1]) {
         stabilityEntry.priority = newPriority;
         // update the changes table
         this.addChange(index);
@@ -978,8 +994,8 @@ function segmentConstraintsRemoveStability(pairEntry, constraintId)
     delete stabilityEntry.ids[constraintId];
     
     if(origOrGroups)
-        this.refreshOrGroupsOnVariable(index, indexEntry, origOrGroups,
-                                       undefined);
+        this.refreshOrGroupsOnVariable(index, indexEntry, constraintId,
+                                       origOrGroups, undefined);
 
     if(isEmptyObj(stabilityEntry.ids)) {
         delete indexEntry.stability;
@@ -1112,7 +1128,7 @@ function segmentConstraintsClearChanges()
 
 // Given a variable constraint entry (as appear under the min, max or stability
 // fields of a variable entry) and the previous and new priority and
-// or-groups for a single constraint belnging to that entry,
+// or-groups for a single constraint belonging to that entry,
 // this function recalculates the priority of the given constraint entry
 // (which is the maximum of the priorities of the non-or-group constraints
 // stored on the constraint entry. If no non-or-group constraints are stored
@@ -1188,7 +1204,8 @@ function segmentConstraintsUpdateConstraintPriority(constraint,
 SegmentConstraints.prototype.addConstraintNonOrGroupPriority =
     segmentConstraintsAddConstraintNonOrGroupPriority;
 
-function segmentConstraintsAddConstraintNonOrGroupPriority(variable, idEntry)
+function segmentConstraintsAddConstraintNonOrGroupPriority(variable, idEntry,
+                                                           constraintId)
 {
     // get the variable entry
     var varEntry = this.variables[variable];
@@ -1198,18 +1215,16 @@ function segmentConstraintsAddConstraintNonOrGroupPriority(variable, idEntry)
 	
     var changed = false;
     
-    for(var field in { min: true, max: true, stability: true }) {
+    for(var field in { min: true, max: true }) {
 
-        if(!varEntry[field] || idEntry[field] === undefined || 
-		   idEntry[field] === false)
+        if(!varEntry[field] || idEntry[field] === undefined)
             continue; // no constraint defined
 
         // find the entry for this constraint in the variable entry
         var constraint = varEntry[field];
 
-        if(field != "stability")
-            while(idEntry[field] != constraint.value)
-                constraint = constraint.next;
+        while(idEntry[field] != constraint.value)
+            constraint = constraint.next;
 
         if(idEntry.priority > constraint.priority) {
             constraint.priority = idEntry.priority;
@@ -1217,6 +1232,24 @@ function segmentConstraintsAddConstraintNonOrGroupPriority(variable, idEntry)
         }
     }
 
+    // stability
+
+    // find the entry for this constraint in the variable entry
+    var stabilityEntry = varEntry.stability;
+    
+    if(!stabilityEntry || idEntry.stability === undefined)
+        return changed;
+
+    // get the constraint entry under stability (this already has the correct
+    // priorities for each direction).
+    var constraintEntry = stabilityEntry.ids[constraintId];
+
+    for(var i = 0 ; i <= 1 ; i++)
+        if(constraintEntry.priority[i] > stabilityEntry.priority[i]) {
+            stabilityEntry.priority[i] = constraintEntry.priority[i];
+            changed = true;
+        }
+    
     return changed;
 }
 
@@ -1246,18 +1279,16 @@ function segmentConstraintsRemoveConstraintNonOrGroupPriority(variable,
 
     var changed = false;
     
-    for(var field in { min: true, max: true, stability: true }) {
+    for(var field in { min: true, max: true }) {
 
-        if(!varEntry[field] || idEntry[field] === undefined || 
-		   idEntry[field] === false)
+        if(!varEntry[field] || idEntry[field] === undefined)
             continue; // no constraint defined
 
         // find the entry for this constraint in the variable entry
         var constraint = varEntry[field];
 
-        if(field != "stability")
-            while(constraint && idEntry[field] != constraint.value)
-                constraint = constraint.next;
+        while(constraint && idEntry[field] != constraint.value)
+            constraint = constraint.next;
 
         if(!constraint)
             // the constraint was not yet added to the variable (will be the
@@ -1267,7 +1298,6 @@ function segmentConstraintsRemoveConstraintNonOrGroupPriority(variable,
         if(idEntry.priority != constraint.priority)
             continue; // constraint priority did not contribute to entry
 
-        var origPriority = constraint.priority;
         var priority = -Infinity;
         
         for(var id in constraint.ids) {
@@ -1284,8 +1314,71 @@ function segmentConstraintsRemoveConstraintNonOrGroupPriority(variable,
             priority = entry.priority;
         }
 
-        if(origPriority != priority) {
+        if(constraint.priority != priority) {
             constraint.priority = priority;
+            changed = true;
+        }
+    }
+
+    if(this.removeNonOrGroupStabilityPriority(varEntry, constraintId, idEntry))
+        return true;
+
+    return changed;
+}
+
+// This function performs the stability priority update for the function
+// removeConstraintNonOrGroupPriority. This is slightly different from
+// the min and max because there are two priorities (non-increase and
+// non-decrease stability). The function returns true if as a result of
+// this removal the stability priority (in either direction) of the
+// variable changed. Otherwise, it returns false.
+
+SegmentConstraints.prototype.removeNonOrGroupStabilityPriority =
+    segmentConstraintsRemoveNonOrGroupStabilityPriority;
+
+function segmentConstraintsRemoveNonOrGroupStabilityPriority(varEntry,
+                                                             constraintId,
+                                                             idEntry)
+{
+    if(!varEntry.stability || idEntry.stability === undefined) 
+        return false; // no stability defined
+
+    var stabilityEntry = varEntry.stability;
+
+    if(!stabilityEntry)
+        return false; // the constraint was not yet added to the variable.
+
+    // get the constraint entry under stability (this already has the correct
+    // priorities for each direction).
+    var constraintEntry = stabilityEntry.ids[constraintId];
+
+    if(!constraintEntry)
+        return false; // was not yet added
+
+    var changed = false;
+    
+    for(var i = 0 ; i <= 1 ; ++i) {
+        if(constraintEntry.priority[i] < stabilityEntry.priority[i])
+            continue; // constraint priority did not contribute to entry
+
+        var priority = -Infinity;
+        
+        for(var id in stabilityEntry.ids) {
+            
+            if(id == constraintId)
+                continue; // skip the constraint being removed
+            
+            var entry = stabilityEntry.ids[id];
+            
+            if(entry.priority[i] <= priority ||
+               (entry.orGroups && !isEmptyObj(entry.orGroups)))
+                continue; // does not affect the priority
+            
+            priority = entry.priority[i];
+        }
+        
+        if(stabilityEntry.priority[i] != priority) {
+            stabilityEntry.priority[i] = priority;
             changed = true;
         }
     }
@@ -1630,18 +1723,29 @@ function segmentConstraintsPriorityForValue(index, value, isMin)
 // is true, this constraint is the first smaller minimum constraint while
 // if it is false,this is the first larger maximum constraint.
 // This includes both or-group constraints and non-or-group constraints.
+// In case of stability constraints, this is either the stable value or
+// -Infinity/Infinity, depending on the value and the direction of movement.
+// In order to have access to the stable value, this function takes
+// the Resistance object as an argument. 
 
 SegmentConstraints.prototype.nextValue =
     segmentConstraintsNextValue;
 
-function segmentConstraintsNextValue(index, value, isMin)
+function segmentConstraintsNextValue(index, value, isMin, resistance)
 {
     var entry = this.variables[index];
     
     if(!entry)
         return isMin ? -Infinity : Infinity; // no constraints on this variable
 
-    var constraint = isMin ? entry.min : entry.max;
+    if(entry.stability) {
+        // stability constraint
+        var stableValue = resistance.getStableValue(index);
+        if(isMin)
+            return (stableValue < value) ? stableValue : -Infinity;
+        else
+            return (stableValue > value) ? stableValue : Infinity;
+    }
     
     if(isMin) {
         
@@ -1724,6 +1828,102 @@ function segmentConstraintsGetOrGroupMinOrMaxSatisfaction(variable, value,
     return result;
 }
 
+// This function goes over the stability constraints which are assigned
+// to the variable whose entry is given in 'varEntry' and which belong to
+// or-groups. For each or-group separately, this function determines whether
+// the given value satisfies the stability constraint of the group on this
+// variable. The result is returned in an object of the following form:
+// {
+//    <group name>: "[)"|"(]"|"()"|"[]"|<number>
+//    .....
+// }
+// The value returned with each group indicates the satifaction for that
+// group:
+// <number>: the value violates the stability constraint of the group on
+//     the given variable. <number> is the stable value of the variable
+//     (this is the value which the variable should move to in order
+//     to satisfy the group).
+// "[)": satisfied, and the group is tight for a decrease in the variable's
+//     value, and not tight for an increase.
+// "(]": satisfied, and the group is tight for a increase in the variable's
+//     value, and not tight for a decrease.
+// "[]": satisfied, and the group is tight for both an increase and decrease
+//     in the variable's value.
+// "()": satisfied, and the group is not tight for both an increase and decrease
+//     in the variable's value.
+// Because all constraints are relative to the same stable value and since
+// it is enough for one constraint in the group to be satisfied,
+// there is only a small number of options (and the most permissive of these
+// is assigned):
+// "[]": only if all stability constraints are on both sides ("equals")
+//       and the stable value is equal to the value.
+// "[)": if there is at least one "min" stability constraint and
+//       the stable value is equal to the value.
+// "(]": if there is at least one "max" stability constraint and
+//       the stable value is equal to the value.
+// "()": if there are both max and min constraints in the group or
+//       if there is a min constraint and the stable value < value or
+//       there is a max constraint and the stable value > value.
+
+SegmentConstraints.prototype.getOrGroupStabilitySatisfaction =
+    segmentConstraintsGetOrGroupStabilitySatisfaction;
+
+function segmentConstraintsGetOrGroupStabilitySatisfaction(varEntry, value,
+                                                           stableValue)
+{
+    if(!varEntry.hasOrGroups || !varEntry.stability)
+        return {}; // no or-group constraints
+
+    var result = {};
+
+    for(var id in varEntry.stability.ids) {
+        var stabEntry = varEntry.stability.ids[id];
+        if(!stabEntry.orGroups)
+            continue;
+
+        // calculate satisfaction for this specific constraint
+
+        var satisfaction;
+
+        if((value < stableValue && stabEntry.priority[0] > -Infinity) ||
+           (value > stableValue && stabEntry.priority[1] > -Infinity))
+            satisfaction = stableValue; // constraint violated
+        else if(stabEntry.priority[0] > -Infinity) {
+            if(stabEntry.priority[1] > -Infinity)
+                satisfaction = "[]";
+            else
+                satisfaction = (value > stableValue) ? "()" : "[)";
+        } else
+           satisfaction = (value < stableValue) ? "()" : "(]";
+
+        // combine this satisfaction with that of other constraints, for
+        // each of the or-groups.
+        for(var name in stabEntry.orGroups) {
+            if(!(name in result)) // first contraint for this group
+                result[name] = satisfaction;
+            else {
+                // combine to most permissive
+                prevSatisfaction = result[name];
+                if(typeof(prevSatisfaction) == "number")
+                    result[name] = satisfaction;
+                else if(typeof(satisfaction) == "number")
+                    continue;
+                else {
+                    // both satisfy constraints, so take the least tight
+                    // use the fact that "(" < "[" and ")" < "]"
+                    result[name] =
+                        (prevSatisfaction[0] < satisfaction[0] ? 
+                         prevSatisfaction[0] : satisfaction[0]) +
+                        (prevSatisfaction[1] < satisfaction[1] ? 
+                         prevSatisfaction[1] : satisfaction[1])
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 // given a variable and a value for that variable, this function returns
 // a list of group names for which constraints are defined on the given
 // variable. For each group, the satisfaction status of the group is
@@ -1746,10 +1946,10 @@ function segmentConstraintsGetOrGroupMinOrMaxSatisfaction(variable, value,
 // "[]" - both min and max are satisfied but tight.
 // "()" - both min and max are satisfied but neither is tight.
 // If 'stableValue' is not undefined, this function also checks for stability
-// requirements defined for groups. Such a stability requirement is either
-// violated (if value and stableValue are not equal) or tight
-// (if value and stableValue are equal). This means that the corresponding
-// group is either marked by <number> or by "[]". 
+// requirements defined for groups. See getOrGroupStabilitySatisfaction()
+// for more details on this. Note that as a result of variable cloning,
+// the same variable cannot carry both stability constraints and min/max
+// constraints.
 
 SegmentConstraints.prototype.getOrGroupSatisfaction =
     segmentConstraintsGetOrGroupSatisfaction;
@@ -1794,19 +1994,10 @@ function segmentConstraintsGetOrGroupSatisfaction(variable, value, stableValue)
         return result; // no stability or should not be applied.
     
     // stability
+    // (which means that 'result' is empty, as, due to cloning, a variable
+    // cannot carry stability and min/max constraints) 
 
-    for(var id in entry.stability.ids) {
-        var stabEntry = entry.stability.ids[id];
-
-        if(stabEntry.orGroups)
-            for(var name in stabEntry.orGroups) {
-                if((name in result) && !result[name])
-                    continue; // violated by the min/max constraints
-                result[name] = (value == stableValue) ? "[]" : stableValue;
-            }
-    }
-
-    return result;
+    return this.getOrGroupStabilitySatisfaction(entry, value, stableValue);
 }
 
 // This function checks whether the resistance of variable 'index' to movement 
@@ -1836,14 +2027,17 @@ function segmentConstraintsAllowsMovement(index, dir, target)
     
     if(!entry)
         return true; // no constraints, so allows movement
+
+    var violatedOrGroups;
     
-    if(entry.stability)
-        return false; // stability works both ways, so no movement
+    if(entry.stability) {
+        // stability and min/max constraints are never defined on the same
+        // variable, so enough to check the stability here 
+        return this.stabilityAllowsMovement(entry, dir);
+    }
     
     var isMin = (dir == "down"); // do we look at min or max constraints?
     var constraint = isMin ? entry.min : entry.max;
-    
-    var violatedOrGroups = {};
     
     while(constraint) {
         
@@ -1853,17 +2047,21 @@ function segmentConstraintsAllowsMovement(index, dir, target)
         
         if(constraint.priority > -Infinity)
             return false; // non-or-group constraint violated
-        
-        // check or-group constraints
-        for(var id in constraint.ids) {
-            for(var orGroup in constraint.ids[id].orGroups)
-                violatedOrGroups[orGroup] = true; 
+
+        if(entry.hasOrGroups) {
+            // check or-group constraints
+            if(!violatedOrGroups)
+                violatedOrGroups = {};
+            for(var id in constraint.ids) {
+                for(var orGroup in constraint.ids[id].orGroups)
+                    violatedOrGroups[orGroup] = true; 
+            }
         }
         
         constraint = constraint.next;
     }
     
-    if(isEmptyObj(violatedOrGroups))
+    if(!violatedOrGroups || isEmptyObj(violatedOrGroups))
         return true;
     
     // check whether any of the violated or groups is satisfied on this 
@@ -1880,17 +2078,65 @@ function segmentConstraintsAllowsMovement(index, dir, target)
     return isEmptyObj(violatedOrGroups) ? true : violatedOrGroups;
 }
 
+// This function checks whether the stability constraints on the variable
+// whose entry is given by 'varEntry' resist movement of the variable in the
+// direction indicated by 'dir'. This implements the function
+// allowsMovement() for the case of stability constraints and has the same
+// return value.
+
+SegmentConstraints.prototype.stabilityAllowsMovement = 
+    segmentConstraintsStabilityAllowsMovement;
+
+function segmentConstraintsStabilityAllowsMovement(varEntry, dir)
+{
+    if((varEntry.stability.priority[0] > -Infinity && dir == "down") ||
+       (varEntry.stability.priority[1] > -Infinity && dir == "up"))
+        return false;
+    
+    if(!varEntry.hasOrGroups)
+        return true; // no or-groups, so allowed
+        
+    // check for or-groups
+    var violatedOrGroups = {};
+    var satisfiedOrGroups = {};
+
+    for(var id in varEntry.stability.ids) {
+        var constraint = varEntry.stability.ids[id];
+        if(!constraint.orGroups)
+            continue; // not an or-constraint
+        if((varEntry.stability.priority[0] == -Infinity && dir == "down") ||
+           (varEntry.stability.priority[1] == -Infinity && dir == "up")) {
+            for(var orGroup in constraint.orGroups) {
+                satisfiedOrGroups[orGroup] = true;
+                if(orGroup in violatedOrGroups)
+                    delete violatedOrGroups[orGroup];
+            }
+        } else {
+            for(var orGroup in constraint.orGroups) {
+                if(!(orGroup in satisfiedOrGroups))
+                    violatedOrGroups[orGroup] = true;
+            }
+        }
+    }
+        
+    return isEmptyObj(violatedOrGroups) ? true : violatedOrGroups;
+}
+
 ///////////////////////////
 // Stability Constraints //
 ///////////////////////////
 
 // When querying the stability constraints, the value
 // one is interested in is the priority of the constraint. For a given
-// variable, the priority of the constraint is the maximum of
+// variable and direction, the priority of the constraint is the maximum of
 // the priorities of the stability constraints on the pairs associated with
-// that variable.
+// that variable (one priority in each direction of movement).
 
-// Get the priority of the stability constraint on the given variable index
+// Get the priority of the stability constraint on the given variable index.
+// The returned value is an array of two priorities (the first for
+// movement in the 'down' direction and the second for movement in the 'up'
+// direction). If there is no stability constraints on this variable,
+// undefined is returned.
 
 SegmentConstraints.prototype.getStability = segmentConstraintsGetStability;
 
@@ -1899,7 +2145,7 @@ function segmentConstraintsGetStability(index)
     var entry = this.variables[index];
 
     if(!entry || !entry.stability || entry.stability.priority == undefined)
-        return -Infinity; // no stability constraints on this variable
+        return undefined; // no stability constraints
 
     return entry.stability.priority;
 }
@@ -2061,20 +2307,18 @@ SegmentConstraints.prototype.addToOrGroup =
 
 function segmentConstraintsAddToOrGroup(groupName, pairId, constraintId)
 {
-    if(!this.orGroups[groupName])
-        this.orGroups[groupName] = { constraints: {}};
-    
-    if(!this.orGroups[groupName].constraints[pairId])
-        this.orGroups[groupName].constraints[pairId] = {};
-    
-    this.orGroups[groupName].constraints[pairId][constraintId] = true;
+    var groupEntry = this.orGroups[groupName];
+    if(!groupEntry)
+        groupEntry = this.orGroups[groupName] = { priority: -Infinity,
+                                                  constraints: {}};
+    groupEntry.constraints[constraintId] = pairId;
 
     var idEntry = this.pairById[pairId].ids[constraintId];
     
     // get the constraint priority
     var priority = idEntry.priority;
     
-    if(priority != this.orGroups[groupName].priority)
+    if(priority != groupEntry.priority)
         this.refreshOrGroupPriority(groupName);
 
     // record changes
@@ -2111,19 +2355,8 @@ SegmentConstraints.prototype.removeFromOrGroup =
 function segmentConstraintsRemoveFromOrGroup(groupName, pairId,
                                              constraintId)
 {
-    if(!this.orGroups[groupName] ||
-       !this.orGroups[groupName].constraints[pairId])
-        return;
-    
-    // remove the constraint from the list
-    
-    delete this.orGroups[groupName].constraints[pairId][constraintId];
-
-    if(isEmptyObj(this.orGroups[groupName].constraints[pairId]))
-        delete this.orGroups[groupName].constraints[pairId];
-
-    if(isEmptyObj(this.orGroups[groupName].constraints))
-        delete this.orGroups[groupName];
+    if(!this.removeFromOrGroupTable(groupName, constraintId))
+        return; // not found in list
 
     // update the priority of the group
     if(this.orGroups[groupName] &&
@@ -2140,7 +2373,7 @@ function segmentConstraintsRemoveFromOrGroup(groupName, pairId,
         if(isEmptyObj(idEntry.orGroups))
             // no more groups, this becomes a non-or-group constraint and
             // contributes to its non-or-group priority
-            this.addConstraintNonOrGroupPriority(index, idEntry);
+            this.addConstraintNonOrGroupPriority(index, idEntry, constraintId);
 
         // record changes
         this.addChange(index); // group change is a variable change
@@ -2148,6 +2381,30 @@ function segmentConstraintsRemoveFromOrGroup(groupName, pairId,
         this.refreshHasOrGroups(index); // still has any or-groups defined?
     }
 }
+
+// This function simply removes the entry for the given group and
+// constraint from the 'this.orGroups' table. It returns false if the group
+// and constraint ID were not found in the table and true otherwise.
+
+SegmentConstraints.prototype.removeFromOrGroupTable = 
+    segmentConstraintsRemoveFromOrGroupTable;
+
+function segmentConstraintsRemoveFromOrGroupTable(groupName, constraintId)
+{
+    var groupEntry = this.orGroups[groupName];
+    if(!groupEntry || !(constraintId in groupEntry.constraints))
+        return false;
+    
+    // remove the constraint from the list
+    
+    delete groupEntry.constraints[constraintId];
+
+    if(isEmptyObj(groupEntry.constraints))
+        delete this.orGroups[groupName];
+
+    return true;
+}
+
 
 // Given a group name, this function calculates the priority of the group
 // as the maximum of the priorities of all constraints in the group.
@@ -2168,20 +2425,20 @@ function segmentConstraintsRefreshOrGroupPriority(groupName)
     
     var constraints = entry.constraints;
 
-    for(var pairId in constraints)
-        for(var constraintId in constraints[pairId]) {
-            var p = this.pairById[pairId].ids[constraintId].priority;
+    for(var constraintId in constraints) {
+        var pairId = constraints[constraintId];
+        var p = this.pairById[pairId].ids[constraintId].priority;
             
-            if(p < priority)
+        if(p < priority)
+            allPrioritiesEqual = false;
+        else if(p > priority) {
+            if(!first)
                 allPrioritiesEqual = false;
-            else if(p > priority) {
-                if(!first)
-                    allPrioritiesEqual = false;
-                priority = p;
-            }
-
-            first = false;
+            priority = p;
         }
+
+        first = false;
+    }
 
     // if the priority changed and there is no entry yet for this group in
     // the or-group priority change table, store the original priority in
@@ -2197,10 +2454,10 @@ function segmentConstraintsRefreshOrGroupPriority(groupName)
 
 // This function receives a variable, the variable's entry (from the
 // 'variables' table), and the original (before the change) and new
-// (after the change) or-group assigned to a constraint for the given
-// variable. The or-group objects are the 'labels' sections of the
-// PosPoint object defining the groups (or they may be undefined if no
-// or groups are defined).
+// (after the change) or-group assigned to a constraint (whose constraint ID
+// is given, too) for the given variable. The or-group objects are
+// the 'labels' sections of the PosPoint object defining the groups
+// (or they may be undefined if no or groups are defined).
 // This function should be called after the change has taken place
 // (which means that the calling function must store a pointer to the
 // original or-group object).
@@ -2215,7 +2472,7 @@ SegmentConstraints.prototype.refreshOrGroupsOnVariable =
     segmentConstraintsRefreshOrGroupsOnVariable;
 
 function segmentConstraintsRefreshOrGroupsOnVariable(variable, varEntry,
-                                                     origOrGroups, 
+                                                     constraintId, origOrGroups,
                                                      newOrGroups)
 {
     if(origOrGroups == newOrGroups)
@@ -2223,12 +2480,14 @@ function segmentConstraintsRefreshOrGroupsOnVariable(variable, varEntry,
 
     if(origOrGroups) {
         // find groups which were previously assigned to the constraint,
-        // but do not belong to the new or-groups. Mark these groups as
-        // removed if no other constraint of this variable belongs
-        // to the group.
+        // but do not belong to the new or-groups.
         for(var group in origOrGroups) {
-            if((!newOrGroups || !(group in newOrGroups)) &&
-               !this.variableHasOrGroup(varEntry, group)) {
+            if(newOrGroups && (group in newOrGroups))
+                continue; // still assigned to this constraint
+            this.removeFromOrGroupTable(group, constraintId);
+            // Mark these groups as removed from the variable if no other
+            // constraint of this variable belongs to the group.
+            if(!this.variableHasOrGroup(varEntry, group)) {
                 this.addChange(variable);
                 this.addOrGroupRemove(group, variable);
             }

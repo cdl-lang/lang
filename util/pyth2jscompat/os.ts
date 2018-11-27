@@ -1,7 +1,10 @@
 import * as ospath from "path";
 import * as fs from "fs";
 
-/* Imitates Python's os module, including os.path */
+/* Imitates Python's os module, including os.path
+   Note that this module uses / as a path separator on Windows too.
+   That means / is not allowed in a file name.
+*/
 
 function win2unix(p: string): string {
     return p.replace(/\\/g, "/");
@@ -72,5 +75,13 @@ export function remove(p: string): void {
 
 // TODO: This function does not create intermediate directories
 export function makedirs(p: string): void {
+    const pathComponents: string[] = p.split('/');
+
+    for (let i = 1; i < pathComponents.length; i++) {
+        const subPath_i = pathComponents.slice(0, i).join('/');
+        if (!path.exists(subPath_i)) {
+            fs.mkdirSync(subPath_i);
+        }
+    }
     fs.mkdirSync(p);
 }

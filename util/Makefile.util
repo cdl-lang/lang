@@ -12,4 +12,4 @@ old2new.js: old2new.ts pyth2jscompat/parseargs.ts aux/cdlBuiltInFunctions.ts
 	tsc --target es2018 --lib es2018 --module commonjs --strict old2new.ts
 
  aux/cdlBuiltInFunctions.ts: ../scripts/feg/predefinedFunctions.ts ../scripts/feg/foreignJavascriptFunctions.ts
-	node extractDefinedSymbols.js $? > $@
+	node extractDefinedSymbols.js $^ > $@

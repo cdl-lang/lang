@@ -310,6 +310,7 @@ function parseColorStopsArr(inputStopsStr) {
 
 function copyBackgroundLinearGradientCssProp(displayDiv, gradientProps)
 {
+    gradientProps = getDeOSedValue(gradientProps);
     // translate stop properties into a string of stops
     var stops = parseColorStopsArr(gradientProps.stops);
 
@@ -358,6 +359,8 @@ function copyBackgroundLinearGradientCssProp(displayDiv, gradientProps)
 
 function copyBackgroundRadialGradientCssProp(displayDiv, gradientProps)
 {
+    gradientProps = getDeOSedValue(gradientProps);
+    
     var stops = parseColorStopsArr(gradientProps.stops);
 
     if(!stops)

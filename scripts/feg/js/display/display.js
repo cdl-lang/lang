@@ -1652,7 +1652,6 @@ ContentDisplay.prototype.refreshImage = function(displayDesc) {
 //
 ContentDisplay.prototype.imageUpdateHeightWidth = function(img) {
     var imageDescr = this.descriptionDisplay.image;
-    var transform = this.descriptionDisplay.transform;
     var parentWidth = this.getContentWidth();
     var parentHeight = this.getContentHeight();
 
@@ -1671,7 +1670,7 @@ ContentDisplay.prototype.imageUpdateHeightWidth = function(img) {
 
     // Based on the parent dimensions and img dimensions and conf
     //  calculate the desired width, height, top, left
-    // The image is always centralized
+    // The image is always centered
     // Note that resizing svg is not supported.
     var naturalWidth, naturalHeight;
     if ("src" in imageDescr) {
@@ -1681,7 +1680,6 @@ ContentDisplay.prototype.imageUpdateHeightWidth = function(img) {
     if (!naturalWidth || !naturalHeight) {
         return;
     }
-    img.onload = undefined; // avoid superfluous call
 
     var widthRatio = naturalWidth / parentWidth;
     var heightRatio = naturalHeight / parentHeight;

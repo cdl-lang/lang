@@ -1,4 +1,4 @@
-// Copyright 2017 Yoav Seginer.
+// Copyright 2017,2018 Yoav Seginer.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -215,7 +215,7 @@
 // the value of the variable changes. This resistance object has the following
 // structure:
 // {
-//    stabilityResistance: <stability priority>
+//    stabilityResistance: [<down stability priority>,<up stability priority>],
 //    stableValue: <number>
 //
 //    min: <the minimal value allowed by constraints (of any priority)>
@@ -252,15 +252,17 @@
 // The 'stabilityResistance' simply records this value from the segment
 // constraints object. This value does not change as the value
 // of the variable changes. When 'stabilityResistance' is not defined,
-// the corresponding resistance is -Infinity.
+// the corresponding resistance is [-Infinity,-Infinity].
 //
 // 'stableValue' is the value against which the stability resistance is
 // calculated. When the variable is first created, this value is undefined.
 // Every time the solution is recalculated, the new value of the variable
 // should be set on 'stableValue' using the function 'setStableValue'.
-// The stability creates resistance to moving away from the stable value.
+// The stability creates resistance to moving away from the stable value,
+// with one priority (the first) for moving below the value and one
+// priority (the second) for moving above the value.
 // This is like creating min and max constraints for the stable value
-// with the priority given by the stability priority. A stability priority
+// with the priorities given by the stability priorities. A stability priority
 // of -Infinity creates no resistance.
 //
 // 'min' and 'max' are the minimal and maximal values allowed by
@@ -550,7 +552,7 @@
 // The entry for each group in the violatedOrGroupVars table
 // lists the priority of the group. If the variable itself belongs to the
 // group, the group's optimization target on that variable is listed.
-// If the variable is free, it has a 'freeVars' property and if the
+// If the variable is bound, it has a 'freeVars' property and if the
 // variable is a free variable, it has a 'boundVarsOpt'.
 // The 'freeVars' entry list the free variables which appear in the
 // equation of the bound variable and which have an entry for this group
@@ -846,7 +848,7 @@ function Resistance(posEquations)
 // or refreshes the existing entry with the new constraints and requirements.
 // This does not calculate the resistance for a specific value, but only
 // prepares the parameters which are value independent (such as the 'min'
-// and 'max').
+// and 'max' for non-stability constraints).
 // To calculate the resistance for a specific value, call 'calcResistance'.
 
 Resistance.prototype.refreshEntry = resistanceRefreshEntry;
@@ -863,10 +865,11 @@ function resistanceRefreshEntry(variable)
     
     var stability = this.segmentConstraints.getStability(variable);
     
-    if(stability != -Infinity)
+    if(stability !== undefined &&
+       (stability[0] !== -Infinity || stability[1] !== -Infinity))
         entry.stabilityResistance = stability;
-    else
-        delete entry.stabilityResistance;
+    else if(entry.stabilityResistance !== undefined)
+        entry.stabilityResistance = undefined;
     
     entry.resistance = {};
     entry.withoutViolatedOrGroups = {};
@@ -884,7 +887,7 @@ function resistanceRefreshEntry(variable)
 // stored in the variable's entry.
 // If there is a stable value defined and a stability priority (which is
 // not -Infinity), the resistance is calculated as if there are constraints
-// requiring a minimum and maximum offset of 0 from the stable value.
+// requiring a minimum and/or maximum offset of 0 from the stable value.
 // The function returns true if the resistance of the variable, with or
 // without violated or-groups changed and false otherwise.
 // If the resistance (or the resistance without violated groups) changed,
@@ -1071,24 +1074,30 @@ function resistanceCalcStabilityResistance(variable, value)
         return;
     
     if(entry.stabilityResistance != undefined &&
-       entry.stabilityResistance > -Infinity &&
        entry.stableValue != undefined) {
         
         var stabilityRes = entry.stabilityResistance;
-        
-        if(value < entry.stableValue || value > entry.stableValue) {
-            if(value > entry.stableValue) {
-                entry.resistance.up = stabilityRes;
-                entry.violation = "max";
-            } else {
-                entry.resistance.down = stabilityRes;
-                entry.violation = "min";
+
+        if(stabilityRes[0] > -Infinity) {
+            if(value <= entry.stableValue) {
+                entry.resistance.down = stabilityRes[0];
+                if(value < entry.stableValue) {
+                    entry.violation = "min";
+                    entry.violationPriority = stabilityRes[0];
+                    entry.violationTarget = entry.stableValue;
+                }
             }
-            entry.violationPriority = stabilityRes;
-            entry.violationTarget = entry.stableValue; 
-        } else {
-            entry.resistance.up = stabilityRes;
-            entry.resistance.down = stabilityRes;
+        }
+
+        if(stabilityRes[1] > -Infinity) {
+            if(value >= entry.stableValue) {
+                entry.resistance.up = stabilityRes[1];
+                if(value > entry.stableValue) {
+                    entry.violation = "max";
+                    entry.violationPriority = stabilityRes[1];
+                    entry.violationTarget = entry.stableValue;
+                }
+            }
         }
     }
     
@@ -1471,7 +1480,7 @@ function resistanceCalcAllPending()
 ///////////////////
 
 // This function sets the current of the given variable as the new stable
-// value of the variable. If the stability priority is not -Infinity, the
+// value of the variable. If the stability priorities are not -Infinity, the
 // resistance and violations may have to be recalculated.
 // The function returns true if this changed the resistance of the variable.
 
@@ -1491,11 +1500,7 @@ function resistanceSetStableValue(variable)
     // set the new stable value
     entry.stableValue = stableValue;
     
-    // get the stability resistance
-    var stabilityRes = entry.stabilityResistance;
-    
-    
-    if(stabilityRes == undefined || stabilityRes == -Infinity)
+    if(entry.stabilityResistance == undefined)
         return false; // no stability resistance
     
     // recalculate the resistance
@@ -3079,8 +3084,14 @@ function resistanceSatisfiedOrGroupResistanceAfterEquationChange(eqId)
 
     for(var group in orGroups) {
 
+        var satisfactionEntry = this.orGroups.orGroups[group];
+        if(satisfactionEntry === undefined)
+            // can happen, for example if the or-constraint is a stability
+            // constraint and there is no stable value yet.
+            continue;
+        
         var groupEntry = this.tightGroups[group];
-        var groupSatisfied = this.orGroups.orGroups[group].satisfied;
+        var groupSatisfied = satisfactionEntry.satisfied;
         var satisfaction = groupSatisfied[boundVar];
 
         if(!satisfaction || satisfaction == "()")
@@ -4762,7 +4773,7 @@ function resistanceAddBoundViolatedOrGroupVarToFree(variable, group,
         freeVarEntry.priority = priority;
 
         if(!freeVarEntry.boundVarOpt)
-            this.resetViolatedOrGroupVarsGroupEntry(freeVar, group);
+            this.createViolatedOrGroupVarsBoundVarOpt(freeVarEntry);
         
         // direction of movement of free variable for violation reduction
         // on the bound variable.
@@ -4886,7 +4897,7 @@ function resistanceAddVariableAndGroupToViolatedOrGroupVars(variable, group)
              "down" : "up";
          
          if(!varEntry.boundVarOpt)
-             _self.resetViolatedOrGroupVarsGroupEntry(variable, group);
+             _self.createViolatedOrGroupVarsBoundVarOpt(varEntry);
          
          varEntry.boundVarOpt[freeDir][boundVar] = true;
          varEntry.boundVarOpt.num[freeDir]++;
@@ -4961,16 +4972,33 @@ function resistanceResetViolatedOrGroupVarsGroupEntry(variable, group,
     } else {
         delete entry.freeVars;
         if(!entry.boundVarOpt || clearFields)
-            entry.boundVarOpt = { 
-                up: {}, 
-                down: {}, 
-                num: { 
-                    up: 0, 
-                    down: 0 
-                }
-            };
+            this.createViolatedOrGroupVarsBoundVarOpt(entry);
     }
 }
+
+// Given an entry (for a variable and a group) from the 'violatedOrGroupVars'
+// table, this function checks whether that entry has a 'boundVarOpt' table.
+// If not, it creates an empty 'boundVarOpt' table for it.
+
+Resistance.prototype.createViolatedOrGroupVarsBoundVarOpt = 
+    resistanceCreateViolatedOrGroupVarsBoundVarOpt;
+
+function resistanceCreateViolatedOrGroupVarsBoundVarOpt(violatedOrGroupsEntry)
+
+{
+    if(violatedOrGroupsEntry.boundVarOpt !== undefined)
+        return;
+    
+    violatedOrGroupsEntry.boundVarOpt = { 
+        up: {}, 
+        down: {}, 
+        num: { 
+            up: 0, 
+            down: 0 
+        }
+    };
+}
+
 
 //
 // Violated Or-Group Resistance and Resistance Refresh
