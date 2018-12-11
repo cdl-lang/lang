@@ -1222,7 +1222,11 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
             }
             // Copy values before modifying
             repl = repl.slice(0);
-            repl[0] = addAttributes(shallowCopy(repl[0]), position.addedAttributes);
+            if (typeof(position.addedAttributes) === "object" &&
+                  !(position.addedAttributes instanceof Array)) {
+                // The selection query was an AV, not an os of simple values
+                repl[0] = addAttributes(shallowCopy(repl[0]), position.addedAttributes);
+            }
             if (repl[0] === undefined) {
                 return os;
             }

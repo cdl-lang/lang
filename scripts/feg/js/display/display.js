@@ -122,10 +122,7 @@ function ContentDisplay() {
     this.nrTextNodes = 0;
 
     // The following attributes concern the placing of the canvas.
-    // lineFrameOffset: when true, the embedded div must be placed at the
-    // contentPos because there's no real border to push the div in its place;
-    // when false, the embedded div is at the displayDivPos.
-    this.lineFrameOffset = true;
+
     // extraWidth: nr extra pixels needed in the width for shadow or line caps
     this.extraWidth = 0;
     // extraHeight: nr extra pixels needed in the height for shadow or line caps
@@ -189,8 +186,7 @@ ContentDisplay.prototype.removeDisplayElement = function() {
 
 ContentDisplay.prototype.updatePos = function(contentPos, displayPos) {
     if (this.displayDiv) {
-        updateElementPos(this.displayDiv,
-                         this.lineFrameOffset? contentPos: displayPos);
+        updateElementPos(this.displayDiv, displayPos);
     }
     if (this.embeddingDiv) {
         updateElementPos(this.embeddingDiv, contentPos);
@@ -485,11 +481,6 @@ ContentDisplay.prototype.applyDisplayProperties =
 
     // store the properties (after the processing above) for later use
     this.displayProperties = displayProperties;
-    // Mark whether there is no content offset as a result of a line or not.
-    // See updatePos() for usage.
-    this.lineFrameOffset = displayProperties && isAV(displayProperties.line) &&
-                           getDeOSedValue(displayProperties.line.width) > 1;
-
     if (this.prevProperties !== undefined) {
         // reset properties that are no longer set
         for (p in frameResetProperties) {
@@ -1416,10 +1407,9 @@ ContentDisplay.prototype.checkArcHit = function(displayDesc, px, width, py, heig
 ContentDisplay.prototype.refreshLine = function(displayDesc, width, height) {
     var line = displayDesc.line;
     var direction = ensureOS(line.direction);
-    var displayDivPos = this.baseArea.displayDivPos;
     var contentPos = this.baseArea.contentPos;
-    var leftOffset = contentPos? contentPos.left - displayDivPos.left: 0;
-    var topOffset = contentPos? contentPos.top - displayDivPos.top: 0;
+    var leftOffset = contentPos? contentPos.left : 0;
+    var topOffset = contentPos? contentPos.top : 0;
     var linePos = this.baseArea.linePos;
     var dash = ensureOS(line.dash);
     var dashOffset = getDeOSedValue(line.dashOffset);
@@ -1428,6 +1418,7 @@ ContentDisplay.prototype.refreshLine = function(displayDesc, width, height) {
     var clip = isTrue(line.clip);
     var ctx = this.context;
     var shadow = getDeOSedValue(line.shadow);
+    // first calculated as offsets from area frame, then relative to canvas
     var x0, y0, x1, y1;
 
     this.registerChangedPositioningOffsets();
@@ -1469,6 +1460,14 @@ ContentDisplay.prototype.refreshLine = function(displayDesc, width, height) {
           y0 === undefined || y1 === undefined) {
         return;
     }
+    // correct for the shift of the canvas relative to the frame.
+    // 'negativeShiftLeft' and 'negativeShiftRight' were calculated
+    // relative to the content position, so we need to correct for it.
+    x0 += this.negativeShiftLeft - leftOffset;
+    x1 += this.negativeShiftLeft - leftOffset;
+    y0 += this.negativeShiftTop - topOffset;
+    y1 += this.negativeShiftTop - topOffset;
+    
     ctx.moveTo(x0, y0);
     ctx.lineTo(x1, y1);
     if (shadow instanceof Object && !(shadow instanceof Array)) {
@@ -1840,6 +1839,8 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
         this.canvas.height = eheight;
         root.style.width = ewidth + "px";
         root.style.height = eheight + "px";
+        // The negative shift is relative to the content (0,0), which is
+        // also the display div's inner border.
         root.style.top = ((this.paddingTop? this.paddingTop: 0) -
                           this.negativeShiftTop) + "px";
         root.style.left = ((this.paddingLeft? this.paddingLeft: 0) -
@@ -2775,7 +2776,7 @@ Display.prototype.setZIndex = function(frameZ, displayZ) {
 Display.prototype.isOpaquePosition = function(x, y) {
     var displayConfiguration = this.descriptionDisplay;
 
-    function getRadius(xSide, ySize) {
+    function getRadius(xSide, ySide) {
         var attr = "border" + xSide + ySide + "Radius";
         var cornerRadius = displayConfiguration[attr];
 

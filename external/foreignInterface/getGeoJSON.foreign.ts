@@ -65,7 +65,7 @@ class GetGeoJSONFI extends ForeignInterface {
             };
             fileReader.onloadend = function () {
                 if (fileReader !== undefined) {
-                    self.load(fileReader.result);
+                    self.load(fileReader.result.toString());
                     fileReader = undefined;
                 }
             };

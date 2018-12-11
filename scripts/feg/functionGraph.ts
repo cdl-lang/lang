@@ -1178,7 +1178,7 @@ function loadCompilerCache(cont:() => void): void {
 
     var client = new XMLHttpRequest();
 
-    client.onerror = (errorEvent: ErrorEvent): void => {
+    client.onerror = (errorEvent: ProgressEvent): void => {
         console.log("loadCompilerCache error:", errorEvent);
     }
     console.log("loadCompilerCache", pathToCompilerCache.getResourceString());
@@ -1186,7 +1186,7 @@ function loadCompilerCache(cont:() => void): void {
     client.onabort = (): void => {
         console.log("loadCompilerCache aborted");
     }
-    client.onerror = (errorEvent: ErrorEvent): void => {
+    client.onerror = (errorEvent: ProgressEvent): void => {
         if (errorEvent === undefined) {
             Utilities.warn("no cache");
             cont();

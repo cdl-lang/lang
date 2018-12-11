@@ -660,9 +660,7 @@ class EventQueue {
                 // If the area hasn't been destroyed since the last call to this
                 // function and is not in newPtrInAreas, set to false
                 if (!(areaId in newPtrInAreas)) {
-                    if (this.setPtrInArea(propInAreas[areaId], false, drag)) {
-                        // change = true;
-                    }
+                    this.setPtrInArea(propInAreas[areaId], false, drag);
                 }
             } else {
                 // If it had been destroyed, remove it from pointerInAreas, so that
@@ -673,9 +671,8 @@ class EventQueue {
         // Then set the property to false for no longer relevant areas
         for (areaId in newPtrInAreas) {
             if (!(areaId in propInAreas)) {
-                if (!newPtrInAreas[areaId].hasBeenDestroyed() &&
-                        this.setPtrInArea(newPtrInAreas[areaId], true, drag)) {
-                    // change = true;
+                if (!newPtrInAreas[areaId].hasBeenDestroyed()) {
+                    this.setPtrInArea(newPtrInAreas[areaId], true, drag)
                 }
             }
         }
@@ -687,9 +684,8 @@ class EventQueue {
         // Clear the other property
         var nonPropInAreas = !drag? this.dragInAreas: this.pointerInAreas;
         for (areaId in nonPropInAreas) {
-            if (!nonPropInAreas[areaId].hasBeenDestroyed() &&
-                    this.setPtrInArea(nonPropInAreas[areaId], false, !drag)) {
-                // change = true;
+            if (!nonPropInAreas[areaId].hasBeenDestroyed()) {
+                this.setPtrInArea(nonPropInAreas[areaId], false, !drag)
             }
             delete nonPropInAreas[areaId];
         }

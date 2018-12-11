@@ -265,7 +265,7 @@ colon = ":".
 semicolon = ";".
 assign = "=".
 question_mark = "\?".
-number = "[+\-]?((([0-9]+(\.[0-9]*)?)|([0-9]*\.[0-9]+))([Ee][+-]?[0-9]+)?)".
+number = "((([0-9]+(\.[0-9]*)?)|([0-9]*\.[0-9]+))([Ee][+-]?[0-9]+)?)".
 string = "(\"([^\"]|\\\")*\")|('([^']|\\')*')".
 regexp = "/([^*\r\n/]|\\/)([^/\r\n]|\\/)*/[gimuy]*".
 identifier = "[$a-zA-Z_][$a-zA-Z_0-9]*".
@@ -418,6 +418,7 @@ prio7expression(context any, inheritSpec boolean, firstArg boolean) -> expr CDLV
     (minus_sym, { func = "uminus"; }; not_keyword, { func = "not"; }),
     prio7expression(context, inheritSpec, firstArg) -> op,
     { expr = [lookupFunction(func), op]; };
+    add_sym, prio7expression(context, inheritSpec, firstArg) -> expr;
     /* Identifier, projection, or function call */
     prio8expression(context, inheritSpec, firstArg) -> expr,
     (

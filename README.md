@@ -14,13 +14,13 @@ In order to compile CDL programs, you need to have the following installed on yo
 
 Further, you would need the following npm packages (npm is part of the node.js installation):
 
-* typescript@2.9.2
+* typescript@3.2.2
 * uglify-js@2.8.29
 
 After installing node.js, run the following to install these packages:
 
-      npm install typescript
-      npm install uglify-js
+      npm install -g typescript
+      npm install -g uglify-js
 
 ### Dependency Notes
 

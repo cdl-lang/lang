@@ -558,7 +558,7 @@ class MondriaDomEvent {
                 files.push({
                     fileHandle: [now],
                     lastModified: ensureOS((<any>fileHandle).lastModified),
-                    lastModifiedDate: ensureOS(fileHandle.lastModifiedDate),
+                    lastModifiedDate: ensureOS((<any>fileHandle).lastModifiedDate),
                     fullName: [fileHandle.name],
                     size: [fileHandle.size],
                     type: [fileHandle.type],
@@ -1778,6 +1778,13 @@ function copyTouch(touch: Touch): Touch {
         pageY: touch.pageY,
         screenX: touch.screenX,
         screenY: touch.screenY,
-        target: touch.target
+        target: touch.target,
+        altitudeAngle: touch.altitudeAngle,
+        azimuthAngle: touch.azimuthAngle,
+        rotationAngle: touch.rotationAngle,
+        force: touch.force,
+        radiusX: touch.radiusX,
+        radiusY: touch.radiusY,
+        touchType: touch.touchType
     };
 }

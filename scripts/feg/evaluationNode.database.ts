@@ -487,7 +487,7 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
         this.resumeQueue();
     }
 
-    error(errorEvent: ErrorEvent): void {
+    error(errorEvent: Event): void {
         var uri: string = getDeOSedValue(this.arguments[0].value);
 
         this.errorInLoad = true;
@@ -506,8 +506,6 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
         var noIndexer: boolean =
             (this.arguments[1] !== undefined &&
              isTrue(interpretedQuery({noIndexer: _},this.arguments[1].value)));
-        // in case there is no indexer
-        var data: any[] = undefined;
         
         switch (this.fileMode) {
         case DataSourceFileType.json:
@@ -588,12 +586,12 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
             this.fileReader.onabort = (): void => {
                 this.abort();
             }
-            this.fileReader.onerror = (ev: FileReaderProgressEvent): any => {
+            this.fileReader.onerror = (ev: any): any => {
                 this.error(new ErrorEvent(ev.toString()));
             }
             this.fileReader.onloadend = (): void => {
                 if (this.fileReader !== undefined) {
-                    this.load(this.fileReader.result, true);
+                    this.load(this.fileReader.result.toString(), true);
                     this.fileReader = undefined;
                 }
             }
@@ -613,7 +611,7 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
             if (this.withCredentialsFlag) {
                 this.client.withCredentials = true;
             }
-            this.client.onerror = (errorEvent: ErrorEvent): void => {
+            this.client.onerror = (errorEvent: ProgressEvent): void => {
                 this.error(errorEvent);
             }
             this.client.open("GET", uri, true);
