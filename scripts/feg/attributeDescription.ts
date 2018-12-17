@@ -459,7 +459,7 @@ var areaAttributeDescription: any = {
                         struct: {
                             linearGradient: {
                                 struct: {
-                                    start: {
+                                    direction: {
                                         or:[{
                                             string: {
                                                     in: ["to left", "to top", "to left top", "to left bottom",
@@ -485,8 +485,7 @@ var areaAttributeDescription: any = {
                         struct: {
                             radialGradient: {
                                 struct: {
-                                    position: "string",
-                                    angle: "degrees",
+                                    centerPoint: "string",
                                     shape: { string: { in: ["circle", "ellipse"] } },
                                     size: "string",
                                     stops: {

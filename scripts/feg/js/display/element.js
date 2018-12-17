@@ -295,7 +295,7 @@ function parseColorStopsArr(inputStopsStr) {
 // as the display DIV in the Display object) and a linear background gradient
 // ('gradientProps') description as follows:
 // {
-//      start: 'left'/'top'/'left top'/'left bottom'/'right top'
+//      direction: 'left'/'top'/'left top'/'left bottom'/'right top'
 //      stops: [[color, number], <additional-stops>]
 // }
 //
@@ -318,7 +318,9 @@ function copyBackgroundLinearGradientCssProp(displayDiv, gradientProps)
         return;
     
     var linearGradientStr =
-        'linear-gradient(' + gradientProps.start + ', ' + stops + ')';
+        'linear-gradient(' + (gradientProps.direction ?
+                              gradientProps.direction + ', ' : "") +
+        stops + ')';
 
     // Firefox, Chrome, Safari
     assignCSSStyleProp(displayDiv.style, "background",
@@ -339,10 +341,9 @@ function copyBackgroundLinearGradientCssProp(displayDiv, gradientProps)
 //                xpos ypos
 //                or
 //                "inherit",
-//      angle: <number>"deg",
 //      shape: "circle"|"ellipse",
 //      size: "closest-side"|"closest-corner"|"farthest-side"|
-//            "farthest-corner"|"contain"|"cover",
+//            "farthest-corner"|"contain"|"cover"|<dimensions>
 //      stops: [[color, length], [color, length], <additional-stops>]
 // }
 //
@@ -367,28 +368,20 @@ function copyBackgroundRadialGradientCssProp(displayDiv, gradientProps)
         return;
     
     var radialGradientStr = "radial-gradient(";
-    if(gradientProps.position || gradientProps.angle) {
-        radialGradientStr +=
-            (gradientProps.position ? gradientProps.position + " " : "") +
-            (gradientProps.angle ? gradientProps.angle : "") + ", ";
-    }
     if(gradientProps.shape || gradientProps.size) {
         radialGradientStr +=
             (gradientProps.shape ? gradientProps.shape + " " : "") +
-            (gradientProps.size ? gradientProps.size : "") + ", ";
-    }        
+            (gradientProps.size ? gradientProps.size : "") +
+            (gradientProps.centerPoint ? "" : ", ");
+    }
+    
+    if(gradientProps.centerPoint) {
+        radialGradientStr += " at " + gradientProps.centerPoint + ",";
+    }
 
     radialGradientStr += stops + ')';
 
-    // Firefox
-    assignCSSStyleProp(displayDiv.style, "background",
-                       "-moz-" + radialGradientStr);
-    // Chrome and Safari
-    assignCSSStyleProp(displayDiv.style, "background",
-                       "-webkit-" + radialGradientStr);
-    // IE (advanced versions)
-    assignCSSStyleProp(displayDiv.style, "background",
-                       "-ms-" + radialGradientStr);
+    assignCSSStyleProp(displayDiv.style, "background", radialGradientStr);
 }
 
 function copyBackgroundImage(displayDiv, value) {
