@@ -422,18 +422,10 @@ function copyBackgroundImage(displayDiv, value) {
 // 
 
 var cssPropTranslationTable = {
-    borderTopLeftRadius: [
-        "-webkit-border-top-left-radius", "-moz-border-radius-topleft",
-        "border-top-left-radius"],
-    borderTopRightRadius: [
-        "-webkit-border-top-right-radius", "-moz-border-radius-topright",
-        "border-top-right-radius"],
-    borderBottomLeftRadius: [
-        "-webkit-border-bottom-left-radius", "-moz-border-radius-bottomleft",
-        "border-bottom-left-radius"],
-    borderBottomRightRadius: [
-        "-webkit-border-bottom-right-radius", "-moz-border-radius-bottomright",
-        "border-bottom-right-radius"],
+    borderTopLeftRadius: ["border-top-left-radius"],
+    borderTopRightRadius: ["border-top-right-radius"],
+    borderBottomLeftRadius: ["border-bottom-left-radius"],
+    borderBottomRightRadius: ["border-bottom-right-radius"],
     borderStyle: "border-style",
     borderLeftStyle: "border-left-style",
     borderRightStyle: "border-right-style",
@@ -487,6 +479,20 @@ var cssPropTranslationTable = {
 function num2Pixel(value) {
     value = getDeOSedValue(value);
     return isNaN(value)? value: value + "px";
+}
+
+// The input value can be a single or pair of length or percentage values.
+// If one or both of the values are numbers, a "px" prefix is added to them.
+function pair2Pixels(value) {
+    value = getDeOSedValue(value);
+    if(!isNaN(value)) // a pure number
+        return value + "px";
+    // check whether can be split into two
+    var values = value.split(/\s+/);
+    if(values.length < 2 || values[1] == "")
+        return value; // single value, nothing more to do
+
+    return num2Pixel(values[0]) + " " + num2Pixel(values[1]); 
 }
 
 function copyDisplayCssProp(display, attrib, value) {
@@ -553,7 +559,7 @@ function copyDisplayCssProp(display, attrib, value) {
       case "borderBottomLeftRadius":
       case "borderBottomRightRadius":
         assignCSSStylePropToElements(display, ["displayDiv", "frameDiv"],
-                                     attrib, num2Pixel(value));
+                                     attrib, pair2Pixels(value));
         return;
       case "boxShadow":
         if (value !== "" && !display.independentContentPosition) {
@@ -616,6 +622,10 @@ function copyDisplayCssProp(display, attrib, value) {
       case "paddingRight":
       case "opacity":
         assignCSSStyleProp(display.displayDiv.style, attrib, value);
+        return;
+      case "viewOpacity":
+        if(display.frameDiv)
+            assignCSSStyleProp(display.frameDiv.style, "opacity", value);
         return;
       case "filter":
         assignCSSStyleProp(display.displayDiv.style, attrib, getCSSFilterString(value));

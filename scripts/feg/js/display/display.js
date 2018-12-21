@@ -430,7 +430,9 @@ ContentDisplay.prototype.createDisplayDiv = function(idstr) {
 var expandingAttributes = {
     borderRadius: ["borderTopLeftRadius", "borderTopRightRadius",
                    "borderBottomLeftRadius", "borderBottomRightRadius"],
-    padding: ["paddingTop", "paddingLeft", "paddingBottom", "paddingRight"]
+    padding: ["paddingTop", "paddingLeft", "paddingBottom", "paddingRight"],
+    borderStyle: ["borderLeftStyle","borderRightStyle","borderTopStyle",
+                  "borderBottomStyle"]
 };
 
 // --------------------------------------------------------------------------
@@ -491,6 +493,18 @@ ContentDisplay.prototype.applyDisplayProperties =
                 copyDisplayCssProp(this, p, frameResetProperties[p]);
             }
         }
+    }
+    // Set default proeprty values which are not equal to the HTML defaults
+    for(p in frameDefaultProperties) {
+        if ((p in displayProperties) && displayProperties[p] !== undefined)
+            continue;
+        var defaultSpec = frameDefaultProperties[p];
+        // check for exceptions for applying this default
+        if(("exception" in defaultSpec) &&
+           displayProperties[defaultSpec.exception.attribute] ==
+           defaultSpec.exception.value)
+            continue;
+        copyDisplayCssProp(this, p, defaultSpec.defaultValue);
     }
     // Dispatch the top level displayProperties to the correct element (these
     // go to the top level element and not to the displayElement elements).
@@ -2633,13 +2647,17 @@ var frameResetProperties = {
     boxShadow: "",
     hoverText: "",
     opacity: "",
+    viewOpacity: "",
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    borderStyle: "",
     borderWidth: "",
     borderColor: "",
+    borderLeftColor: "",
+    borderRightColor: "",
+    borderTopColor: "",
+    borderBottomColor: "",
     paddingLeft: "",
     paddingRight: "",
     paddingTop: "",
@@ -2648,6 +2666,37 @@ var frameResetProperties = {
     transform: "",
     filter: ""
 };
+
+// These are properties whose default in CDL is different from their
+// HTML default. Therefore, when they are missing in the display description,
+// their default value has to be set explicitly. This is different from
+// the properties in frameResetProperties, which only need to be set to their
+// default when they were previously set to some other value and then removed.
+//
+// The setting of the default value always takes place only if there is
+// no explicit definition of the property. Moreover, it may be conditioned
+// on the values of other properties. If the attribute and value given under
+// 'exception' exist in the display description, there is no need to set
+// the default value.
+
+var frameDefaultProperties = {
+    borderLeftStyle: {
+        exception: { attribute: "borderLeftWidth", value: "0px" },
+        defaultValue: "solid"
+    },
+    borderRightStyle: {
+        exception: { attribute: "borderRightWidth", value: "0px" },
+        defaultValue: "solid"
+    },
+    borderTopStyle: {
+        exception: { attribute: "borderTopWidth", value: "0px" },
+        defaultValue: "solid"
+    },
+    borderBottomStyle: {
+        exception: { attribute: "borderBottomWidth", value: "0px" },
+        defaultValue: "solid"
+    }
+}
 
 // Properties which have to be reset on the inner element when they are missing
 // from the display description.

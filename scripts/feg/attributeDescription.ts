@@ -59,6 +59,12 @@ var basicDescriptionTypes: {[typeName: string]: BasicDescriptionType[]} = {
         type: "string",
         match: /^\s*\d+(?:\.\d*)?\s*(?:px|em|%)?\s*$/
     }],
+    numberOrPixelOrPercentageOrPair: [{
+        type: "number"
+    }, {
+        type: "string",
+        match: /^\s*\d+(?:\.\d*)?\s*(?:px|em|%)?\s*(\s+\d+(?:\.\d*)?\s*(?:px|em|%)?\s*)?$/
+    }],
     numberOrPercentage: [{
         type: "number"
     }, {
@@ -514,11 +520,11 @@ var areaAttributeDescription: any = {
                     }],
                     name: "display background"
                 },
-                borderRadius: "numberOrPixelOrPercentage",
-                borderTopLeftRadius: "numberOrPixelOrPercentage",
-                borderTopRightRadius: "numberOrPixelOrPercentage",
-                borderBottomLeftRadius: "numberOrPixelOrPercentage",
-                borderBottomRightRadius: "numberOrPixelOrPercentage",
+                borderRadius: "numberOrPixelOrPercentageOrPair",
+                borderTopLeftRadius: "numberOrPixelOrPercentageOrPair",
+                borderTopRightRadius: "numberOrPixelOrPercentageOrPair",
+                borderBottomLeftRadius: "numberOrPixelOrPercentageOrPair",
+                borderBottomRightRadius: "numberOrPixelOrPercentageOrPair",
                 boxShadow: {
                     orderedSet: {
                         struct: {
@@ -557,6 +563,7 @@ var areaAttributeDescription: any = {
                 paddingLeft: "numberOrPixel",
                 paddingRight: "numberOrPixel",
                 opacity: "number",
+                viewOpacity: "number",
                 transform: { // currently only applies to images
                     struct: {
                         rotate: "number", // degrees
