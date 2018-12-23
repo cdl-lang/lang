@@ -861,38 +861,62 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
 
 /******************************************************************************/
 
-function getTransformObjectAsString(val, displayType, parentWidth) {
+function getTransformObjectAsString(val) {
     var str = "";
 
+    if(val instanceof Array) {
+        var str = "";
+        for(var i = 0, l = val.length ; i < l ; ++i)
+            str += getTransformObjectAsString(val[i]);
+        return str;
+    }
+    
     if (val instanceof Object) {
-        if (typeof(val.rotate) === "number") {
-            if (displayType === "text") {
-                // A text display is not centered; the element resizes itself,
-                // so a simple rotation will only rotate around the display's
-                // center when the text fits.
-                str += "translateX(-50%) translateX(" + parentWidth / 2 + "px) rotate(" + val.rotate + "deg) ";
-            } else {
-                str += "rotate(" + val.rotate + "deg) ";
+        var rotate = getDeOSedValue(val.rotate);
+        if (typeof(rotate) === "number") {
+            str += "rotate(" + rotate + "deg) ";
+        }
+        var scale = getDeOSedValue(val.scale);
+        if (typeof(scale) === "number") {
+            str += "scale(" + scale + ") ";
+        } else if (scale instanceof Object) {
+            var x = getDeOSedValue(scale.x);
+            if (typeof(x) === "number") {
+                str += "scaleX(" + x + ") ";
+            }
+            var y = getDeOSedValue(scale.y);
+            if (typeof(y) === "number") {
+                str += "scaleY(" + y + ") ";
             }
         }
-        if (typeof(val.scale) === "number") {
-            str += "scale(" + val.scale + ") ";
-        } else if (val.scale instanceof Object) {
-            if (typeof(val.scale.x) === "number") {
-                str += "scaleX(" + val.scale.x + ") ";
-            }
-            if (typeof(val.scale.y) === "number") {
-                str += "scaleY(" + val.scale.y + ") ";
-            }
+        var skew = getDeOSedValue(val.skew);
+        if (skew instanceof Object) {
+            var x = getDeOSedValue(skew.x);
+            if(x !== undefined)
+                str += "skewX(" + x + ((typeof(x) == "number") ? "deg) ":") ");
+            var y = getDeOSedValue(skew.y);
+            if(y !== undefined)
+                str += "skewY(" + y + ((typeof(y) == "number") ? "deg) ":") ");
         }
         if (val.flip !== undefined) {
-            if (val.flip === "horizontally" ||
-                (val.flip instanceof Array && val.flip.indexOf("horizontally") !== -1)) {
+            var flip = getDeOSedValue(val.flip);
+            if (flip === "horizontally" ||
+                (flip instanceof Array && flip.indexOf("horizontally") !== -1)) {
                 str += "matrix(-1,0,0,1,0,0) ";
-            } else if (val.flip === "vertically" ||
-                  (val.flip instanceof Array && val.flip.indexOf("vertically") !== -1)) {
+            } else if (flip === "vertically" ||
+                  (flip instanceof Array && flip.indexOf("vertically") !== -1)) {
                 str += "matrix(1,0,0,-1,0,0) ";
             }
+        }
+        var matrix = getDeOSedValue(val.matrix); 
+        if(matrix instanceof Object) {
+            var a = getDeOSedValue(matrix.a);
+            var b = getDeOSedValue(matrix.b);
+            var c = getDeOSedValue(matrix.c);
+            var d = getDeOSedValue(matrix.d);
+            var tx = getDeOSedValue(matrix.tx);
+            var ty = getDeOSedValue(matrix.ty);
+            str += "matrix("+a+","+b+","+c+","+d+","+tx+","+ty+") "
         }
     }
     return str;

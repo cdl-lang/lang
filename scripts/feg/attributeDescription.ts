@@ -564,27 +564,40 @@ var areaAttributeDescription: any = {
                 paddingRight: "numberOrPixel",
                 opacity: "number",
                 viewOpacity: "number",
-                transform: { // currently only applies to images
-                    struct: {
-                        rotate: "number", // degrees
-                        scale: {
-                            or: [
-                                "number", // identical in both directions
-                                {
-                                    struct: {
-                                        x: "number", // scale horizontal, default 1
-                                        y: "number"  // scale vertical, default 1
+                transform: {
+                    orderedSet: {
+                        struct: {
+                            rotate: "number", // degrees
+                            scale: {
+                                or: [
+                                    "number", // identical in both directions
+                                    {
+                                        struct: {
+                                            x: "number", // scale horizontal, default 1
+                                            y: "number"  // scale vertical, default 1
+                                        }
                                     }
+                                ]
+                            },
+                            skew: {
+                                struct: {
+                                    x: "numberOrDegrees", // skew X
+                                    y: "numberOrDegrees"  // skew Y
                                 }
-                            ]
-                        },
-                        skew: {
-                            struct: {
-                                x: "numberOrDegrees", // skew X
-                                y: "numberOrDegrees"  // skew Y
+                            },
+                            flip: { string: { in: ["horizontally", "vertically"] } },
+                            matrix: {
+                                struct: {
+                                    __mandatory__: ["a", "b", "c","d","tx","ty"],
+                                    a: "number",
+                                    b: "number",
+                                    c: "number",
+                                    d: "number",
+                                    tx: "number",
+                                    ty: "number"
+                                }
                             }
-                        },
-                        flip: { string: { in: ["horizontally", "vertically"] } }
+                        }
                     }
                 },
                 transitions: {

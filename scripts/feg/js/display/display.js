@@ -211,17 +211,6 @@ ContentDisplay.prototype.updateZeroOffsetPos = function(relative) {
         updateZeroOffsetElementPos(this.embeddingDiv, relative);
     }
 }
-
-ContentDisplay.prototype.getRotation = function() {
-    var transform = this.descriptionDisplay.transform;
-
-    if (typeof(transform) === "object") {
-        if (typeof(transform.rotation) === "number") {
-            return transform.rotation;
-        }
-    }
-    return 0;
-}
     
 // --------------------------------------------------------------------------
 // configurationUpdate
@@ -1877,9 +1866,6 @@ ContentDisplay.prototype.setDisplayElementPos = function() {
                 textDescr.whiteSpace === "nowrap"?
                 ewidth + "px": "";
         }
-        if (this.getRotation() !== 0) {
-            this.applyHTMLTransform(this.descriptionDisplay.transform);
-        }
         break;
       case "html":
       case "iframe":
@@ -2421,11 +2407,8 @@ Display.prototype.onfocus = function(newValue, element) {
 
 Display.prototype.applyHTMLTransform = function(value) {
     if (this.displayElement && this.displayElement.root) {
-        var parentArea = this.baseArea.parent;
-        var parentWidth = parentArea === undefined?
-            this.baseArea.relative.width: parentArea.relative.width;
         assignCSSStyleProp(this.displayElement.root.style, "transform",
-            getTransformObjectAsString(value, this.displayType, parentWidth));
+            getTransformObjectAsString(value));
     }
 }
 
@@ -3045,7 +3028,7 @@ SurveyDisplay.prototype.update = function(dispDesc, width, height) {
 SurveyDisplay.prototype.applyHTMLTransform = function(value) {
     if (this.displayElement && this.displayElement.root) {
         assignCSSStyleProp(this.displayElement.root.style, "transform",
-            getTransformObjectAsString(value, this.displayType, 0));
+            getTransformObjectAsString(value));
     }
 }
 
