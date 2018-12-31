@@ -633,6 +633,7 @@ var areaAttributeDescription: any = {
                 hideDuringPrinting: "boolean",
                 filter: {
                     struct: {
+                        url: "string",
                         blur: "numberOrPixelOrPercentage",
                         brightness: "numberOrPercentage",
                         contrast: "numberOrPercentage",
@@ -645,6 +646,22 @@ var areaAttributeDescription: any = {
                         sepia: "numberOrPercentage"
                     },
                     name: "filter"
+                },
+                viewFilter: {
+                    struct: {
+                        url: "string",
+                        blur: "numberOrPixelOrPercentage",
+                        brightness: "numberOrPercentage",
+                        contrast: "numberOrPercentage",
+                        dropShadow: "string",
+                        grayscale: "numberOrPercentage",
+                        hueRotate: "numberOrDegrees",
+                        invert: "numberOrPercentage",
+                        opacity: "numberOrPercentage",
+                        saturate: "numberOrPercentage",
+                        sepia: "numberOrPercentage"
+                    },
+                    name: "viewFilter"
                 }
             },
             name: "display"

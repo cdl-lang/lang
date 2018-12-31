@@ -2647,7 +2647,8 @@ var frameResetProperties = {
     paddingBottom: "",
     overflow: "",
     transform: "",
-    filter: ""
+    filter: "",
+    viewFilter: ""
 };
 
 // These are properties whose default in CDL is different from their

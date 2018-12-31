@@ -628,7 +628,14 @@ function copyDisplayCssProp(display, attrib, value) {
             assignCSSStyleProp(display.frameDiv.style, "opacity", value);
         return;
       case "filter":
-        assignCSSStyleProp(display.displayDiv.style, attrib, getCSSFilterString(value));
+        assignCSSStyleProp(display.displayDiv.style, attrib,
+                           getCSSFilterString(value));
+        return;
+      case "viewFilter":
+        var filterCSSString = getCSSFilterString(value);
+        if(display.frameDiv)
+            assignCSSStyleProp(display.frameDiv.style, "filter",
+                               filterCSSString);
         return;
       case "hoverText":
         display.displayDiv.title = value;
@@ -652,19 +659,31 @@ function copyDisplayCssProp(display, attrib, value) {
 
 function getCSSFilterString(v) {
     var filterString = "";
-    var filterTranslate = {dropShadow: "drop-shadow", hueRotate: "hue-rotate"};
-    var numberSuffix = {blur: "px", hueRotate: "deg"};
 
     if (!v || !(v instanceof Object)) {
         return "";
     }
+    
+    if(v instanceof Array) {
+        for(var i = 0, l = v.length ; i < l ; ++i)
+            filterString += " " + getCSSFilterString(v[i]);
+        return filterString;
+    }
+    
+    var filterTranslate = {dropShadow: "drop-shadow", hueRotate: "hue-rotate"};
+    var numberSuffix = {blur: "px", hueRotate: "deg"};
+
     for (var attr in v) {
         var val = getDeOSedValue(v[attr]);
-        if (typeof(val) === "number" && attr in numberSuffix) {
-            val += numberSuffix[attr];
-        }
-        if (attr in filterTranslate) {
-            attr = filterTranslate[attr];
+        if(attr == "url")
+            val = '"' + val + '"';
+        else {
+            if (typeof(val) === "number" && attr in numberSuffix) {
+                val += numberSuffix[attr];
+            }
+            if (attr in filterTranslate) {
+                attr = filterTranslate[attr];
+            }
         }
         filterString += " " + attr + "(" + val + ")";
     }
@@ -865,7 +884,6 @@ function getTransformObjectAsString(val) {
     var str = "";
 
     if(val instanceof Array) {
-        var str = "";
         for(var i = 0, l = val.length ; i < l ; ++i)
             str += getTransformObjectAsString(val[i]);
         return str;
