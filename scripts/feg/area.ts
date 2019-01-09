@@ -3317,7 +3317,7 @@ class DisplayArea extends CoreArea {
         } else {
             this.visualUpdates.display = value;
         }
-        if ("transitions" in value) {
+        if ("transition" in value) {
             allAreaMonitor.requestVisualUpdate(this);
         }
         // Now also update param:input. Note that this will update value:, not

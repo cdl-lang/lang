@@ -1,3 +1,4 @@
+// Copyright 2018,2019 Yoav Seginer
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -236,7 +237,7 @@ ContentDisplay.prototype.configurationUpdate = function(
 
 ContentDisplay.prototype.getTransitions = function() {
     return this.descriptionDisplay !== undefined?
-          this.descriptionDisplay.transitions: undefined;
+          this.descriptionDisplay.transition: undefined;
 }
 
 
@@ -245,11 +246,10 @@ ContentDisplay.prototype.getTransitions = function() {
 //
 ContentDisplay.prototype.applyTransitionProperties = function(transitions) {
     if (this.descriptionDisplay !== undefined) {
-        copyTransitionCssProp(
-            this.displayDiv.style, this.displayElement, transitions);
-        if(this.embeddingDiv)
-            copyTransitionCssProp(
-                this.embeddingDiv.style, this.displayElement, transitions);
+        copyTransitionCssProp(this.displayDiv.style, "display", transitions);
+        if(this.displayElement && this.displayElement.root)
+            copyTransitionCssProp(this.displayElement.root.style,
+                                  "root", transitions);
     }
 }
 
@@ -438,20 +438,11 @@ ContentDisplay.prototype.applyDisplayProperties =
     // First update the transition properties, otherwise they will apply to the
     // next property change
     if (this.displayDiv && applyTransition) {
-        if ("transitions" in displayProperties) {
-            copyTransitionCssProp(this.displayDiv.style, this.displayElement,
-                                  displayProperties.transitions);
-            if(this.embeddingDiv)
-                copyTransitionCssProp(this.embeddingDiv.style,
-                                      this.displayElement,
-                                      displayProperties.transitions);
+        if ("transition" in displayProperties) {
+            copyTransitionCssProp(this.displayDiv.style, "display",
+                                  displayProperties.transition);
         } else {
-            resetTransitionCssProp(this.displayDiv.style, this.displayElement,
-                                   this.displayElement);
-            if(this.embeddingDiv)
-                resetTransitionCssProp(this.embeddingDiv.style,
-                                       this.displayElement,
-                                       this.displayElement);
+            resetTransitionCssProp(this.displayDiv.style);
         }
     }
     
@@ -532,12 +523,11 @@ ContentDisplay.prototype.applyDisplayElementProperties =
           this.prevProperties[this.prevDisplayType];
 
     if (applyTransition) {
-        if ("transitions" in this.displayProperties) {
-            copyTransitionCssProp(displayElement.root.style,
-                      this.displayElement, this.displayProperties.transitions);
+        if ("transition" in this.displayProperties) {
+            copyTransitionCssProp(displayElement.root.style, "root",
+                                  this.displayProperties.transition);
         } else {
-            resetTransitionCssProp(displayElement.root.style, 
-                                   this.displayElement, displayElement);
+            resetTransitionCssProp(displayElement.root.style);
         }
     }
 
@@ -2117,12 +2107,8 @@ Display.prototype.configurationUpdate = function(
 
 Display.prototype.applyTransitionProperties = function(transitions) {
     this.ContentDisplay_applyTransitionProperties(transitions);
-    if (this.descriptionDisplay !== undefined) {
-        copyTransitionCssProp(this.frameDiv.style, undefined, transitions);
-        if(this.embeddingDiv)
-            copyTransitionCssProp(this.embeddingDiv.style, undefined,
-                                  transitions);
-    }
+    if (this.descriptionDisplay !== undefined)
+        copyTransitionCssProp(this.frameDiv.style, "frame", transitions);
 }
 
 Display.prototype.contentOffsetModeChange =
@@ -2755,15 +2741,11 @@ Display.prototype.applyDisplayProperties =
 
 Display.prototype.resetFrame = function(definedProps, applyTransition) {
     if (applyTransition) {
-        if ("transitions" in definedProps) {
-            copyTransitionCssProp(this.frameDiv.style, undefined, definedProps.transitions);
-            if(this.embeddingDiv)
-                copyTransitionCssProp(this.embeddingDiv.style, undefined, definedProps.transitions);
+        if ("transition" in definedProps) {
+            copyTransitionCssProp(this.frameDiv.style, "frame",
+                                  definedProps.transition);
         } else {
-            resetTransitionCssProp(this.frameDiv.style, undefined, undefined);
-            if(this.embeddingDiv)
-                resetTransitionCssProp(this.embeddingDiv.style, undefined,
-                                       undefined);
+            resetTransitionCssProp(this.frameDiv.style);
         }
     }
 }

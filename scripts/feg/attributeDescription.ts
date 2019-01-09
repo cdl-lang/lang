@@ -1,3 +1,4 @@
+// Copyright 2018,2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -600,7 +601,7 @@ var areaAttributeDescription: any = {
                         }
                     }
                 },
-                transitions: {
+                transition: {
                     struct: {
                         top: transitionPropertyDescription,
                         left: transitionPropertyDescription,
@@ -618,14 +619,19 @@ var areaAttributeDescription: any = {
                         borderTopColor: transitionPropertyDescription,
                         borderBottomWidth: transitionPropertyDescription,
                         borderBottomColor: transitionPropertyDescription,
+                        borderRadius: transitionPropertyDescription,
+                        borderTopLeftRadius: transitionPropertyDescription,
+                        borderTopRightRadius: transitionPropertyDescription,
+                        borderBottomLeftRadius: transitionPropertyDescription,
+                        borderBottomRightRadius: transitionPropertyDescription,
                         transform: transitionPropertyDescription,
                         filter: transitionPropertyDescription,
+                        viewFilter: transitionPropertyDescription,
                         opacity: transitionPropertyDescription,
-                        boxShadow: transitionPropertyDescription,
-                        rotate: transitionPropertyDescription,
-                        scale: transitionPropertyDescription
+                        viewOpacity: transitionPropertyDescription,
+                        boxShadow: transitionPropertyDescription
                     },
-                    name: "transitions"
+                    name: "transition"
                 },
                 hoverText: "string",
                 pointerOpaque: "boolean",

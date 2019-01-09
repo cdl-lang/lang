@@ -1,3 +1,4 @@
+// Copyright 2018,2019 Yoav Seginer
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -473,12 +474,14 @@ var cssPropTranslationTable = {
     transform: ["transform", "-webkit-transform"],
     hoverText: "title",
     overflow: "text-overflow",
-    whiteSpace: "white-space"
+    whiteSpace: "white-space",
+    viewFilter: "filter",
+    viewOpacity: "opacity"
 };
 
 function num2Pixel(value) {
-    value = getDeOSedValue(value);
-    return isNaN(value)? value: value + "px";
+    var value2 = parseFloat(getDeOSedValue(value));
+    return isNaN(value2)? value: value2 + "px";
 }
 
 // The input value can be a single or pair of length or percentage values.
@@ -510,7 +513,7 @@ function copyDisplayCssProp(display, attrib, value) {
       case "line":
       case "image":
       case "pointerOpaque":
-      case "transitions":
+      case "transition":
       case "foreign":
         return;
       case "background":
@@ -690,72 +693,175 @@ function getCSSFilterString(v) {
     return filterString;
 }
 
+//
+// CSS Transitions
+//
+
+// Convert the CDL description of the properties of a CSS transition
+// to the corresponding CSS string. 'transitionSpec' may be a number,
+// string or object (possibly wrapped in an array).
+
+function getCSSTransitionSpecStr(transitionSpec) {
+
+    var transitionStr;
+    
+    if(transitionSpec instanceof Array)
+        transitionSpec = transitionSpec[0];
+    
+    switch (typeof(transitionSpec)) {
+    case "number":
+        transitionStr = transitionSpec + "s";
+        break;
+    case "string":
+        transitionStr = transitionSpec;
+        break;
+    case "object":
+        transitionStr = "";
+        if ("duration" in transitionSpec) {
+            transitionStr += typeof(transitionSpec.duration) === "number"?
+                transitionSpec.duration + "s" : transitionSpec.duration;
+            if ("delay" in transitionSpec) {
+                transitionStr += " " +
+                    (typeof(transitionSpec.delay) === "number"?
+                     transitionSpec.delay + "s" : transitionSpec.delay);
+            }
+        }
+        if ("timingFunction" in transitionSpec)
+            transitionStr += " " + transitionSpec.timingFunction;
+        break;
+    }
+
+    return transitionStr;
+}
+
 var elementTransitionProperties = {
     transform: true,
     color: true
 }
 
-function copyTransitionCssProp(styleObj, displayElement, transitions) {
+// The transition properties defined for each type of DOM element
 
-    function getTransitionStr(inElement) {
-        var transitionStr = "";
-
-        for (var attr in transitions) {
-            if (inElement !== elementTransitionProperties[attr])
-                continue;
-            var cssProp = attr in cssPropTranslationTable?
-                cssPropTranslationTable[attr]: attr;
-            var transition = transitions[attr];
-            for (var i = 0;
-                (cssProp instanceof Array && i < cssProp.length) || i < 1;
-                i++) {
-                var cssPropI = cssProp instanceof Array? cssProp[i]: cssProp;
-                if (transitionStr.length > 0) {
-                    transitionStr += ",";
-                }
-                transitionStr += cssPropI + " ";
-                if(transition instanceof Array)
-                    transition = transition[0];
-                switch (typeof(transition)) {
-                case "number":
-                    transitionStr += transition + "s";
-                    break;
-                case "string":
-                    transitionStr += transition;
-                    break;
-                case "object":
-                    if ("duration" in transition) {
-                        transitionStr +=
-                        typeof(transition.duration) === "number"?
-                            transition.duration + "s":
-                            transition.duration;
-                        if ("timingFunction" in transition) {
-                            transitionStr += " " +
-                                transition.timingFunction;
-                            if ("delay" in transition) {
-                                transitionStr += " " + transition.delay;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-        return transitionStr;
-    }
-
-    styleObj.setProperty("transition", getTransitionStr(undefined));
-    if (displayElement !== undefined && displayElement.root !== undefined) {
-        displayElement.root.style.setProperty("transition",
-                                              getTransitionStr(true));
+var transitionPropertiesByElement = {
+    frame: {
+        top: true,
+        left: true,
+        width: true,
+        height: true,
+        borderRadius: true,
+        borderTopLeftRadius: true,
+        borderTopRightRadius: true,
+        borderBottomLeftRadius: true,
+        borderBottomRightRadius: true,
+        viewFilter: true,
+        viewOpacity: true,
+        shadowBox: true
+    },
+    display: {
+        width: true,
+        height: true,
+        background: true,
+        borderColor: true,
+        borderLeftColor: true,
+        borderRightColor: true,
+        borderTopColor: true,
+        borderBottomColor: true,
+        borderWidth: true,
+        borderLeftWidth: true,
+        borderRightWidth: true,
+        borderTopWidth: true,
+        borderBottomWidth: true,
+        borderRadius: true,
+        borderTopLeftRadius: true,
+        borderTopRightRadius: true,
+        borderBottomLeftRadius: true,
+        borderBottomRightRadius: true,
+        opacity: true,
+        filter: true
+    },
+    root: {
+        width: true,
+        height: true,
+        transform: true,
+        color: true
     }
 }
 
-function resetTransitionCssProp(styleObj, displayElement) {
-    styleObj.removeProperty("transition");
-    if (displayElement !== undefined && displayElement.root !== undefined) {
-        displayElement.root.style.removeProperty("transition");
+// Given the object 'transitions' describing the 'transition' display
+// property of an area and an 'elementName' indicating which of the
+// DOM elements these transitions should be set on ("frame" for the
+// frame DIV, "display" for the display DIV and "root" for the root of
+// the display element), this function returns the string which should be
+// set under the 'transition' CSS property of that element.
+
+function getTransitionStr(transitions, elementName) {
+    
+    var transitionStr = "";
+
+    // returns a new object with the transitions which need to be set on the
+    // element of the given type
+    function getAttrList(transitions, elementName) {
+        var newTransitions = {};
+        // transition properties for the given DOM element
+        var elementTransitions = transitionPropertiesByElement[elementName];
+
+        if(elementTransitions === undefined)
+            return newTransitions;
+        
+        for (var attr in transitions) {
+            if(!(attr in elementTransitions))
+                continue;
+            if(attr in expandingAttributes) {
+                // attribute should be expanded to multiple attribute, but
+                // without overriding the more specific attribute (if defined
+                // explicitly)
+                var expanding = expandingAttributes[attr];
+                for(var i = 0; i < expanding.length; i++) {
+                    if(!(expanding[i] in transitions)) // not explicitly defined
+                        newTransitions[expanding[i]] = transitions[attr];
+                }
+            } else
+                newTransitions[attr] = transitions[attr];
+        }
+
+        return newTransitions;
     }
+    
+    transitions = getAttrList(transitions, elementName);
+
+    for(var attr in transitions) {
+        var cssProp = attr in cssPropTranslationTable?
+            cssPropTranslationTable[attr]: attr;
+        var transition = transitions[attr];
+        for (var i = 0;
+             (cssProp instanceof Array && i < cssProp.length) || i < 1;
+             i++) {
+            var cssPropI = cssProp instanceof Array? cssProp[i]: cssProp;
+            if (transitionStr.length > 0)
+                transitionStr += ",";
+            transitionStr +=
+                cssPropI + " " + getCSSTransitionSpecStr(transition);
+        }
+    }
+    return transitionStr;
+}
+
+
+// 'styleObj' is the style object of a DOM element to which transitions
+// should be applied. 'elementName' indicates which element it is:
+// "frame" for the frame DIV, "display" for the display DIV and
+// "root" for the root element of the display element. 'transitions' is
+// the object describing the transition property for this area.
+// This function decides which of the properties specified in
+// 'transitions' need to have its transition set of the given style object.
+// The function then sets the transition as needed.
+
+function copyTransitionCssProp(styleObj, elementName, transitions) {
+    styleObj.setProperty("transition",
+                         getTransitionStr(transitions, elementName));
+}
+
+function resetTransitionCssProp(styleObj) {
+    styleObj.removeProperty("transition");
 }
 
 /*****************************************************************************/
