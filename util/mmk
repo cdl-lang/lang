@@ -209,7 +209,7 @@ $(INTERMEDIATE)/%.min.js: $(INTERMEDIATE)/%.sfrun.js $(INTERMEDIATE)/common_runt
 		"$<"
 
 %.node.js: $(INTERMEDIATE)/%.run.js
-	(cd "$(CDLPATH)"; npm install -g)
+	-(cd "$(CDLPATH)"; npm install -g)
 	$(RUN_INCJS_COMMON) \
 		"--template=$(NODEJS_TEMPLATE_FILE)" \
 		"--resourceUseFile=$(INTERMEDIATE)/$*.res" \

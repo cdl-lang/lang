@@ -234,19 +234,15 @@ var areaAttributeDescription: any = {
                     struct: {
                         value: "any",
                         textAlign: { string: { "in": [ "left", "center", "right", "justify" ] } },
+                        textAlignLast: "string",
                         textIndent: "numberOrString",
                         textTransform: "string",
-                        verticalAlign: {or: [
-                            "pixelOrPercentage",
-                            { string: { "in": ["baseline", "sub", "super",
-                                               "text-top", "text-bottom",
-                                               "middle", "top", "bottom"] }}
-                        ]},
+                        verticalAlign: { string: {
+                            "in": ["middle", "top", "bottom"] }},
                         color: "color",
                         textFillColor: "color",
-                        textStrokeWidth: "numberOrPixel",
+                        textStrokeWidth: "numberOrString",
                         textStrokeColor: "color",
-                        clip: "boolOrString",
                         fontSize: "numberOrString",
                         fontFamily: "string",
                         fontStyle: "string",
@@ -254,16 +250,34 @@ var areaAttributeDescription: any = {
                         fontVariant: "string",
                         lineHeight: "numberOrPixelOrPercentage",
                         textDecoration: "string",
-                        borderSpacing: "string",
-                        overflow: "string",
+                        textOverflow: "string",
                         preformatted: "boolean",
                         whiteSpace: {string: {in: ["normal", "nowrap", "pre", "pre-wrap", "pre-line"]}},
+                        textShadow: {
+                            orderedSet: {
+                                struct: {
+                                    __mandatory__: ["horizontal", "vertical", "color"],
+                                    horizontal: "numberOrPixel",
+                                    vertical: "numberOrPixel",
+                                    color: "color",
+                                    blurRadius: "numberOrPixel"
+                                },
+                                name: "text shadow"
+                            }
+                        },
+                        lang: "string",
+                        direction: { string: { "in": ["ltr","rtl"] }},
+                        writingMode: "string",
+                        textOrientation: "string",
+                        hyphens: "string",
+                        letterSpacing: "numberOrString",
+                        wordSpacing: "numberOrString",
+                        wordBreak: "string",
                         numericFormat: {
                             struct: {
                                 __mandatory__: "type",
                                 type: { string: { "in": [ "fixed", "exponential", "precision", "hexadecimal", "HEXADECIMAL", "intl" ] } },
                                 numberOfDigits: "number",
-                                locale: "string",
                                 localeMatcher: { string: { "in": ["lookup", "best fit"] } },
                                 style: { string: { "in": ["decimal", "currency", "percent"] } },
                                 currency: "string",
@@ -279,12 +293,16 @@ var areaAttributeDescription: any = {
                         },
                         dateFormat: {
                             struct: {
-                                __mandatory__: "type",
                                 type: { string: { "in": [ "intl" ] } },
-                                locale: "string",
                                 localeMatcher: { string: { "in": ["lookup", "best fit"] } },
                                 timeZone: "string",
                                 hour12: "boolean",
+                                hourCycle: {
+                                    string: {
+                                        "in": ["h11","h12","h23","h24"] }},
+                                formatMatcher: {
+                                    string: {
+                                        "in": ["basic","best fit"] }},
                                 weekday: { string: { "in": ["narrow", "short", "long"] } },
                                 era: { string: { "in": ["narrow", "short", "long"] } },
                                 year: { string: { "in": ["numeric", "2-digit"] } },
@@ -296,18 +314,6 @@ var areaAttributeDescription: any = {
                                 timeZoneName: "string"
                             },
                             name: "numeric format"
-                        },
-                        textShadow: {
-                            orderedSet: {
-                                struct: {
-                                    __mandatory__: ["horizontal", "vertical", "color"],
-                                    horizontal: "numberOrPixel",
-                                    vertical: "numberOrPixel",
-                                    color: "color",
-                                    blurRadius: "numberOrPixel"
-                                },
-                                name: "text shadow"
-                            }
                         },
                         input: {
                             struct: {
@@ -365,13 +371,11 @@ var areaAttributeDescription: any = {
                             "left", "center", "right", "start", "end", 
                             "justify", "justify-all" 
                         ] } },
-                        verticalAlign: {or: [
-                            "pixelOrPercentage",
-                            { string: { "in": ["baseline", "sub", "super",
-                                               "text-top", "text-bottom",
-                                               "middle", "top", "bottom"] }}
-                        ]},
+                        textAlignLast: "string",
+                        verticalAlign: { string: {
+                            "in": ["middle", "top", "bottom"] }},
                         textIndent: "numberOrString",
+                        textTransform: "string",
                         color: "color",
                         textFillColor: "color",
                         textStrokeWidth: "numberOrString",
@@ -383,12 +387,18 @@ var areaAttributeDescription: any = {
                         fontVariant: "string",
                         lineHeight: "numberOrPixelOrPercentage",
                         textDecoration: "string",
-                        borderSpacing: "string",
                         handleClick: "boolean",
-                        overflow: {string: {in: ["visible", "hidden"]}},
                         whiteSpace: {string: {in: [
                             "normal", "nowrap", "pre", "pre-wrap", "pre-line"
-                        ]}}
+                        ]}},
+                        lang: "string",
+                        direction: { string: { "in": ["ltr","rtl"] }},
+                        writingMode: "string",
+                        textOrientation: "string",
+                        hyphens: "string",
+                        letterSpacing: "numberOrString",
+                        wordSpacing: "numberOrString",
+                        wordBreak: "string"
                     },
                     name: "html display"
                 },
@@ -555,9 +565,6 @@ var areaAttributeDescription: any = {
                 borderBottomStyle: "string",
                 borderBottomWidth: "numberOrPixel",
                 borderBottomColor: "color",
-                overflow: { string: { in: ["hidden", "visible"] } },
-                overflowX: { string: { in: ["hidden", "visible"] } },
-                overflowY: { string: { in: ["hidden", "visible"] } },
                 padding: "numberOrPixel",
                 paddingTop: "numberOrPixel",
                 paddingBottom: "numberOrPixel",

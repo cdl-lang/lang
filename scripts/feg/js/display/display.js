@@ -967,7 +967,7 @@ ContentDisplay.prototype.makeContentText = function(content, textSection) {
             if (dateFormat === undefined || dateFormat.type !== "intl") {
                 return content.toString();
             } else {
-                var locale = dateFormat.locale;
+                var locale = getDeOSedValue(textSection.lang);
                 var formatter = new Intl.DateTimeFormat(locale, dateFormat);
                 text = formatter.format(content);
             }
@@ -999,25 +999,26 @@ ContentDisplay.prototype.makeContentText = function(content, textSection) {
         }
 
     } else if (typeof(content) === "number" &&
-               (numericFormat = suppressSet(textSection.numericFormat)) !== undefined &&
-               ((0 <= numericFormat.numberOfDigits &&
-                 numericFormat.numberOfDigits <= 20) ||
-                numericFormat.type === "intl")) {
+               (numericFormat = suppressSet(textSection.numericFormat)) !== undefined) {
 
+        var numberOfDigits = (0 <= numericFormat.numberOfDigits &&
+                              numericFormat.numberOfDigits <= 20) ?
+            numericFormat.numberOfDigits : undefined;
+        
         // Number formatting options
         switch (numericFormat.type) {
           case "fixed":
-            text = content.toFixed(numericFormat.numberOfDigits);
+            text = content.toFixed(numberOfDigits);
             numericConversion = true;
             break;
           case "exponential":
-            text = content.toExponential(numericFormat.numberOfDigits);
+            text = content.toExponential(numberOfDigits);
             numericConversion = true;
             break;
           case "precision":
-            text = numericFormat.numberOfDigits === 0?
+            text = numberOfDigits === 0?
                   content.toPrecision(): // Otherwise it throws an exception
-                  content.toPrecision(numericFormat.numberOfDigits);
+                  content.toPrecision(numberOfDigits);
             numericConversion = true;
             break;
           case "hexadecimal":
@@ -1026,13 +1027,13 @@ ContentDisplay.prototype.makeContentText = function(content, textSection) {
             if (numericFormat.type === "HEXADECIMAL") {
                 text = text.toUpperCase();
             }
-            while (text.length < numericFormat.numberOfDigits) {
+            while (text.length < numberOfDigits) {
                 text = "0" + text;
             }
             break;
           case "intl":
             try {
-                var locale = numericFormat.locale;
+                var locale = getDeOSedValue(textSection.lang);
                 var formatter = new Intl.NumberFormat(locale, numericFormat);
                 text = formatter.format(content);
                 numericConversion = true;
@@ -1047,40 +1048,13 @@ ContentDisplay.prototype.makeContentText = function(content, textSection) {
 
     } else if (typeof(content) === "number" &&
                (dateFormat = suppressSet(textSection.dateFormat)) !== undefined &&
-               dateFormat.type === "intl") {
+               (dateFormat.type === undefined || dateFormat.type === "intl")) {
         try {
-            var locale = dateFormat.locale;
+            var locale = getDeOSedValue(textSection.lang);
             var formatter = new Intl.DateTimeFormat(locale, dateFormat);
-            text = formatter.format(new Date(content));
+            text = formatter.format(new Date(content * 1000));
         } catch (e) {
             text = String(content);
-        }
-
-    } else if (typeof(content) === "number" && numericFormat !== undefined) {
-        // Use default precision when numberOfDigits is missing or out of range
-        switch (numericFormat.type) {
-          case "fixed":
-            text = content.toFixed();
-            numericConversion = true;
-            break;
-          case "exponential":
-            text = content.toExponential();
-            numericConversion = true;
-            break;
-          case "precision":
-            text = content.toPrecision();
-            numericConversion = true;
-            break;
-          case "hexadecimal":
-          case "HEXADECIMAL":
-            text = content.toString(16);
-            if (numericFormat.type === "HEXADECIMAL") {
-                text = text.toUpperCase();
-            }
-            break;
-          default:
-            text = String(content);
-            break;
         }
 
     } else {
@@ -2612,7 +2586,6 @@ Display.prototype.destroyDisplayElements = function() {
 // from the display description.
 var frameResetProperties = {
     background: "",
-    borderSpacing: "",
     boxShadow: "",
     hoverText: "",
     opacity: "",
@@ -2631,7 +2604,6 @@ var frameResetProperties = {
     paddingRight: "",
     paddingTop: "",
     paddingBottom: "",
-    overflow: "",
     transform: "",
     filter: "",
     viewFilter: ""
@@ -2671,16 +2643,20 @@ var frameDefaultProperties = {
 // Properties which have to be reset on the inner element when they are missing
 // from the display description.
 var displayResetProperties = {
-    clip: false,
     color: "",
+    direction: "",
     fontFamily: "",
     fontSize: "",
     fontStyle: "",
     fontVariant: "",
     fontWeight: "",
+    hyphens: "",
+    lang: "",
+    letterSpacing: "",
     lineHeight: "",
     textShadow: "",
     textAlign: "center",
+    textAlignLast: "",
     textDecoration: "",
     textFillColor: "",
     textIndent: "",
@@ -2688,10 +2664,12 @@ var displayResetProperties = {
     textStrokeWidth: "",
     textTransform: "",
     verticalAlign: "middle",
-    overflowX: "",
-    overflowY: "",
-    overflow: "",
-    whiteSpace: ""
+    textOrientation: "",
+    textOverflow: "",
+    whiteSpace: "",
+    wordBreak: "",
+    wordSpacing: "",
+    writingMode: ""
 };
 
 // This function applies the current display properties (as recorded in the

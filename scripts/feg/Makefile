@@ -46,7 +46,7 @@ pathFunctions.d.ts: pathFunctions.ts
 	$(TSC) $<
 
 tsc_intermediate: $(TSSOURCES) pathFunctions.d.ts
-	npm update
+	-npm update -g
 	$(TSC) $(MAIN)
 
 fegruntime:

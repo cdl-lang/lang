@@ -449,31 +449,36 @@ var cssPropTranslationTable = {
     paddingRight: "padding-right",
     textShadow: "text-shadow",
     textOverflow: "text-overflow",
+    wordBreak: "word-break",
     fontFamily: "font-family",
     fontSize: "font-size",
     fontStyle: "font-style",
     fontWeight: "font-weight",
     fontVariant: "font-variant",
+    lang: "lang",
+    direction: "direction",
+    writingMode: "writing-mode",
+    textOrientation: "text-orientation",
+    hyphens: ["hyphens","-ms-hyphens","-webkit-hyphens"],
+    letterSpacing: "letter-spacing",
+    wordSpacing: "word-spacing",
     lineHeight: "line-height",
     textDecoration: "text-decoration",
     boxShadow: ["box-shadow", "MozBoxShadow", "-webkit-box-shadow"],
-    overflowX: "overflow-x",
-    overflowY: "overflow-y",
     textFillColor: ["text-fill-color", "-webkit-text-fill-color",
                     "MozTextFillColor"],
     textStrokeWidth: ["text-stroke-width", "-webkit-text-stroke-width",
                     "MozTextStrokeWidth"],
     textStrokeColor: ["text-stroke-color", "-webkit-text-stroke-color",
                     "MozTextStrokeColor"],
-    borderSpacing: "border-spacing",
     textAlign: "text-align",
+    textAlignLast: "text-align-last",
     textIndent: "text-indent",
     textTransform: "text-transform",
     verticalAlign: "vertical-align",
     backgroundColor: "background-color",
     transform: ["transform", "-webkit-transform"],
     hoverText: "title",
-    overflow: "text-overflow",
     whiteSpace: "white-space",
     viewFilter: "filter",
     viewOpacity: "opacity"
@@ -617,8 +622,6 @@ function copyDisplayCssProp(display, attrib, value) {
       case "borderBottomStyle":
       case "borderBottomWidth":
       case "borderBottomColor":
-      case "overflowX":
-      case "overflowY":
       case "paddingTop":
       case "paddingBottom":
       case "paddingLeft":
@@ -928,9 +931,6 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
     switch (attrib) {
       case "preformatted":
         break;
-      case "clip":
-        // TODO
-        break;
       case "textFillColor":
       case "textStrokeColor":
       case "fontFamily":
@@ -939,20 +939,27 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
       case "fontVariant":
       case "color":
       case "textDecoration":
-      case "borderSpacing":
+      case "writingMode":
         assignCSSStyleProp(elements.format.style, attrib, value);
         break;
       case "textStrokeWidth":
       case "fontSize":
+      case "letterSpacing":
+      case "textIndent":
+      case "wordSpacing":
         assignCSSStyleProp(elements.format.style, attrib, num2Pixel(value));
         break;
-      case "overflow":
+      case "textOverflow":
       case "whiteSpace":
       case "lineHeight":
       case "textAlign":
-      case "textIndent":
+      case "textAlignLast":
       case "textTransform":
       case "verticalAlign":
+      case "hyphens":
+      case "wordBreak":
+      case "direction":
+      case "textOrientation":
         // These properties are not inherited, since they mean something else
         // in a cell than in a div.
         if (elements.content !== undefined) {
@@ -976,6 +983,12 @@ function copyDisplayTypeCssProp(displayType, elements, attrib, value)
             assignCSSStyleProp(elements.format.style, attrib,
                                finalVal === ""? "none": finalVal);
         }
+        break;
+      case "lang":
+        // This is a global attribute, not a style attribute, so it is set
+        // directly on the element
+        if (elements.content !== undefined)
+            elements.content.setAttribute(attrib, value);
         break;
       default:
         cdlAuthorError('Unsupported attribute: ' + attrib + '=' +
