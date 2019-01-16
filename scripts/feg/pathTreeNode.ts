@@ -1473,8 +1473,8 @@ class PathTreeNode {
             element: undefined
         },
         position: {
-            pair1: false,
-            pair2: false,
+            denominator: false,
+            numerator: false,
             point1: false,
             point2: false,
             equals: true,

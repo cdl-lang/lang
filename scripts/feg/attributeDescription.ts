@@ -714,8 +714,8 @@ var areaAttributeDescription: any = {
                         preference: { string: { "in": ["min", "max"] } },
                         orGroups: pointDescription,
                         priority: "number",
-                        pair1: pairDescription,
-                        pair2: pairDescription,
+                        numerator: pairDescription,
+                        denominator: pairDescription,
                         ratio: "number"
                     },
                     name: "positioning constraint"

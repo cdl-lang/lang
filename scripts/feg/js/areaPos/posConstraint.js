@@ -167,15 +167,17 @@ function posConstraintNewDescription(constraintDesc, priority)
         
         // is it a linear constraint with a 0 ratio?
         // we convert these to a segment constraint:
-        // { pair1: { p1: <a>, p2: <b> }, pair2: { p1: <c>, p2: <d> }, ratio: 0}
+        // { numerator: { p1: <a>, p2: <b> },
+        //   denominator: { p1: <c>, p2: <d> },
+        //   ratio: 0}
         // becomes
-        // { p1: <c>, p2: <d>, min:0, max:0, priority: maxNonSystemPosPriority }
+        // { p1: <a>, p2: <b>, min:0, max:0, priority: maxNonSystemPosPriority }
         if (ratio === 0) {
 
             // take the two points
             var desc = {};
-            desc.point1 = constraintDesc.pair2.point1;
-            desc.point2 = constraintDesc.pair2.point2;
+            desc.point1 = constraintDesc.numerator.point1;
+            desc.point2 = constraintDesc.numerator.point2;
 
             // constrain the offset to 0
             desc.equals = 0;
@@ -194,14 +196,14 @@ function posConstraintNewDescription(constraintDesc, priority)
 
 // This function returns true if the description given must be a description
 // of a linear constraint if it is well-formed. This is done by checking for
-// the existence of the field 'pair1' which must appear in linear constraints
-// but may not appear in segment constraints. This function does not check
-// that the description actually provides a well-formed constraint definition
-// (either a segment or a linear constraint).
+// the existence of the field 'denominator' which must appear in linear
+// constraints but may not appear in segment constraints. This function does
+// not check that the description actually provides a well-formed constraint
+// definition (either a segment or a linear constraint).
 
 function mustBeLinearConstraint(constraintDesc)
 {
-    return (constraintDesc && constraintDesc.pair1);
+    return (constraintDesc && constraintDesc.denominator);
 }
 
 // This function receive a string as input. This string should be a constraint
@@ -455,8 +457,8 @@ function posConstraintSetLinearConstraint(constraintDesc, priority)
     // want to process the changes only after both pairs were updated, so we
     // set a flag disabling immediate processing of the changes.
     this.dontProcessPairChanges = true;
-    this.pairs[0].newDescription(constraintDesc.pair1);
-    this.pairs[1].newDescription(constraintDesc.pair2);
+    this.pairs[0].newDescription(constraintDesc.denominator);
+    this.pairs[1].newDescription(constraintDesc.numerator);
     this.dontProcessPairChanges = false;
 
     // process all the changes (and record the new priority and ratio)
@@ -1074,7 +1076,8 @@ function posConstraintPairHandler(posPair, pairNum)
 // underlying point pair objects (PosPair) and receives updates when the
 // label pair sets for these pairs change
 // The handler object registers which 'PosConstraint' object it was constructed
-// for and which of the two pair (pair1/pair2: 0/1) it was registered for.
+// for and which of the two pair (denominator/numerator: 0/1) it was
+// registered for.
 
 function ConstraintPairHandler(posConstraint, pairNum)
 {

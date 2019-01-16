@@ -67,8 +67,8 @@ function printPositionConstraints(): void {
         content: true,
         intersection: true,
         label: true,
-        pair1: false,
-        pair2: false,
+        denominator: false,
+        numerator: false,
         point1: false,
         point2: false
     };

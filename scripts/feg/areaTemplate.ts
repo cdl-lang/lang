@@ -434,9 +434,10 @@ class AreaTemplate {
                 return fn.functionNodes.length === 1 &&
                        hasEmptyElement(fn.functionNodes[0]);
             } else if (fn instanceof AVFunctionNode) {
-                if ("pair1" in fn.attributes && "pair2" in fn.attributes) {
-                    if (!pairHasEmptyElement(fn.attributes["pair1"]) ||
-                         !pairHasEmptyElement(fn.attributes["pair2"])) {
+                if ("denominator" in fn.attributes &&
+                    "numerator" in fn.attributes) {
+                    if (!pairHasEmptyElement(fn.attributes["denominator"]) ||
+                         !pairHasEmptyElement(fn.attributes["numerator"])) {
                         return false;
                     }
                 }
@@ -444,10 +445,10 @@ class AreaTemplate {
                     return pairHasEmptyElement(fn);
                 }
             } else if (fn instanceof ConstNode) {
-                if (fn.value instanceof Object && "pair1" in fn.value &&
-                      "pair2" in fn.value) {
-                    if (!pairHasEmptyElement(fn.value["pair1"]) ||
-                         !pairHasEmptyElement(fn.value["pair2"])) {
+                if (fn.value instanceof Object && "denominator" in fn.value &&
+                      "numerator" in fn.value) {
+                    if (!pairHasEmptyElement(fn.value["denominator"]) ||
+                         !pairHasEmptyElement(fn.value["numerator"])) {
                         return false;
                     }
                 }

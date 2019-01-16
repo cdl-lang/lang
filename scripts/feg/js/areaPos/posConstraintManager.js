@@ -438,11 +438,11 @@ function posConstraintManagerMakeLinearDesc(point1, point2, point3, point4,
         
     var constraint =
         {
-            pair1: {
+            denominator: {
                 point1: point1Desc,
                 point2: point2Desc
             },
-            pair2: {
+            numerator: {
                 point1: point3Desc,
                 point2: point4Desc
             },
@@ -603,7 +603,7 @@ function isAPosConstraintDescription(desc)
 {
     if ("point1" in desc)
         return true;
-    if ("pair1" in desc)
+    if ("denominator" in desc)
         return true;
     return false;
 }
