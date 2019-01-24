@@ -345,3 +345,20 @@ function pointId(pointLabel)
     return (globalPointLabelIds[pointLabel] = nextPointLabelId++);
     // return (globalPointLabelIds[pointLabel] = pointLabel);
 }
+
+var globalAuxPointIds = {}; // this table, too, leaks!
+
+// Creates an 'auxiliary' point ID for a given point. Multiple auxiliary
+// point IDs may be generated for the same point. There is, therefore,
+// no need to store a mapping from the original point ID to the auxiliary
+// point ID. However, we do store the inverse mapping, for debugging
+// purposes.
+// It is guaranteed that their ID is unique and will not be reused for
+// any other point.
+
+function auxPointId(pointId)
+{
+    var auxId = nextPointLabelId++;
+    globalAuxPointIds[auxId] = pointId;
+    return auxId;
+}

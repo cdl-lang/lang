@@ -463,6 +463,14 @@ function debugObjConstraintGetFullName(pointId, pointAreaID, curAreaID)
 {
     var pointStr = this.pointLabelById[pointId];
 
+    if(pointStr === undefined) { // is an auxiliary point
+        var origPointId = globalAuxPointIds[pointId];
+        if(origPointId === undefined)
+            return "???(" + pointId + ")";
+        return this.getFullName(origPointId, pointAreaID, curAreaID) +
+            "." + pointId;
+    }
+    
     if (gPointNameMap === undefined && pointAreaID == curAreaID && pointStr.search(pointAreaID) === 0)
         return "___" + pointStr.substr(String(pointAreaID).length);
     if (gPointNameMap === undefined)

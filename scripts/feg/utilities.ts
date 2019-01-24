@@ -717,6 +717,30 @@ function getDeOSedValue(v: any): any {
         (v.length === 0? false: v.length === 1? v[0]: v): v;
 }
 
+// Returns a single simple value, if possible. If the input is not an array,
+// the input value is returned, as is. If the input is an array, returns
+// the first value in the array. If the array is empty, returns undefined.
+function getFirstValue(v: any): any {
+    return v instanceof Array? v[0] : v;
+}
+
+// Returns a single number, if possible. If the input is not an array,
+// the input value is converted into a number (if possible) and returned.
+// If the value cannot be converted into a number, undefined is returned.
+// If the input is an array, the first value in the array is converted
+// into a number and returned. Here, too, if the conversion fails, undefined
+// is returned. If the array is empty, undefined is returned.
+function getFirstNumber(v: any): any {
+    var raw = v instanceof Array? v[0] : v;
+    if(raw === undefined)
+        return raw;
+    var num = Number(raw);
+    if(isNaN(num))
+        return undefined;
+
+    return num;
+}
+
 function objMap(obj: any, f: (v: any, attr?: string) => any): any {
     var mappedObj: any = {};
 

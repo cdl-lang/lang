@@ -222,11 +222,11 @@ function allPosConstraintsMakeCenterPointConstraints(entry)
         [endEdge, undefined, entry.isContent],
         2);
 
-    description.priority = strongAutoPosPriority;
     var constraintName =
         (entry.isContent ? "content-" : "") + entry.centerType;
 
-    this.addConstraint(constraintName, description, true);
+    this.addConstraint(constraintName, description, true,
+                       strongAutoPosPriority);
 
     entry.constraintNames = {};
     entry.constraintNames[constraintName] = true;

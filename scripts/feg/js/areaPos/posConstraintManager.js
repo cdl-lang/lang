@@ -395,7 +395,7 @@ function posConstraintManagerAddConstraint(name, constraintDesc,
     // because this may be an object directly out of the description of the
     // area. Therefore, we pass this priority as an extra argument.
     if (priority === undefined) {
-        priority = constraintDesc.priority;
+        priority = getFirstNumber(constraintDesc.priority);
         if (priority === undefined) {
             priority = defaultPosPriority;
         }
@@ -420,6 +420,8 @@ function posConstraintManagerAddConstraint(name, constraintDesc,
 // taken to be literally the point label) or by an array containing
 // the arguments required by the function 'makePointDesc'.
 // The last argument is the ratio for the constraint.
+// The constraint description is not assigned any priority (which gives it
+// the default 'higher than all segment constraints' priority).
 
 PosConstraintManager.prototype.makeLinearDesc =
     posConstraintManagerMakeLinearDesc;
@@ -446,8 +448,7 @@ function posConstraintManagerMakeLinearDesc(point1, point2, point3, point4,
                 point1: point3Desc,
                 point2: point4Desc
             },
-            ratio: ratio,
-            priority: defaultPosPriority
+            ratio: ratio
         };
 
     return constraint;

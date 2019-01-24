@@ -53,10 +53,12 @@
 //    baseArea: <the area on which this constraint is defined>,
 //    id: <a unique ID used to construct constraint ID (see above)>,
 //    priority: <number>, // priority assigned this constraint
+//    hasExplicitPriority: true|false
 //    pairs: [<array of one or two PosPair objects, representing the constraint
 //             point pairs>],
 //    ids: {
-//        <constraint ID>: [2 or 4 point labels of the constraint]
+//        <constraint ID>: [2 or 4 point labels of the constraint +
+//                          (optionally) ID of auxiliary segment constraint]
 //        ....
 //    },
 //    idByPair: [
@@ -88,11 +90,29 @@
 //                                      // to which this 
 // }
 //
+// 'hasExplicitPriority': a 'true' value indicates that the priority
+// assigned to this constraint comes from the constraint description
+// (explicit priority) while a 'false' value indicates that the priority
+// was determined automatically and did not appear explicitly in the
+// constraint description. This is of importance for linear constraints,
+// which, when there is no explicit priority, have a higher de facto
+// priority than all segment constraints (and all linear constraints
+// with an explicit priority). This is because the constraint solving 
+// algorithm first solves the linear constraints and only then solves the
+// segment constraints. When a linear constraint does specify its
+// priority explicitly, it is combined with a segment constraint to
+// produce an induced priority comparable with the priority of
+// segment constraints.
+//
 // The table under 'ids' holds the list of constraints defined by this object
 // and currently registered to the positioning calculation module. Under
 // each id, the labels of the points of the constraint are stored. If the
 // constraint is a segment constraint, these are two labels (one pair) and if
 // it is a linear constraint, these are four labels (two pairs).
+// In addition, if a linear constraint has an exlicit priority, there is
+// an auxiliary segment constraint, and the ID of this auxiliary constraint
+// is registered as the fifth element in the array under the ID of the
+// linear constraint.
 //
 // The 'idByPair' table is an indexing of constraint IDs by the point labels
 // defining their pairs. There are two tables: idByPair[0] and idByPair[1].
@@ -128,6 +148,7 @@ function PosConstraint(baseArea, name)
 {
     this.baseArea = baseArea;
     this.id = nextPosConstraintId();
+    this.hasExplicitPriority = false;
     this.pairs = []; // one or two PosPair objects (this constraint's pairs)
     this.ids = {};
     this.idByPair = [{},{}];
@@ -159,7 +180,7 @@ function posConstraintNewDescription(constraintDesc, priority)
     if(mustBeLinearConstraint(constraintDesc)) {
 
         var ratio = ("ratio" in constraintDesc) ?
-            Number(getDeOSedValue(constraintDesc.ratio)) : undefined;
+            getFirstNumber(constraintDesc.ratio) : undefined;
 
         if(ratio < positioningDefaultZeroRounding &&
            ratio > -positioningDefaultZeroRounding)
@@ -171,7 +192,7 @@ function posConstraintNewDescription(constraintDesc, priority)
         //   denominator: { p1: <c>, p2: <d> },
         //   ratio: 0}
         // becomes
-        // { p1: <a>, p2: <b>, min:0, max:0, priority: maxNonSystemPosPriority }
+        // { p1: <a>, p2: <b>, min:0, max:0, priority: <priority> }
         if (ratio === 0) {
 
             // take the two points
@@ -182,7 +203,13 @@ function posConstraintNewDescription(constraintDesc, priority)
             // constrain the offset to 0
             desc.equals = 0;
 
-            this.setSegmentConstraint(desc, maxNonSystemPosPriority);
+            // if no explicit priority is provided, use maximal priority
+            // (as linear constraints are, by default, stronger than all
+            // segment constraints).
+            if(constraintDesc.priority === undefined &&
+               priority < maxNonSystemPosPriority)
+                priority = maxNonSystemPosPriority;
+            this.setSegmentConstraint(desc, priority);
         } else {
 
             // process as a linear constraint
@@ -303,7 +330,7 @@ function posConstraintRemoveAllConstraints()
         
         if(labels.length == 2) // segment constraint
             globalPosConstraintSynchronizer.removeSegment(labels[0], labels[1], id);
-        else if(labels.length == 4) // linear constraint
+        else if(labels.length >= 4) // linear constraint
             this.removeLinearFromPosCalc(labels, id);
     }
     
@@ -318,7 +345,12 @@ function posConstraintRemoveAllConstraints()
 // The function clears the entries for these constraints both in 'ids'
 // and in 'idByPair'. It also removes the corresponding constraints registered
 // to the positioning calculation mechanism.
-// This function works for both linear and segment constraints.
+// This function works for both linear and segment constraints. When
+// linear constraints have an auxiliary segment constraint, that constraint
+// is also remove. In this case, if label1,label2 are the second pair of
+// the linear constrint, these are assumed to be the original points,
+// not the auxiliary point which is actually used in the linear constraint
+// (this function finds the corresponding auxiliary point). 
 
 PosConstraint.prototype.removeConstraintsByPair =
     posConstraintRemoveConstraintsByPair;
@@ -345,7 +377,7 @@ function posConstraintRemoveConstraintsByPair(label1, label2, pairNum)
         
         if(labels.length == 2) // segment constraint
             globalPosConstraintSynchronizer.removeSegment(labels[0], labels[1], id);
-        else if(labels.length == 4) // linear constraint
+        else if(labels.length >= 4) // linear constraint
             this.removeLinearFromPosCalc(labels, id);
         
         // delete the constraint ID from the tables
@@ -356,6 +388,18 @@ function posConstraintRemoveConstraintsByPair(label1, label2, pairNum)
             // if a linear constraint, remove the ID from the second pair
             this.removeIdFromPairEntry(this.idByPair[1], id, labels[2],
                                        labels[3]);
+        else if(labels.length == 5) {
+            // linear constraint with an auxiliary constraint
+            var auxId = labels[4];
+            var auxPoints = this.ids[auxId];
+            globalPosConstraintSynchronizer.
+                removeSegment(auxPoints[0], auxPoints[1], auxId);
+            // remove the second pair from the index (it is indexed under
+            // the original point, not the auxiliary point, so the
+            // original point has to be fetched)
+            this.removeIdFromPairEntry(this.idByPair[1], id, labels[2],
+                                       auxPoints[1]);
+        }
         
         delete this.ids[id];
     }
@@ -414,8 +458,17 @@ function posConstraintRemoveIdFromPairEntry(pairEntry, id, label1, label2)
 // are a modification of the old constraints). If parsing of the constraint
 // description fails, all constraints registered by this object to the
 // positioning system are removed and none are added.
+// If an explicit priority is defined in the constraint description,
+// this function registers two constraints: a linear constraint
+// in which the second numerator point is replaced by an auxiliary
+// point, and a segment constraint requiring the offset between this
+// auxiliary point and the point it replaced in the linear constraint
+// to be zero. The segment constraint then carries the priority of
+// the constraint.
 // If 'priority' is not undefined, the value given in 'priority' overrides
-// the priority given inside the description.
+// the priority given inside the description. Otherwise, the priority
+// defined in the description is used, and, if this too is unavailable,
+// the default priority is used.
 
 PosConstraint.prototype.setLinearConstraint =
     posConstraintSetLinearConstraint;
@@ -426,6 +479,12 @@ function posConstraintSetLinearConstraint(constraintDesc, priority)
     // changed. 
     var changed = this.setType("linear");
 
+    var hasExplicitPriority = (constraintDesc.priority !== undefined);
+    if(this.hasExplicitPriority !== hasExplicitPriority) {
+        this.hasExplicitPriority = hasExplicitPriority;
+        changed = true;
+    }
+    
     // If the type changed, must remove all constraints registered to the
     // positioning calculation module.
     if(changed) {
@@ -433,14 +492,14 @@ function posConstraintSetLinearConstraint(constraintDesc, priority)
         this.clearConstraintParameters();
     }
 
-    var newRatio = getDeOSedValue(constraintDesc.ratio); // may be undefined
+    var newRatio = getFirstNumber(constraintDesc.ratio); // may be undefined
     var newPriority;
 
     if(priority != undefined)
         newPriority = priority;
     else if(constraintDesc.priority != undefined)
-        newPriority = getDeOSedValue(constraintDesc.priority);
-    else
+        newPriority = getFirstNumber(constraintDesc.priority);
+    if(newPriority === undefined)
         newPriority = this.defaultPriority; 
     
     // If no pair objects yet, create empty pair objects and register handlers
@@ -598,6 +657,8 @@ function posConstraintPairChangesRemoveAndCreateLinear(pairNum, changes)
 // If the ratio or priority are undefined, no constraint is registered
 // and any existing constraint with the given ID is removed
 // from the positioning system. 
+// If there is an auxiliary segment constraint associated with the linear
+// constraint, that auxiliary constraint is also updated (or removed).
 
 PosConstraint.prototype.updateLinearConstraint =
     posConstraintUpdateLinearConstraint;
@@ -606,13 +667,28 @@ function posConstraintUpdateLinearConstraint(id)
 {
     var points = this.ids[id];
     
-    if(!points || points.length != 4)
+    if(!points || points.length < 4)
         return; // no constraint with this ID, or not a linear constraint
+
+    // If this linear constraint has an auxiliary segment constraint,
+    // get the ID and points of that constraint
+    var auxId = points[4]; // only defined if there is an auxiliary constraint
+    var auxPoints = (auxId !== undefined) ? this.ids[auxId] : undefined;
     
-    if(this.ratio === undefined || this.priority === undefined)
+    if(this.ratio === undefined || this.priority === undefined) {
         this.removeLinearFromPosCalc(points, id);
-    else
+        if(auxPoints !== undefined) { // remove the auxiliary constraint
+            globalPosConstraintSynchronizer.
+                removeSegment(auxPoints[0], auxPoints[1], auxId);
+        }
+    } else {
         this.addLinearToPosCalc(points, this.ratio, this.priority, id);
+        if(auxPoints !== undefined) { // modify the auxiliary constraint
+            globalPosConstraintSynchronizer.
+                addSegment(auxPoints[0], auxPoints[1], auxId, this.priority,
+                           0, 0);
+        }
+    }
 }
 
 // This function adds a new linear constraint with the given ID and
@@ -640,8 +716,55 @@ function posConstraintAddLinearConstraint(id, points)
     
     if(this.ratio === undefined || this.priority === undefined)
         return; // not fully defined
-    
-    // register the constraint to the positioning system
+
+    if(!this.hasExplicitPriority) {
+        // register the constraint to the positioning system
+        this.addLinearToPosCalc(points, this.ratio, this.priority, id);
+    } else
+        this.addLinearWithAuxiliaryConstraint(points, id)
+}
+
+// This function is called to add a linear constraint when that constraint
+// has an associated auxiliary segment constraint. Such an auxiliary
+// constraint is used when the linear has an explicit priority specified
+// in its description. This requires the priority of the linear constraint
+// to be comparable to that of segment constraints. Since linear constraints
+// are solved before the segment constraints, we need to convert the
+// linear constraint <p3,p4> / <p1,p2> = r into the pair of constraints:
+// <p3,p4'> / <p1,p2> = r
+// <p4',p4> = 0
+// The second constraint is the auxiliary segment, which has the priority
+// assigned to the linear constraint.
+// p4' is an auxiliary point which is used only in this pair of constraints.
+// This function handles the creation of the auxiliary point and the
+// auxiliary constraint and the registration of both the linear constraint
+// and the auxiliary segment constraint to the positioning system.
+
+PosConstraint.prototype.addLinearWithAuxiliaryConstraint =
+    posConstraintAddLinearWithAuxiliaryConstraint;
+
+function posConstraintAddLinearWithAuxiliaryConstraint(points, id)
+{
+    // create an auxiliary point for the constraint (replaces the
+    // second point of the numerator pair).
+    var origPoint = points[3];
+    var auxPoint = auxPointId(origPoint);
+
+    // add an entry for the auxiliary segment constraint
+    var segmentId = this.createSegmentId(auxPoint, origPoint);
+    this.ids[segmentId] = [auxPoint, origPoint];
+
+    // add the segment constraint
+    globalPosConstraintSynchronizer.
+        addSegment(auxPoint, origPoint, segmentId, this.priority, 0, 0);
+
+    // replace the original point by the auxiliary point in the linear
+    // constraint entry
+    points[3] = auxPoint;
+    // register the segment constraint on the linear constraint entry 
+    points[4] = segmentId;
+
+    // add the linear constraint (but with the auxiliary point)
     this.addLinearToPosCalc(points, this.ratio, this.priority, id);
 }
 
@@ -760,26 +883,29 @@ function posConstraintSetSegmentConstraint(constraintDesc, priority)
         this.clearConstraintParameters();
     }
 
+    // not used with segment constraints, but updated here anyway.
+    this.hasExplicitPriority = (constraintDesc.priority !== undefined);
+    
     // get the new values of the various constaint parameters. min, max
     // and preference can have an undefined value. priority must have some
     // value and stability has a default value of undefined.
 
-    var equalPixels = convertValueToPixels(getDeOSedValue(constraintDesc.equals));
+    var equalPixels = convertValueToPixels(getFirstValue(constraintDesc.equals));
     var newMin = ("min" in constraintDesc && constraintDesc.min !== undefined) ?
-        convertValueToPixels(getDeOSedValue(constraintDesc.min)) : equalPixels;
+        convertValueToPixels(getFirstValue(constraintDesc.min)) : equalPixels;
     var newMax = ("max" in constraintDesc && constraintDesc.max !== undefined) ?
-        convertValueToPixels(getDeOSedValue(constraintDesc.max)) : equalPixels;
+        convertValueToPixels(getFirstValue(constraintDesc.max)) : equalPixels;
     var newStability = this.getStabilityFromDesc(constraintDesc);
     var newPriority;
 
     if(priority != undefined)
         newPriority = priority;
     else if(constraintDesc.priority != undefined)
-        newPriority = getDeOSedValue(constraintDesc.priority);
-    else
+        newPriority = getFirstNumber(constraintDesc.priority);
+    if(newPriority === undefined)
         newPriority = this.defaultPriority; 
 
-    var newPreference = getDeOSedValue(constraintDesc.preference);
+    var newPreference = getFirstValue(constraintDesc.preference);
     var newOrGroups = constraintDesc.orGroups;
     
     // If no pair object yet, create an empty pair object and register handlers
@@ -823,11 +949,11 @@ PosConstraint.prototype.getStabilityFromDesc =
 function posConstraintGetStabilityFromDesc(constraintDesc)
 {
     var stability = constraintDesc.stability !== undefined ?
-        !!getDeOSedValue(constraintDesc.stability) : undefined;
+        !!getFirstValue(constraintDesc.stability) : undefined;
     var stableMin = constraintDesc.stableMin !== undefined ?
-        !!getDeOSedValue(constraintDesc.stableMin) : undefined;
+        !!getFirstValue(constraintDesc.stableMin) : undefined;
     var stableMax = constraintDesc.stableMax !== undefined ?
-        !!getDeOSedValue(constraintDesc.stableMax) : undefined;
+        !!getFirstValue(constraintDesc.stableMax) : undefined;
 
     if(stability)
         return "equals"; // stability in both directions
