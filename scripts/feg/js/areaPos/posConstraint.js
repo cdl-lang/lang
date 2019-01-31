@@ -906,7 +906,7 @@ function posConstraintSetSegmentConstraint(constraintDesc, priority)
         newPriority = this.defaultPriority; 
 
     var newPreference = getFirstValue(constraintDesc.preference);
-    var newOrGroups = constraintDesc.orGroups;
+    var newOrGroups = constraintDesc.orGroup;
     
     // If no pair object yet, create an empty pair object and register handlers
     if(!this.pairs[0]) {

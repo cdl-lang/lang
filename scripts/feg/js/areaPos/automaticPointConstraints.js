@@ -415,7 +415,7 @@ function allPosConstraintsMakeRVPointConstraintDescs(label, suffixes)
             priority: strongAutoPosPriority
         };
         if(isOrSuffix)
-            descs[suffix].orGroups = label;
+            descs[suffix].orGroup = label;
         if(topOrLeft ^ isOrSuffix)
             descs[suffix].max = 0;
         else
@@ -797,7 +797,7 @@ function allPosConstraintsMakeIntersectionPointConstraints(entry)
             point1: { internal: entry.label },
             point2: parentDescPoint,
             priority: strongAutoPosPriority,
-            orGroups: entry.label
+            orGroup: entry.label
         };
 
         if(type == "left" || type == "top") {
