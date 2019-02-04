@@ -2197,8 +2197,15 @@ function queryPropagateUpdate(elementId, pathId, dominatedId)
         if(propagatedPathId !== pathId)
             propagatedValue = true; // by the propagation rules
         // determine the propagation element ID
+        // The current element ID is propagated either if it dominates
+        // multiple paths or if this is the highest point to which
+        // an explicit simple value is propagated (propagatedValue !== value
+        // only if propagatedValue is true and value is an explicit
+        // simple value).
         var propagatedElementId = 
-            elementEntry.paths.size > 1 ? elementId : dominatedId;
+            elementEntry.paths.size > 1 ||
+            (propagatedValue !== value && isSimpleType(value.type)) ?
+            elementId : dominatedId;
         if(propagatedElementId != dominatedId)
             propagatedValue = true; // by the propagation rules
         this.addUpdate(parentId, propagatedPathId, propagatedElementId, 

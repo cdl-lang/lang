@@ -496,6 +496,7 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
         this.infoUpdate("error", [], "datatable", undefined, "no such file: " + this.sourceName);
         this.client = undefined;
         this.resumeQueue();
+        this.informAllWatchers();
     }
 
     load(response: string, async: boolean): void {
