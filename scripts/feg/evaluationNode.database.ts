@@ -561,11 +561,11 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
         delete this.result.dataSource;
         this.dataSourceResultMode = false;
         this.result.value = [{
-            state: "loaded",
-            fullName: (this.uri instanceof NativeObjectWrapper ? this.uri.file.name : this.sourceName),
-            name: extractBaseName(this.sourceName),
+            state: ["loaded"],
+            fullName: [this.uri instanceof NativeObjectWrapper ? this.uri.file.name : this.sourceName],
+            name: [extractBaseName(this.sourceName)],
             revision: getDeOSedValue(this.revision),
-            lastUpdate: Date.now(),
+            lastUpdate: [Date.now()],
             attributes: attributes,
             data: normalizeObject(data)
         }];
