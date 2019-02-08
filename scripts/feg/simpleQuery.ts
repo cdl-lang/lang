@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -247,25 +248,25 @@ class SingleAttributeProjection implements SimpleQuery {
 
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
-            if (typeof(data_i) !== "object") {
-                continue;
+            if (typeof(data_i) === "object") {
+            
+                var queryResult: any = data_i[this.attr];
+                if (queryResult !== undefined) {
+                    if (!(queryResult instanceof Array)) {
+                        r.push(queryResult);
+                    } else if (queryResult.length === 1) {
+                        r.push(queryResult[0]);
+                    } else if (queryResult.length !== 0) {
+                        r = r.concat(queryResult);
+                    }
+                }
             }
-            var queryResult: any = data_i[this.attr];
-            if (queryResult !== undefined) {
-                if (!(queryResult instanceof Array)) {
-                    r.push(queryResult);
-                } else if (queryResult.length === 1) {
-                    r.push(queryResult[0]);
-                } else if (queryResult.length !== 0) {
-                    r = r.concat(queryResult);
-                }
-                if (selectedPositions !== undefined) {
-                    var sub: DataPosition = new DataPosition(
-                        dataPositions === undefined? i: dataPositions[i].index,
-                        queryResult instanceof Array? queryResult.length:
-                            queryResult !== undefined? 1: 0);
-                    selectedPositions.push(sub);
-                }
+            if (selectedPositions !== undefined) {
+                var sub: DataPosition = new DataPosition(
+                    dataPositions === undefined? i: dataPositions[i].index,
+                    queryResult instanceof Array? queryResult.length:
+                        queryResult !== undefined? 1: 0);
+                selectedPositions.push(sub);
             }
         }
         return r;

@@ -1216,16 +1216,14 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
             break;
         }
         if (position.addedAttributes !== undefined) {
-            if (repl.length !== 1) {
-                Utilities.warn("Cannot add attributes in write");
-                return os;
-            }
             // Copy values before modifying
             repl = repl.slice(0);
             if (typeof(position.addedAttributes) === "object" &&
                   !(position.addedAttributes instanceof Array)) {
                 // The selection query was an AV, not an os of simple values
-                repl[0] = addAttributes(shallowCopy(repl[0]), position.addedAttributes);
+                for(var i = 0, l = repl.length ; i < l ; ++i)
+                    repl[i] = addAttributes(shallowCopy(repl[i]),
+                                            position.addedAttributes);
             }
             if (repl[0] === undefined) {
                 return os;
