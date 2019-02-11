@@ -1011,9 +1011,14 @@ class JsonDataParser extends DataParser
 
     // returns false if the object is empty (or a terminal value)
     loadNextObject(obj: any): boolean {
-        if (typeof(obj) !== "object" || obj === null)
+        if (obj === null)
             return false;
 
+        if (typeof(obj) !== "object") {
+            this.useDataSupplyMechanism = false;
+            return false;
+        }
+        
         var empty: boolean = true;
 
         for (var attr in obj) {
