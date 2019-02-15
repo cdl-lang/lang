@@ -489,7 +489,10 @@ class EvaluationSort extends EvaluationFunctionApplication
             if (typeof(sk_i) === "object" && isAV(sk_i)) {
                 pathSKs.push(sk_i);
             } else {
-                terminalSKs.push(sk_i);
+                if(sk_i == "ascending" || sk_i == "descending")
+                    terminalSKs.push(new ComparisonFunctionValue([sk_i]));
+                else
+                    terminalSKs.push(sk_i);
             }
         }
         if (isOSOfSimpleValues(terminalSKs)) {

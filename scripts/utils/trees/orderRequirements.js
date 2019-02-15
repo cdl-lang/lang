@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1440,12 +1441,16 @@ function rangeOrderRequirementDiffAfterReplacement(offsets, prevOffsets)
         this.orderedTree.getRangeElementsByOffsets(prevOffsets[0],
                                                    prevOffsets[1],
                                                    this.isBackward);
+    var newElements = this.orderedRange !== undefined ?
+        this.orderedRange : (this.requirement === undefined ? [] :
+                             this.requirement.getAllMatches());
+    
 
     if(prevOffsets === undefined || offsets == undefined ||
        offsets[1] < prevOffsets[0] || offsets[0] > prevOffsets[1]) {
         // disjoint ranges, the fully ordered set is the set of added
         // matches and 'prevElements' is the set of removed elements.
-        this.setAddedAndRemovedRanges(this.orderedRange, prevElements);
+        this.setAddedAndRemovedRanges(newElements, prevElements);
     } else {
         // the ranges overlap, so need to calculate the difference
         var addedRange;
@@ -1454,8 +1459,8 @@ function rangeOrderRequirementDiffAfterReplacement(offsets, prevOffsets)
             removedRange = prevElements.slice(0, offsets[0] - prevOffsets[0]); 
         else if(prevOffsets[0] > offsets[0]) {
             addedRange = this.isBackward ?
-                this.orderedRange.slice(-(prevOffsets[0] - offsets[0])) :
-                this.orderedRange.slice(0, prevOffsets[0] - offsets[0]);
+                newElements.slice(-(prevOffsets[0] - offsets[0])) :
+                newElements.slice(0, prevOffsets[0] - offsets[0]);
         }
 
         if(prevOffsets[1] > offsets[1]) {
@@ -1465,8 +1470,8 @@ function rangeOrderRequirementDiffAfterReplacement(offsets, prevOffsets)
                 removedSuffix : removedRange.concat(removedSuffix);
         } else if(prevOffsets[1] < offsets[1]) {
             var addedSuffix = this.isBackward ?
-                this.orderedRange.slice(0, -(prevOffsets[1] - offsets[0])) :
-                this.orderedRange.slice(prevOffsets[1] - offsets[0] + 1);
+                newElements.slice(0, -(prevOffsets[1] - offsets[0])) :
+                newElements.slice(prevOffsets[1] - offsets[0] + 1);
             addedRange = (addedRange === undefined) ?
                 addedSuffix : addedRange.concat(addedSuffix);
         }
@@ -3001,9 +3006,7 @@ function complementOrderRequirementSetForwardRange()
     else if(this.lowOpen)
         this.lowOffset++;
 
-    if(this.highOffset >= setSize)
-        this.highOffset = setSize - 1;
-    else if(this.highOpen)
+    if(this.highOpen)
         this.highOffset--;
 }
 
@@ -3393,7 +3396,7 @@ function complementOrderRequirementUpdateAddElement(element, offset)
         this.highOffset++;
     } else {
         // the backward offet is the low offset, need to check whether it
-        // is inside the set (other wise it is not moved) and whether
+        // is inside the set (otherwise it is not moved) and whether
         // crossing continues
         var backwardOffset =
             this.orderedTree.invertOffset(this.backwardRequirement.offset);
@@ -3421,7 +3424,7 @@ function complementOrderRequirementUpdateAddElement(element, offset)
 // This function is called by the ordered tree directly on the complement
 // requirement for each element removed (after the initial update upon
 // registration). Together with the element, also the forward offset at
-// which it was added is provided. The function checks whether the element
+// which it was removed is provided. The function checks whether the element
 // was removed from inside the range. If it was, it is removed from the matches
 // of this range. The function then updates the low/high offset of the
 // range (the one based on the backward offset, since this changes with
@@ -3443,9 +3446,13 @@ function complementOrderRequirementUpdateRemoveElement(element, offset)
    if(!this.isCrossing) {
        // the backward offset is the high offset, decrease by 1
        this.highOffset--;
-       if(this.highOffset <= this.lowOffset)
-           // may have become crossing (re-calculate)
-           this.setForwardRange();
+       if(this.highOffset < this.lowOffset) {
+           // has become crossing
+           var newLowOffset = this.highOffset;
+           this.highOffset = this.lowOffset;
+           this.lowOffset = newLowOffset; 
+           this.isCrossing = true;
+       }
     } else {
         // the backward offet is the low offset, need to check whether it
         // is inside the set (otherwise it is not moved)
@@ -3772,9 +3779,15 @@ function complementEndOrderRequirementUpdateElementRemoved(fromElement,
                                                            toElement,
                                                            byElement, pos)
 {
-    var isCrossing = this.complementRequirement.isCrossing;
+    // if the low and high offsets are equal, removing any element
+    // would result in the requirement becoming crossing (a requirement
+    // with equal low and high offsets is ambiguous between crossing and
+    // not crossing).
+    var isCrossing = this.complementRequirement.isCrossing ||
+        (this.complementRequirement.lowOffset ==
+         this.complementRequirement.highOffset);
 
-    // 'byElement' must have been removed at or before this requiremnt
+    // 'byElement' must have been removed at or before this requirement
     // (in the direction of the requirement)
     
     if(!isCrossing) {
@@ -3791,6 +3804,17 @@ function complementEndOrderRequirementUpdateElementRemoved(fromElement,
             // fromElement === byElement will be removed by the
             // the complement requirement's updateRemoveElement()
             this.complementRequirement.removeElement(fromElement, removedAt);
+    } else if(toElement === undefined) {
+        // Must be crossing and the requirement match has just moved out of the
+        // ordered set. This means that 'byElement' was removed from
+        // the matched ordered set if it was within the offsets of the set.
+        if(!this.isBackward) {
+            if(pos > this.complementRequirement.lowOffset ||
+               (!this.lowOpen && pos == this.complementRequirement.lowOffset))
+                this.complementRequirement.removeElement(byElement, pos);
+        } else if(pos < this.complementRequirement.highOffset ||
+               (!this.highOpen && pos == this.complementRequirement.highOffset))
+                this.complementRequirement.removeElement(byElement, pos);
     } else {
         // crossing, so an element was popped out of the range
         var addedAt = this.isBackward ?

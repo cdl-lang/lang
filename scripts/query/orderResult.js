@@ -1,4 +1,4 @@
-// Copyright 2017 Yoav Seginer.
+// Copyright 2017,2019 Yoav Seginer.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -831,6 +831,14 @@ RangeOrderResult.prototype.updateOffsets =
 
 function rangeOrderResultUpdateOffsets(offsets, lowOpen, highOpen)
 {
+    if(offsets === undefined || offsets[0] === undefined ||
+       offsets[1] === undefined) {
+        if(this.isActiveStar())
+            this.unregisterFromOrderService();
+        this.offsets = undefined;
+        return;
+    }
+    
     // store the parameters
     this.lowOpen = !!lowOpen;
     this.highOpen = !!highOpen;

@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Yoav Seginer, Theo Vosse, Gil Harari, and Uri Kolodny.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -4669,7 +4670,7 @@ function partialOrderTreeAddComplementRequirement(requirement,
     // get the elements of all nodes inside the complement range
     var allElements = [];
     
-    while(pos <= offsetHigh) {
+    while(node !== undefined && pos <= offsetHigh) {
         if(node.heap !== undefined) {
             // heap node, add all elements in the heap
             var heapArray = node.heap.heap;
