@@ -4727,7 +4727,7 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         var arg1: any = singleton(this.arguments[1].value);
         var arg2: any[] = this.arguments[2] !== undefined? ensureOS(this.arguments[2].value): constEmptyOS;
         var baseName: string = typeof(arg0) === "string"? arg0: runtimeEnvironment.appName;
-        var fileType: string = typeof(arg1) === "string"? arg1: "csv";
+        var fileType: string = arg1 && typeof(arg1) === "string" ? arg1: undefined;
         var nrColumns: number = 0;
         var attributeToColumnNr: {[attr: string]: number} = {};
         var headers: string[] = [];
@@ -4796,7 +4796,28 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         }
 
         function dataToString(data: any[]): string {
-            return fileType === "json"? dataToJSON(data): dataToCSV(data);
+            if(fileType === "json")
+                return dataToJSON(data);
+            else if(fileType === "csv")
+                return dataToCSV(data);
+            else if(os.length == 1 && typeof(os[0]) === "string")
+                return os[0];
+
+            // other cases (try to concatenate as strings, if not successful,
+            // convert as JSON).
+            
+            var outputStr: string = "";
+                
+            for(var i = 0, l = data.length ; i < l ; ++i) {
+                var type: string = typeof(data[i]);
+                if(type == "string" || type == "number" ||
+                   type == "boolean")
+                    outputStr += data[i];
+                else
+                    return dataToJSON(data);
+            }
+
+            return outputStr;
         }
 
         var os: any[] = ensureOS(result.value);
@@ -4804,6 +4825,9 @@ class EvaluationDownload extends EvaluationFunctionApplication {
             return;
         }
         var areaReferences: ElementReference[] = os.filter(function (elt: any): elt is ElementReference { return elt instanceof ElementReference; });
+        var fileName: string = baseName;
+        if(fileType && !/\.\w*/.test(fileName))
+            fileName += "." + fileType;
         if (areaReferences.length > 0 && fileType === "png") {
             var area = allAreaMonitor.getAreaById(areaReferences[0].element);
             if (!(area instanceof DisplayArea)) {
@@ -4811,12 +4835,12 @@ class EvaluationDownload extends EvaluationFunctionApplication {
             }
             // perhaps add option { // Some (small) random image imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABxJREFUeNpi+A8EDEgAzocx0BXgFsDQiqwAIMAAW3Aj3ZRED7gAAAAASUVORK5CYII=" }
             domtoimage.toBlob(area.display.frameDiv).then(function(blob) {
-                saveAs(blob, baseName + "." + fileType);
+                saveAs(blob, fileName);
             }).catch(function (error) {
               console.error("Error while copying image:", error);
             });
         } else if (areaReferences.length === 0) {
-            saveAs(new Blob([dataToString(os)]), baseName + "." + fileType);
+            saveAs(new Blob([dataToString(os)]), fileName);
         }
     }
 }
