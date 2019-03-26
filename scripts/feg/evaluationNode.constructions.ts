@@ -144,12 +144,13 @@ class EvaluationBoolGate extends EvaluationNode
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (!this.open || this.b === undefined) {
-            Utilities.warn("dead ended write: writing to closed bool gate at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "writing to closed bool gate");
+            return false;
         }
-        this.b.write(result, mode, attributes, positions);
+        return this.b.write(result, mode, attributes, positions, reportDeadEnd);
     }
 
     debugName(): string {
@@ -319,33 +320,40 @@ class EvaluationAV extends EvaluationNode {
         return true;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.constant) {
-            Utilities.warn("dead ended write: writing to constant AV at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd, "writing to constant AV");
+            return false;
         }
         if (positions !== undefined &&
               (positions.length !== 1 ||
                positions[0].index !== 0 || positions[0].length !== 1)) {
-            Utilities.warn("dead ended write: writing os to single AV at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd, "writing os to single AV");
+            return false;
         }
+
+        var success: boolean = true;
+        
         if (positions === undefined || positions[0].path === undefined) {
             // Write an av over an av, attribute by attribute
             var repl: any = getDeOSedValue(result.value);
             if (!isAV(repl)) { // accept only o({a: ..., b: ...})
-                Utilities.warn("dead ended write: writing non-singleton or non AV over AV at " + gWriteAction);
-                return;
+                this.reportDeadEndWrite(reportDeadEnd,
+                                        "writing non-singleton or non AV over AV");
+                return false;
             }
             for (var attr in repl) {
                 if (attr in this.inputByAttr) {
                     this.inputByAttr[attr].write(
                         new Result(ensureOS(repl[attr])), mode,
-                        attributes.popPathElement(attr), undefined);
+                        attributes.popPathElement(attr), undefined,
+                        reportDeadEnd);
                 } else {
                     // An AV itself can never be a write destination, so writing
                     // to a non-existing attribute is not allowed.
-                    Utilities.warn("dead ended write: writing to non-existing attribute in non-writable AV at " + gWriteAction);
+                    this.reportDeadEndWrite(reportDeadEnd,
+                                            "writing to non-existing attribute in non-writable AV");
+                    success = false;
                 }
             }
         } else {
@@ -353,13 +361,18 @@ class EvaluationAV extends EvaluationNode {
             for (var i: number = 0; i < positions.length; i++) {
                 if (positions[i].path === undefined || positions[i].path.length !== 1 ||
                     !(positions[i].path[i] in this.inputByAttr)) {
-                    Utilities.warn("dead ended write: writing to non existing attribute in AV at " + gWriteAction);
+                    this.reportDeadEndWrite(reportDeadEnd,
+                                            "writing to non existing attribute in AV");
+                    success = false;
                 } else {
                     this.inputByAttr[positions[i].path[i]].write(
-                        result, mode, attributes, positions[i].sub);
+                        result, mode, attributes, positions[i].sub,
+                        reportDeadEnd);
                 }
             }
         }
+
+        return success;
     }
 
     debugName(): string {
@@ -580,8 +593,28 @@ class EvaluationFunctionApplication extends EvaluationNodeWithArguments implemen
         }
     }
 
-     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-        Utilities.warn("dead ended write: cannot write through " + this.bif.name + " at " + gWriteAction);
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        if(this.bif.writeThroughToWritableInputs) {
+            // Since this function is assumed not to be an extracting function,
+            // the positions of its results have nothing to do with the
+            // positions of the inputs and, therefore, the 'positions'
+            // array (if given) can be ignored.
+            var success: boolean = false;
+            for (var i: number = 0; i < this.inputs.length; i++) {
+                if(this.inputs[i].write(result, mode, attributes, undefined,
+                                        false))
+                    success = true;
+            }
+            if(!success)
+                this.reportDeadEndWrite(reportDeadEnd,
+                                        "cannot write through any argument of "+
+                                        this.bif.name);
+            return success;
+        } else {
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "cannot write through " + this.bif.name);
+            return false;
+        }
     }
 
     debugName(): string {
@@ -1397,15 +1430,16 @@ class EvaluationVariant extends EvaluationNode
     }
     
     // Writes to the first matching qualifier, assuming it implements writing.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (0 <= this.firstActive && this.firstActive < this.variantInputs.length) {
             if (positions !== undefined && "identifiers" in this.result) {
                 // See mergeWrite.write() for an explanation
                 positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
             }
-            this.variantInputs[this.firstActive].write(result, mode, attributes, positions);
+            return this.variantInputs[this.firstActive].write(result, mode, attributes, positions, reportDeadEnd);
         } else {
-            Utilities.warn("dead ended write: no qualified variant at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
+            return false;
         }
     }
 
@@ -1727,15 +1761,16 @@ class EvaluationVariant1 extends EvaluationNode
     }
     
     // Writes to the first matching qualifier, assuming it implements writing...
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.qualifiedVariant) {
             if (positions !== undefined && "identifiers" in this.result) {
                 // See mergeWrite.write() for an explanation
                 positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
             }
-            this.variantInput.write(result, mode, attributes, positions);
+            return this.variantInput.write(result, mode, attributes, positions, reportDeadEnd);
         } else {
-            Utilities.warn("dead ended write: no qualified variant at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
+            return false;
         }
     }
 

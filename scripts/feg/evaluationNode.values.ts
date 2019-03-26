@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -175,15 +176,18 @@ class EvaluationOrderedSet extends EvaluationNode {
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.constant) {
             Utilities.warn("dead ended write: writing to constant os at " + gWriteAction);
-            return;
+            return false;
         }
+        var success: boolean = false;
         if (positions === undefined) {
             for (var i: number = 0; i < this.elements.length; i++) {
                 if (this.inputs[i] !== undefined) {
-                    this.inputs[i].write(result, mode, attributes, undefined);
+                    if(this.inputs[i].write(result, mode, attributes, undefined,
+                                            false))
+                        success = true;
                 }
             }
         } else {
@@ -195,25 +199,29 @@ class EvaluationOrderedSet extends EvaluationNode {
                 var v: any[] = this.elements[i].value;
                 var vlen: number = v === undefined? 0: v.length;
                 if (accumLength <= positions[pos].index &&
-                    (vlen === 0 ||
-                     positions[pos].index < accumLength + vlen)) {
+                    positions[pos].index < accumLength + vlen) {
                     var elementDataPosition: DataPosition[] = [];
                     while (pos < positions.length  &&
-                           (vlen === 0 ||
-                            positions[pos].index < accumLength + vlen)) {
+                           positions[pos].index < accumLength + vlen) {
                         var dp: DataPosition = positions[pos];
                         elementDataPosition.push(dp.copyWithOffset(accumLength));
                         pos++;
                     }
                     if (this.inputs[i] !== undefined) {
-                        this.inputs[i].write(result, mode, attributes, elementDataPosition);
-                        return;
+                        if(this.inputs[i].write(result, mode, attributes, elementDataPosition, reportDeadEnd))
+                            success = true;
                     }
                 }
                 accumLength += vlen;
             }
-            Utilities.warn("dead ended write: writing outside os at " + gWriteAction);
+            if(pos < positions.length)
+                this.reportDeadEndWrite(reportDeadEnd, "writing outside os");
         }
+
+        if(!success)
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "cannot write through any os element");
+        return success;
     }    
 
     debugName(): string {

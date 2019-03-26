@@ -1604,7 +1604,8 @@ class ToMergeEvaluationNode implements Watcher {
                 breakIntoDebugger();
             gWriteAction = this.writeNode.name + ":" + this.caseName;
             this.toExpression.write(this.mergeExpression.result, // apply removeEmptyOSFromAV?
-                                   WriteMode.merge, mergeAttributes, undefined);
+                                    WriteMode.merge, mergeAttributes, undefined,
+                                    true);
             gWriteAction = undefined;
         }
         this.mergeExpression.deactivate(this, false);

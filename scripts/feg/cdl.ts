@@ -282,8 +282,11 @@ class BuiltInFunction extends NonAV {
     transientResult: boolean;
     classConstructor: typeof EvaluationNodeWithArguments;
     valueType: ValueType;
+    // if this is true, a write to this function is propagated to its writable
+    // arguments.
+    writeThroughToWritableInputs: boolean;
 
-    constructor(name: string, minNrArguments: number, maxNrArguments: number, valueType: ValueType, isLocalWithoutArguments: boolean = false, depOnImplArgs: boolean = false, transientResult: boolean = false)
+    constructor(name: string, minNrArguments: number, maxNrArguments: number, valueType: ValueType, isLocalWithoutArguments: boolean = false, depOnImplArgs: boolean = false, transientResult: boolean = false, writeThroughToWritableInputs: boolean = false)
     {
         super();
         this.name = name;
@@ -293,6 +296,7 @@ class BuiltInFunction extends NonAV {
         this.isLocalWithoutArguments = isLocalWithoutArguments;
         this.dependingOnImplicitArguments = depOnImplArgs;
         this.transientResult = transientResult;
+        this.writeThroughToWritableInputs = writeThroughToWritableInputs;
         this.valueType = valueType;
     }
 
@@ -2703,8 +2707,10 @@ abstract class ForeignInterface {
     displayElementVisible(): void {
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-        Utilities.warn("dead-ended write: cannot write through foreign function: " + gWriteAction);
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        if(reportDeadEnd)
+            Utilities.warn("dead-ended write: cannot write through foreign function: " + gWriteAction);
+        return false;
     }
 
     isDisplay(): boolean {

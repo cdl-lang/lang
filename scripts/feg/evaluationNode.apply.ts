@@ -1135,21 +1135,23 @@ class EvaluationApply extends EvaluationFunctionApplication
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var writePaths: string[][] = extractProjectionPaths(this.query);
         var selectedPositions: DataPosition[];
 
         if ("foreignInterface" in this) {
-            this.foreignInterface.write(result, mode, attributes, positions);
-            return;
+            return this.foreignInterface.write(result, mode, attributes,
+                                               positions, reportDeadEnd);
         }
         if (!("query" in this)) {
-            Utilities.warn("dead-ended write: cannot write through defun at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "cannot write through defun");
+            return false;
         }
         if (writePaths !== undefined && writePaths.length > 1) {
-            Utilities.warn("dead-ended write: cannot write to multiple projections at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "cannot write to multiple projections");
+            return false;
         }
 
         // Add projection path to positions (if such a path exists)
@@ -1167,8 +1169,9 @@ class EvaluationApply extends EvaluationFunctionApplication
             );
             if (positionsWithPath.length < selectedPositions.length) {
                 assert(positionsWithPath.length === 0, "expecting all positions from the same source");
-                Utilities.warn("dead ended write: cannot write non-projections through empty selection at " + gWriteAction);
-                return;
+                this.reportDeadEndWrite(reportDeadEnd,
+                                        "cannot write non-projections through empty selection");
+                return false;
             }
             var selectionAttributes: any = this.getSelectionObject();
             if (selectionAttributes !== undefined) {
@@ -1181,7 +1184,8 @@ class EvaluationApply extends EvaluationFunctionApplication
                     [new DataPosition(0, 1, undefined, undefined, selectionAttributes)];
             }
         }
-        this.inputs[1].write(result, mode, attributes, selectedPositions);
+        return this.inputs[1].write(result, mode, attributes,
+                                    selectedPositions, reportDeadEnd);
     }
 
     setSimpleQuery(): boolean {

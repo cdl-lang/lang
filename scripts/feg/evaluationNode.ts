@@ -1148,10 +1148,17 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
      *                  ordered list of positions in the result to which the new value must be
      *                  written.
      */
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-        Utilities.warn("dead ended write: " + this.prototype.idStr() + " at " + gWriteAction);
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        this.reportDeadEndWrite(reportDeadEnd, this.prototype.idStr());
+        return false;
     }
 
+    reportDeadEndWrite(reportDeadEnd: boolean, msg: string): void {
+        if(!reportDeadEnd)
+            return;
+        Utilities.warn("dead ended write: " + msg + " at " + gWriteAction);
+    }
+    
     // Returns true when the qualifiers enable a result. Only overruled in
     // EvaluationVariant.
     isQualified(): boolean {

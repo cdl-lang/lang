@@ -217,7 +217,7 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var identifiedPositions: DataPosition[] = undefined;
 
         if (positions !== undefined && typeof(this.identificationAttribute) === "string") {
@@ -240,8 +240,9 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
             assert(this.identificationQuery === undefined, "TODO: writing for complex identification");
         }
         if (this.inputs[1] !== undefined) {
-            this.inputs[1].write(result, mode, attributes, identifiedPositions);
+            return this.inputs[1].write(result, mode, attributes, identifiedPositions, reportDeadEnd);
         }
+        return false;
     }
 
     debugName(): string {
@@ -1375,15 +1376,16 @@ abstract class EvaluationPositionFunction extends EvaluationFunctionApplication
         super.deactivateInputs();
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var selectedPositions: DataPosition[] = 
             this.getSelectedPositions(positions);
 
         if (selectedPositions.length === 0) {
-            Utilities.warn("dead-ended write: empty selection by " + this.bif.name + " at " + gWriteAction);
-            return;
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "empty selection by " + this.bif.name);
+            return false;
         }
-        this.getWritableInput().write(result, mode, attributes, selectedPositions);
+        return this.getWritableInput().write(result, mode, attributes, selectedPositions, reportDeadEnd);
     }
 
     // Performs the actual position function.
@@ -3246,11 +3248,12 @@ class EvaluationCond extends EvaluationNode
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.selectedPos < this.altList.length) {
-            this.altList[this.selectedPos].use.write(result, mode, attributes, positions);
+            return this.altList[this.selectedPos].use.write(result, mode, attributes, positions, reportDeadEnd);
         } else {
-            Utilities.warn("dead ended write: no active condition at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd, "no active condition");
+            return false;
         }
     }
     
@@ -3486,14 +3489,19 @@ class EvaluationMergeWrite extends EvaluationMerge {
     // The identity is added as an extra attribute in the write operation by a
     // deeper [identify]. This assures that written value can be merged with the 
     // value that provided the identity, regardless of the source.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var input0 = this.inputs[0];
 
         if (input0 !== undefined) {
             if (positions !== undefined && "identifiers" in this.result) {
                 positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
             }
-            input0.write(result, mode, attributes, positions);
+            return input0.write(result, mode, attributes, positions,
+                                reportDeadEnd);
+        } else {
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "no first argument to write through"); 
+            return false;
         }
     }
 }
@@ -3617,8 +3625,9 @@ class EvaluationVerificationFunction extends EvaluationFunctionApplication {
         return true;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-        this.inputs[0].write(result, mode, attributes, positions);
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        return this.inputs[0].write(result, mode, attributes, positions,
+                                   reportDeadEnd);
     }
 
     debugName(): string {
@@ -3648,8 +3657,9 @@ class EvaluationMakeDefined extends EvaluationFunctionApplication {
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-        this.inputs[0].write(result, mode, attributes, positions);
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        return this.inputs[0].write(result, mode, attributes, positions,
+                                   reportDeadEnd);
     }
 
     debugName(): string {
@@ -4572,13 +4582,16 @@ class EvaluationRedirect extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
         var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
 
         if (newValue.length === 1 && typeof(newValue[0]) === "string") {
             window.location.href = newValue[0];
+            return true;
         }
+        this.reportDeadEndWrite(reportDeadEnd,"empty URL to redirect");
+        return false;
     }
 }
 redirect.classConstructor = EvaluationRedirect;
@@ -4653,12 +4666,12 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
             waitBusyTime: vtd("number")
         });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: true): boolean {
         var pct = new PositionChangeTracker();
         var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
 
         if (newValue.length !== 1 || !EvaluationSystemInfo.writeObjType.matches(newValue)) {
-            return;
+            return false;
         }
         var waitBusyTime: any = singleton(newValue[0].waitBusyTime);
         if (typeof(waitBusyTime) === "number") {
@@ -4712,6 +4725,8 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
                 }
             }
         }
+
+        return true;
     }
 }
 systemInfo.classConstructor = EvaluationSystemInfo;
@@ -4722,7 +4737,7 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var arg0: any = singleton(this.arguments[0].value);
         var arg1: any = singleton(this.arguments[1].value);
         var arg2: any[] = this.arguments[2] !== undefined? ensureOS(this.arguments[2].value): constEmptyOS;
@@ -4822,7 +4837,7 @@ class EvaluationDownload extends EvaluationFunctionApplication {
 
         var os: any[] = ensureOS(result.value);
         if (os.length === 0) {
-            return;
+            return true;
         }
         var areaReferences: ElementReference[] = os.filter(function (elt: any): elt is ElementReference { return elt instanceof ElementReference; });
         var fileName: string = baseName;
@@ -4831,17 +4846,20 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         if (areaReferences.length > 0 && fileType === "png") {
             var area = allAreaMonitor.getAreaById(areaReferences[0].element);
             if (!(area instanceof DisplayArea)) {
-                return;
+                return false;
             }
             // perhaps add option { // Some (small) random image imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABxJREFUeNpi+A8EDEgAzocx0BXgFsDQiqwAIMAAW3Aj3ZRED7gAAAAASUVORK5CYII=" }
             domtoimage.toBlob(area.display.frameDiv).then(function(blob) {
                 saveAs(blob, fileName);
             }).catch(function (error) {
-              console.error("Error while copying image:", error);
+                console.error("Error while copying image:", error);
+                return false;
             });
         } else if (areaReferences.length === 0) {
             saveAs(new Blob([dataToString(os)]), fileName);
         }
+
+        return true;
     }
 }
 download.classConstructor = EvaluationDownload;
@@ -4880,7 +4898,7 @@ class EvaluationPrintArea extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
         var newValue: any[] = determineWrite([], result, mode, attributes, positions, pct);
 
@@ -4894,7 +4912,7 @@ class EvaluationPrintArea extends EvaluationFunctionApplication {
                        constEmptyOS, undefined, constEmptyOS, constEmptyOS,
                        undefined, undefined, undefined, undefined, undefined);
             globalPrintTask.addPrintTask(undefined);
-            return;
+            return true;
         }
 
         function optionsToString(opt: {[attr: string]: string|number}): string {
@@ -4924,6 +4942,7 @@ class EvaluationPrintArea extends EvaluationFunctionApplication {
                 }
             }
         }
+        return true;
     }
 }
 printArea.classConstructor = EvaluationPrintArea;
@@ -4940,8 +4959,9 @@ class EvaluationForeignInterfaceFunction extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         console.log("TODO");
+        return false;
     }
 }
 foreignFunctions.classConstructor = EvaluationForeignInterfaceFunction;
@@ -5004,7 +5024,7 @@ class EvaluationLoginInfo extends EvaluationFunctionApplication {
             email: [vtd("string"), vtd("undefined")]
         });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
         var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
         var createAccount: boolean = this.arguments[0] !== undefined &&
@@ -5022,6 +5042,7 @@ class EvaluationLoginInfo extends EvaluationFunctionApplication {
         } else if (isFalse(result.value)) {
             gAppStateMgr.logout();
         }
+        return true;
     }
 }
 loginInfo.classConstructor = EvaluationLoginInfo;

@@ -291,7 +291,7 @@ class GoogleMapsFI extends ForeignInterface {
         this.ready = false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
         var newValue = determineWrite([], result, mode, attributes, positions, pct);
         var newMapOptions: any = undefined;
@@ -332,6 +332,8 @@ class GoogleMapsFI extends ForeignInterface {
         if (newMapOptions !== undefined && this.map !== undefined) {
             this.map.setOptions(newMapOptions);
         }
+
+        return true;
     }
 
     addDependentFunction(fi: GoogleMapsFIDependent): void {

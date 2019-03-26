@@ -1372,7 +1372,7 @@ class EvaluationDatabases extends EvaluationRemoteData
     }
 
     // Can only send one record at a time.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if ((positions === undefined ||
               (positions.length === 1 && positions[0].length === 1)) &&
               result !== undefined && result.value !== undefined &&
@@ -1401,8 +1401,11 @@ class EvaluationDatabases extends EvaluationRemoteData
             } else {
                 this.updateMetaData(result.value[0], positions);
             }
+            return true;
         } else {
-            Utilities.warn("dead ended write to [databases]; writing through projection or areaSetContent? at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "in write to [databases]; writing through projection or areaSetContent?");
+            return false;
         }               
     }
 

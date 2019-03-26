@@ -406,11 +406,12 @@ class EvaluationStore extends EvaluationNode implements Latchable {
         evaluationQueue.latch(this);
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (positions !== undefined &&
-              (positions.length !== 1 || positions[0].index !== 0)) {
-            Utilities.warn("dead ended write: wrong position for EvaluationStore at " + gWriteAction);
-            return;
+            (positions.length !== 1 || positions[0].index !== 0)) {
+            this.reportDeadEndWrite(reportDeadEnd,
+                                    "wrong position for EvaluationStore");
+            return false;
         }
         if (this.source !== undefined) {
             // Can only write through to a single value. Anything else is an
@@ -419,7 +420,8 @@ class EvaluationStore extends EvaluationNode implements Latchable {
                 this.position === undefined? positions:
                 positions === undefined? [new DataPosition(this.position, 1)]:
                 [new DataPosition(this.position, 1, positions[0].path, positions[0].sub)];
-            this.source.write(result, mode, attributes, sub);
+            return this.source.write(result, mode, attributes, sub,
+                                     reportDeadEnd);
         } else {
             var topWrite: boolean = positions === undefined || positions[0].path === undefined;
             var curValue: any = this.latchedValue !== undefined?
@@ -441,6 +443,7 @@ class EvaluationStore extends EvaluationNode implements Latchable {
                 }
                 this.latch();
             }
+            return true;
         }
     }
 
@@ -582,7 +585,7 @@ class EvaluationMessageQueue extends EvaluationStore {
         return this.messageQueue.length === 0;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (positions === undefined ||
               (positions.length === 1 &&
                positions[0].index === 0 && positions[0].path === undefined)) {
@@ -593,8 +596,10 @@ class EvaluationMessageQueue extends EvaluationStore {
             }
             this.messageQueue.push(r);
             globalNextMessageTask.schedule();
+            return true;
         } else {
-            Utilities.warn("dead ended write to message queue at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd, "in write to message queue");
+            return false;
         }               
     }
 }
@@ -611,7 +616,7 @@ class EvaluationPointerStore extends EvaluationStore implements TimeSensitive {
     static writeObjType: ValueTypeDescription = 
         vtd("av", { display: vtd("av", { image: vtd("string") }) });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
         var newValue: any = determineWrite([{}], result, mode, attributes, positions, pct);
 
@@ -622,8 +627,10 @@ class EvaluationPointerStore extends EvaluationStore implements TimeSensitive {
             }
             this.latchedValue = newValue[0].display[0].image;
             evaluationQueue.addTimeSensitiveNode(this);
+            return true;
         } else {
-            super.write(result, mode, attributes, positions);
+            return super.write(result, mode, attributes, positions,
+                               reportDeadEnd);
         }
     }
 
@@ -661,8 +668,9 @@ class EvaluationDebugBreak extends EvaluationStore {
         this.dataSourceResultMode = false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         setGDebugBreak();
+        return true;
     }
 }
 
@@ -679,20 +687,23 @@ class EvaluationParam extends EvaluationStore {
         this.lastUpdate.copy(this.result);
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var self: EvaluationParam = this;
         var area: CoreArea = allAreaMonitor.getAreaById(this.areaId);
 
-        function updateInputAttr(attrib: string, value: any, endValue: any): void {
+        function updateInputAttr(attrib: string, value: any, endValue: any): boolean {
             var curValue: any = self.latchedValue !== undefined?
                 self.latchedValue.value[0]: self.lastUpdate.value[0];
             var update: any = mergeValueCopy({input: value}, curValue);
 
-            if (!valueEqual(curValue, update) && 
-                  area.setInputState(attrib, singleton(endValue))) {
+            if(valueEqual(curValue, update))
+                return true;
+            if (area.setInputState(attrib, singleton(endValue))) {
                 self.latchedValue = new Result(update);
                 self.latch();
+                return true;
             }
+            return false;
         }
 
         function wrapPathAttr(path: string[], pos: number, terminal: any): any {
@@ -712,51 +723,63 @@ class EvaluationParam extends EvaluationStore {
         // value to the appropriate source.
         //   Writes to param:areaSetContent: are redirected towards the source,
         // with positions modified to indicated the position in the area set.
-        function unwrapPositions(value: any, path: string[], attributes: MergeAttributes, positions: DataPosition[]): void {
+        function unwrapPositions(value: any, path: string[], attributes: MergeAttributes, positions: DataPosition[]): boolean {
             if (positions === undefined ||
                   (path.length === 1 && path[0] === "areaSetContent")) {
                 switch (path[0]) {
                   case "input":
-                    updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(value)), value);
-                    break;
+                    return updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(value)), value);
                   case "areaSetContent":
                     var sub: DataPosition[] =
                         positions === undefined? [new DataPosition(self.position, 1)]:
                         [positions[0].copyWithOffset(positions[0].index - self.position)];
-                    self.source.write(result, mode, attributes, sub);
-                    break;
-                  default:
-                    Utilities.warn("dead ended write to param in " + self.local.getOwnId() + " at " + gWriteAction);
-                    break;
+                    return self.source.write(result, mode, attributes, sub,
+                                             reportDeadEnd);
+                default:
+                    self.reportDeadEndWrite(reportDeadEnd,
+                                            "in write to param in " +
+                                            self.local.getOwnId());
+                    return false;
                 }
             } else if (positions !== undefined && positions.length === 1 &&
                   positions[0].index === 0 && positions[0].path !== undefined) {
-                unwrapPositions(value, path.concat(positions[0].path[0]),
-                                attributes.popPathElement(positions[0].path[0]),
-                                positions[0].sub);
+                return unwrapPositions(
+                    value, path.concat(positions[0].path[0]),
+                    attributes.popPathElement(positions[0].path[0]),
+                    positions[0].sub);
             } else if (positions !== undefined && positions.length === 1 &&
-                    positions[0].index === 0 && positions[0].path === undefined) {
+                       positions[0].index === 0 && positions[0].path === undefined) {
                 var v: any = getDeOSedValue(value);
                 if (!(v instanceof Array) && isAV(v)) {
                     self.lastUpdate.value[0] = shallowCopy(self.lastUpdate.value[0]);
+                    var success: boolean = true;
+                    
                     for (var attrib in v) {
-                        unwrapPositions(v[attrib], path.concat(attrib),
-                                        attributes.popPathElement(attrib),
-                                        undefined);
+                        if(!unwrapPositions(v[attrib], path.concat(attrib),
+                                            attributes.popPathElement(attrib),
+                                            undefined))
+                            success = false;
                     }
+                    return success;
                 } else {
-                    unwrapPositions(value, path, attributes, undefined);
+                    return unwrapPositions(value, path, attributes, undefined);
                 }
             } else {
-                Utilities.warn("dead ended write to param in " + self.local.getOwnId() + " at " + gWriteAction);
+                self.reportDeadEndWrite(reportDeadEnd,
+                                        "in write to param in " +
+                                        self.local.getOwnId());
+                return false;
             }
         }
 
-        unwrapPositions(result.value, [], attributes, positions);
+        var success: boolean =
+            unwrapPositions(result.value, [], attributes, positions);
 
         if (debugWrites) {
             console.log("write to param", cdlify(result.value));
         }
+
+        return success;
     }
 
     updateDataElementIds(dataElementIds: number[]): void {
@@ -932,7 +955,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
 
     // Determines and sets the result of the write operation without altering
     // any existing value.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]) {
+    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var newValue: any;
         var curValue: any = this.latchedValue !== undefined?
                             this.latchedValue: this.lastUpdate;
@@ -947,7 +970,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
                 }
                 this.reinitialize();
             }
-            return;
+            return true;
         }
         // Otherwise, terminate the live update (if still alive) and determine
         // the new value
@@ -966,6 +989,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
         } else {
             this.positionChangeTracker = oldPct;
         }
+        return true;
     }
 
     latch(): void {

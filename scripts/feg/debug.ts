@@ -296,7 +296,7 @@ function setGlobalDefault(pathStr: any, value: any, mode?: string): void {
         position = [new DataPosition(0, 1, [path[i]], position)];
     }
     globalDefaultsNode.write(
-        writeResult, WriteMode.merge, mergeAttributes, position);
+        writeResult, WriteMode.merge, mergeAttributes, position, true);
     gGlobalDefaultChangeList = determineWrite(gGlobalDefaultChangeList,
                   writeResult, WriteMode.merge, mergeAttributes, position, pct);
     gGlobalDefaultChangeList[pathStr] = value;
