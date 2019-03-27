@@ -3313,9 +3313,10 @@ class FunctionApplicationNode extends FunctionNode {
         }
         if (doCompileTimeChecks) {
             this.checkForQualifiedExpressions();
-            var writeDestination: FunctionNode = this.writeDestination();
+            var writeDestination: FunctionNode[] = this.writeDestination();
             if (writeDestination !== undefined) {
-                this.hasWritableReference = writeDestination.hasWritableReference;
+                this.hasWritableReference =
+                    writeDestination.some(wd=>wd && wd.hasWritableReference);
             }
         }
     }
@@ -3382,17 +3383,17 @@ class FunctionApplicationNode extends FunctionNode {
             }).join(", ") + "])";
     }
 
-    writeDestination(): FunctionNode {
+    writeDestination(): FunctionNode[] {
         switch (this.builtInFunction.name) {
           case "databases":
           case "download":
           case "loginInfo":
-            return this;
+            return [this];
           case "first":
           case "last":
           case "makeDefined":
           case "mergeWrite":
-            return this.functionArguments[0];
+            return [this.functionArguments[0]];
           case "prev":
           case "next":
           case "pos":
@@ -3404,19 +3405,26 @@ class FunctionApplicationNode extends FunctionNode {
           case "multiQuery":
           case "sort":
             // They all write to the first argument
-            return this.functionArguments[1];
+            return [this.functionArguments[1]];
+          case "max":
+          case "min":
+            // Can write through any of their arguments
+            return this.functionArguments;
           default:
             return undefined;
         }
     }
 
     markWritablePath(): void {
-        var wrNode: FunctionNode = this.writeDestination();
+        var wrNodes: FunctionNode[] = this.writeDestination();
 
-        if (wrNode !== undefined) {
+        if (wrNodes !== undefined) {
             if (this.writabilityUndetermined()) {
                 this.writable = true;
-                wrNode.markWritablePath();
+                wrNodes.forEach(function(wrNode:FunctionNode) { 
+                    if(wrNode)
+                        wrNode.markWritablePath();
+                });
                 FunctionNode.writabilityQueue.push(this);
             }
         } else {
@@ -3425,7 +3433,7 @@ class FunctionApplicationNode extends FunctionNode {
     }
 
     checkWritability(): void {
-        this.writable = this.writeDestination().writable;
+        this.writable = this.writeDestination().some(wd=>wd && wd.writable);
     }
 
     isWritableAware(): boolean {
