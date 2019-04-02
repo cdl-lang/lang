@@ -962,6 +962,23 @@ class EvaluationAreaProjection extends EvaluationNode {
                         success = true;
                 }
             }
+        } else if(positions.length == 1 && positions[0].index == 0 &&
+                  positions[0].length == 0) {
+            // this is a write through an unmatched query, so we append at
+            // the end (at the last area which allows us to write).
+            for(var i:number = areaData.length - 1 ; i >= 0 ; --i) {
+                assert(areaData[i] instanceof ElementReference,
+                       "areaData must be array of ElementReference");
+                elemRef = <ElementReference> areaData[i];
+                area = allAreaMonitor.getAreaById(elemRef.element);
+                exportNode = area.getExport(this.exportId);
+                assert(exportNode !== undefined,
+                       "if result is defined, exportNode must be too");
+                if(exportNode.write(result, mode, attributes,
+                                    positions, reportDeadEnd))
+                    return true;
+            }
+            // fall to dead-end message below
         } else {
             var accumLength: number = 0;
             i = 0;

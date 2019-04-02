@@ -452,6 +452,13 @@ class EvaluationDataSourceFunction extends EvaluationDataSource
             lastUpdate: [Date.now()]
         };
 
+        this.setDataSourceResultMode(false);
+        if(this.indexer) {
+            this.releaseDataPathNode();
+            this.indexer.destroy();
+            this.indexer = undefined;
+        }
+        
         if (info !== undefined) {
             resultObject.info = info;
         } 

@@ -190,6 +190,17 @@ class EvaluationOrderedSet extends EvaluationNode {
                         success = true;
                 }
             }
+        } else if(positions.length == 1 && positions[0].index == 0 &&
+                  positions[0].length == 0) {
+            // this is a write through an unmatched query, so we append at
+            // the end.
+            for (var i: number = this.elements.length - 1; i >= 0 ; --i) {
+                if (this.inputs[i] !== undefined &&
+                    this.inputs[i].write(result, mode, attributes, positions,
+                                         reportDeadEnd))
+                    return true;
+            }
+            // fall through to dead-end message below
         } else {
             var accumLength: number = 0;
             var pos: number = 0;

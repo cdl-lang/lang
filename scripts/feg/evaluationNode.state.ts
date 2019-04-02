@@ -733,6 +733,10 @@ class EvaluationParam extends EvaluationStore {
                     var sub: DataPosition[] =
                         positions === undefined? [new DataPosition(self.position, 1)]:
                         [positions[0].copyWithOffset(positions[0].index - self.position)];
+                    // we are writing to the 'data' ordered set. By definition,
+                    // each area has a single element in this ordered set,
+                    // and this is where we write to.
+                    sub[0].length = 1;
                     return self.source.write(result, mode, attributes, sub,
                                              reportDeadEnd);
                 default:

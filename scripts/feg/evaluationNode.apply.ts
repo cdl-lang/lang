@@ -1181,7 +1181,7 @@ class EvaluationApply extends EvaluationFunctionApplication
                     selectedPositions.map(
                         pos => pos.copyWithAddedAttributes(selectionAttributes)
                     ):
-                    [new DataPosition(0, 1, undefined, undefined, selectionAttributes)];
+                    [new DataPosition(0, 0, undefined, undefined, selectionAttributes)];
             }
         }
         return this.inputs[1].write(result, mode, attributes,
