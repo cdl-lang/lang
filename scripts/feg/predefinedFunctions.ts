@@ -96,6 +96,7 @@ var identify: BuiltInFunction = new BuiltInFunction("identify", 2, 2, undefined)
 var anonymize: BuiltInFunction = new BuiltInFunction("anonymize", 1, 1, undefined);
 var overlap: BuiltInFunction = new BuiltInFunction("overlap", 2, 2, boolValueType);
 var time: BuiltInFunction = new BuiltInFunction("time", 2, 3, numericValueType.copy().addSize(1));
+var timeTrue: BuiltInFunction = new BuiltInFunction("timeTrue", 2, 3, numericValueType.copy().addSize(1));
 var changed: BuiltInFunction = new BuiltInFunction("changed", 1, 1, boolValueType.copy().addSize(1));
 var redirect: BuiltInFunction = new BuiltInFunction("redirect", 0, 0, boolValueType.copy().addSize(0));
 var systemInfo: BuiltInFunction = new BuiltInFunction("systemInfo", 0, 0, 

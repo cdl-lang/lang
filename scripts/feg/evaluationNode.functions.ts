@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2018 Yoav Seginer, Theo Vosse.
 // Copyright 2017 Theo Vosse.
 // 
@@ -2141,7 +2142,8 @@ class EvaluationTime extends EvaluationFunctionApplication {
     lastChangeTime: number = 0;
     interval: number = 1000;
     maxTime: number = 0;
-    startCounting: boolean = true;
+    startCounting: boolean = false;
+    resetInterval: boolean = false;
     timerId: number|NodeJS.Timer = undefined;
 
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
@@ -2156,6 +2158,7 @@ class EvaluationTime extends EvaluationFunctionApplication {
           case 0:
             if (!objectEqual(this.lastInput, v)) {
                 this.lastInput = v;
+                this.startCounting = true;
                 this.markAsChanged();
             }
             break;
@@ -2168,6 +2171,7 @@ class EvaluationTime extends EvaluationFunctionApplication {
             }
             if (this.interval !== v) {
                 this.interval = v;
+                this.resetInterval = true;
                 this.markAsChanged();
             }
             if (this.inputs.length === 2 && this.maxTime !== v) {
@@ -2191,7 +2195,6 @@ class EvaluationTime extends EvaluationFunctionApplication {
     }
 
     markAsChanged(): void {
-        this.startCounting = true;
         super.markAsChanged();
     }
 
@@ -2201,17 +2204,29 @@ class EvaluationTime extends EvaluationFunctionApplication {
         if (this.startCounting) {
             this.lastChangeTime = Date.now();
             this.startCounting = false;
-            if (this.timerId !== undefined) {
-                clearInterval(<any> this.timerId);
-            }
-            if (this.interval > 0 && this.maxTime > 0) {
-                this.timerId = setInterval(() => this.updateTimer(), this.interval);
-            }
+            this.resetInterval = true;
             nTime = 0;
-        } else {
+        } else
             nTime = (Date.now() - this.lastChangeTime) / 1000;
+
+        if(this.timerId !== undefined && 
+           (this.resetInterval || this.maxTime <= nTime * 1000)) {
+            clearInterval(<any> this.timerId);
+            this.timerId = undefined;
         }
-        if (nTime !== this.result.value[0]) {
+
+        if(this.resetInterval) {
+            this.resetInterval = false;
+            if (this.lastChangeTime !== 0 && this.interval > 0 &&
+                this.maxTime > 0 && this.maxTime > nTime * 1000) {
+                this.timerId = setInterval(() => this.updateTimer(),
+                                           this.interval);
+            }
+        }
+            
+        if (this.lastChangeTime !== 0 && nTime !== this.result.value[0] &&
+            !(nTime > this.maxTime &&
+              this.result.value[0] >= this.maxTime)) {
             this.result.value = [nTime];
             return true;
         }
@@ -2232,6 +2247,34 @@ class EvaluationTime extends EvaluationFunctionApplication {
 
 }
 time.classConstructor = EvaluationTime;
+
+class EvaluationTimeTrue extends EvaluationTime {
+
+    lastInputIsTrue: boolean = false;
+
+    constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
+        super(prototype, local);
+        this.result.value = [];
+    }
+
+    updateInput(pos: any, result: Result): void {
+        var v: any = result === undefined? undefined: result.value;
+
+        if(pos == 0) {
+            if(isTrue(v) !== this.lastInputIsTrue) {
+                this.lastInput = v;
+                this.lastInputIsTrue = !this.lastInputIsTrue;
+                if(this.lastInputIsTrue) {
+                    this.startCounting = true;
+                    this.markAsChanged();
+                }
+            }
+        } else
+            super.updateInput(pos, result);
+    }
+}
+timeTrue.classConstructor = EvaluationTimeTrue;
+
 
 // If the input of this node changes, it sets its output to true. At the end of
 // the evaluation cycle, it returns back to false. The change is recorded with

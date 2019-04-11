@@ -2081,8 +2081,12 @@ Display.prototype.configurationUpdate = function(
 
 Display.prototype.applyTransitionProperties = function(transitions) {
     this.ContentDisplay_applyTransitionProperties(transitions);
-    if (this.descriptionDisplay !== undefined)
+    if (this.descriptionDisplay !== undefined) {
         copyTransitionCssProp(this.frameDiv.style, "frame", transitions);
+        if(this.embeddingDiv)
+            copyTransitionCssProp(this.embeddingDiv.style, "embedding",
+                                  transitions);
+    }
 }
 
 Display.prototype.contentOffsetModeChange =
@@ -2722,8 +2726,13 @@ Display.prototype.resetFrame = function(definedProps, applyTransition) {
         if ("transition" in definedProps) {
             copyTransitionCssProp(this.frameDiv.style, "frame",
                                   definedProps.transition);
+            if(this.embeddingDiv)
+                copyTransitionCssProp(this.embeddingDiv.style, "embedding",
+                                      definedProps.transition);
         } else {
             resetTransitionCssProp(this.frameDiv.style);
+            if(this.embeddingDiv)
+                resetTransitionCssProp(this.embeddingDiv.style);
         }
     }
 }

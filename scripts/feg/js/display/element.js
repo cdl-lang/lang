@@ -759,6 +759,10 @@ var transitionPropertiesByElement = {
         viewOpacity: true,
         shadowBox: true
     },
+    embedding: {
+        width: true,
+        height: true
+    },
     display: {
         width: true,
         height: true,
