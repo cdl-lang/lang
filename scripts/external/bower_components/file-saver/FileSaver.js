@@ -1,3 +1,10 @@
+
+// Copyright 2019, Yoav Seginer
+
+// YS: Modified original code (to add support for link save).
+
+// Copyright 2016, Eli Grey
+
 /* FileSaver.js
  * A saveAs() FileSaver implementation.
  * 1.3.2
@@ -13,7 +20,8 @@
 
 /*! @source http://purl.eligrey.com/github/FileSaver.js/blob/master/FileSaver.js */
 
-var saveAs = saveAs || (function(view) {
+// generates a save function. funcName is curently either "saveAs" or "saveLink"
+var saveFuncGenerator = function(view, funcName) {
 	"use strict";
 	// IE <10 is explicitly unsupported
 	if (typeof view === "undefined" || typeof navigator !== "undefined" && /MSIE [1-9]\./.test(navigator.userAgent)) {
@@ -73,21 +81,23 @@ var saveAs = saveAs || (function(view) {
 			}
 			return blob;
 		}
-		, FileSaver = function(blob, name, no_auto_bom) {
-			if (!no_auto_bom) {
+	, FileSaver = function(blob, name, no_auto_bom, fromLink) {
+			if (blob && !no_auto_bom) {
 				blob = auto_bom(blob);
 			}
 			// First try a.download, then web filesystem, then object URLs
 			var
 				  filesaver = this
-				, type = blob.type
+		        , type = blob ? blob.type : ""
 				, force = type === force_saveable_type
 				, object_url
 				, dispatch_all = function() {
 					dispatch(filesaver, "writestart progress write writeend".split(" "));
 				}
 				// on any filesys errors revert to saving with object URLs
-				, fs_error = function() {
+		        , fs_error = function() {
+                    if(!blob)
+                        return;
 					if ((is_chrome_ios || (force && is_safari)) && view.FileReader) {
 						// Safari doesn't allow downloading of blob urls
 						var reader = new FileReader();
@@ -124,7 +134,7 @@ var saveAs = saveAs || (function(view) {
 			filesaver.readyState = filesaver.INIT;
 
 			if (can_use_save_link) {
-				object_url = get_URL().createObjectURL(blob);
+				object_url = fromLink ? fromLink : get_URL().createObjectURL(blob);
 				setTimeout(function() {
 					save_link.href = object_url;
 					save_link.download = name;
@@ -140,7 +150,14 @@ var saveAs = saveAs || (function(view) {
 		}
 		, FS_proto = FileSaver.prototype
 		, saveAs = function(blob, name, no_auto_bom) {
-			return new FileSaver(blob, name || blob.name || "download", no_auto_bom);
+			return new FileSaver(blob, name || blob.name || "download", no_auto_bom) }
+        , saveLink = function(url, name) {
+            if(!name) { // take name from URL
+                var names;
+                if(names = url.match(/[^\\/]+$/))
+                    name = names[0];
+            }
+			return new FileSaver(undefined, name || "download", true, url); 
 		}
 	;
 	// IE 10+ (native saveAs)
@@ -169,20 +186,33 @@ var saveAs = saveAs || (function(view) {
 	FS_proto.onwriteend =
 		null;
 
-	return saveAs;
-}(
-	   typeof self !== "undefined" && self
-	|| typeof window !== "undefined" && window
-	|| this.content
-));
+	return funcName == "saveAs" ? saveAs : saveLink;
+};
+
+var saveAs = saveAs ||
+    saveFuncGenerator(typeof self !== "undefined" && self
+	                  || typeof window !== "undefined" && window
+	                  || this.content,
+                      "saveAs");
+var saveLink =
+    saveFuncGenerator(typeof self !== "undefined" && self
+	                  || typeof window !== "undefined" && window
+	                  || this.content,
+                      "saveLink");
+    
+
 // `self` is undefined in Firefox for Android content script context
 // while `this` is nsIContentFrameMessageManager
 // with an attribute `content` that corresponds to the window
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports.saveAs = saveAs;
+    module.exports.saveAs = saveAs;
+    module.exports.saveLink = saveLink;
 } else if ((typeof define !== "undefined" && define !== null) && (define.amd !== null)) {
   define("FileSaver.js", function() {
     return saveAs;
+  });
+  define("LinkSaver.js", function() {
+    return saveLink;
   });
 }

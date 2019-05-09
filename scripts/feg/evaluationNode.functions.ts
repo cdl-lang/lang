@@ -4784,8 +4784,10 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         var arg0: any = singleton(this.arguments[0].value);
         var arg1: any = singleton(this.arguments[1].value);
         var arg2: any[] = this.arguments[2] !== undefined? ensureOS(this.arguments[2].value): constEmptyOS;
-        var baseName: string = typeof(arg0) === "string"? arg0: runtimeEnvironment.appName;
         var fileType: string = arg1 && typeof(arg1) === "string" ? arg1: undefined;
+        var baseName: string = typeof(arg0) === "string"? arg0:
+            (fileType != "link" ? runtimeEnvironment.appName : undefined);
+        
         var nrColumns: number = 0;
         var attributeToColumnNr: {[attr: string]: number} = {};
         var headers: string[] = [];
@@ -4882,6 +4884,15 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         if (os.length === 0) {
             return true;
         }
+
+        if(fileType == "link") {
+            // the data is a URL and we download the file pointed at by this
+            // URL (and save under its original name)
+            if(saveLink)
+                saveLink(os[0], baseName);
+            return true;
+        }
+        
         var areaReferences: ElementReference[] = os.filter(function (elt: any): elt is ElementReference { return elt instanceof ElementReference; });
         var fileName: string = baseName;
         if(fileType && !/\.\w*/.test(fileName))
@@ -4893,13 +4904,15 @@ class EvaluationDownload extends EvaluationFunctionApplication {
             }
             // perhaps add option { // Some (small) random image imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABxJREFUeNpi+A8EDEgAzocx0BXgFsDQiqwAIMAAW3Aj3ZRED7gAAAAASUVORK5CYII=" }
             domtoimage.toBlob(area.display.frameDiv).then(function(blob) {
-                saveAs(blob, fileName);
+                if(saveAs)
+                    saveAs(blob, fileName);
             }).catch(function (error) {
                 console.error("Error while copying image:", error);
                 return false;
             });
         } else if (areaReferences.length === 0) {
-            saveAs(new Blob([dataToString(os)]), fileName);
+            if(saveAs)
+                saveAs(new Blob([dataToString(os)]), fileName);
         }
 
         return true;

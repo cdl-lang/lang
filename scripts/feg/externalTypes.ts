@@ -380,6 +380,15 @@ declare interface FileSaver {
 declare function saveAs(data: Blob, filename?: string, disableAutoBOM?: boolean): FileSaver;
 
 /**
+ * Variation on: https://github.com/eligrey/FileSaver.js
+ * 
+ * @param {string} url 
+ * @param {string} [filename] 
+ * @returns {FileSaver} 
+ */
+declare function saveLink(url: string, filename?: string): FileSaver;
+
+/**
  * See: https://github.com/tsayen/dom-to-image
  * 
  * @interface DomToImage

@@ -15,7 +15,7 @@
 // %%include%%: <scripts/feg/systemEvents.js>
 
 // %%include%%: <scripts/external/bower_components/dom-to-image/src/dom-to-image.js>
-// %%include%%: <scripts/external/bower_components/file-saver/FileSaver.min.js>
+// %%include%%: <scripts/external/bower_components/file-saver/FileSaver.js>
 // %%include%%: <scripts/utils/inheritance.js>
 // %%include%%: <scripts/feg/pathFunctions.js>
 // %%include%%: <scripts/utils/environment.js>
