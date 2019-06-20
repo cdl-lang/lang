@@ -146,7 +146,7 @@ class PositionChangeTracker {
                             this.changes[beforeNdx].origin.join(","));
                 return undefined;
             }
-            if (afterNdx < this.changes.length && index + newValue.length > this.changes[afterNdx].index) {
+            if (afterNdx < this.changes.length && index + origLength > this.changes[afterNdx].index) {
                 console.log("cannot change: overwriting another write (2)",
                             this.changes[afterNdx].origin.join(","));
                 return undefined;
