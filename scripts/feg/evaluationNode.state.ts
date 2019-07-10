@@ -1272,16 +1272,16 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
         var subOS: any[] = attr in oldValue? oldValue[attr]: [];
         var mAttr2: MergeAttributes = attributes.popPathElement(attr);
         if (mAttr2.erase !== true) {
-            for (var i: number = 0; i < position.sub.length; i++) {
-                var subPos: DataPosition = position.sub[i];
-                var posChange: PositionChange = pct.markShift(subPos.index, 1, [{}], true, mode);
-                if (posChange !== undefined) {
-                    var projPositionChangeTracker = posChange.markProjection(attr); 
+            var posChange: PositionChange = pct.markShift(index, 1, [{}], true, mode);
+            if (posChange !== undefined) {
+                var projPositionChangeTracker = posChange.markProjection(attr);
+                for (var i: number = 0; i < position.sub.length; i++) {
+                    var subPos: DataPosition = position.sub[i];
                     subOS = updateValue(subOS, newValue, subPos, mode, mAttr2, projPositionChangeTracker);
-                } else {
-                    Utilities.warn("versus: " + gWriteAction);
                 }
-            }
+            } else
+                Utilities.warn("versus: " + gWriteAction);
+            
             repl[attr] = subOS;
             if (position.addedAttributes !== undefined) {
                 repl = addAttributes(repl, position.addedAttributes);
