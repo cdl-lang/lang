@@ -775,6 +775,13 @@ class EventQueue {
         if (currentEvent === undefined) {
             return false;
         }
+        if(currentEvent.state == QueuedEventState.waiting) {
+            // the current trigger is not the result of this event, which
+            // is still waiting to be processed (this is not an error, there
+            // may be a non-event related trigger)
+            return false;
+        }
+        
         if (defaultAbort && isKeyEvent(currentEvent.event)) {
             // Only explicit aborts for key events
             return false;
