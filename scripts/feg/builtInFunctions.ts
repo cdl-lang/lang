@@ -1695,6 +1695,7 @@ class EFConcatStr implements ExecutableFunction {
     }
 }
 concatStr.factory = EFConcatStr.make;
+concat.factory = EFConcatStr.make;
 
 class EFNumberToString implements ExecutableFunction {
     static singleton: ExecutableFunction = new EFNumberToString();

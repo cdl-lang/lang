@@ -286,6 +286,7 @@ var intFuncMap: {[name: string]: ExecutableFunction} = {
     lessThan: EFLessThan.singleton,
     lessThanOrEqual: EFLessThanOrEqual.singleton,
     concatStr: EFConcatStr.singleton,
+    concat: EFConcatStr.singleton,
     numberToString: EFNumberToString.singleton,
     range: EFRange.singleton,
     max: EFMax.singleton,

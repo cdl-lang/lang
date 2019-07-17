@@ -1454,6 +1454,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
         }
         break;
       case "concatStr":
+      case "concat":  
         if (constantArguments) {
             var strOs = (<ConstNode> args[0]).value;
             var separator = args[1] === undefined? "": getDeOSedValue((<ConstNode> args[1]).value);

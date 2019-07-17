@@ -3488,6 +3488,7 @@ class FunctionApplicationNode extends FunctionNode {
           case "lessThan": case "lessThanOrEqual": case "equal": case "notEqual": case "greaterThanOrEqual": case "greaterThan":
           case "index":
           case "concatStr":
+          case "concat":
           case "numberToString":
           case "bool":
           case "notEmpty": case "empty":

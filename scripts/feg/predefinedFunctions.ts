@@ -62,6 +62,7 @@ var nextStar: BuiltInFunction = new BuiltInFunction("nextStar", 0, 2, undefined,
 var nextPlus: BuiltInFunction = new BuiltInFunction("nextPlus", 0, 2, undefined, true, true);
 var index: BuiltInFunction = new BuiltInFunction("index", 0, 2, numericValueType, true, true);
 var concatStr: BuiltInFunction = new BuiltInFunction("concatStr", 1, 2, stringValueType.copy().addSize(1));
+var concat: BuiltInFunction = new BuiltInFunction("concat", 1, 2, stringValueType.copy().addSize(1));
 var subStr: BuiltInFunction = new BuiltInFunction("subStr", 2, 2, stringValueType.copy().addSize(1));
 var numberToString: BuiltInFunction = new BuiltInFunction("numberToString", 2, 2, stringValueType.copy().addSize(1));
 var bool: BuiltInFunction = new BuiltInFunction("bool", 1, 1, boolValueType.copy().addSize(1));

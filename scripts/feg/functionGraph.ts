@@ -873,6 +873,7 @@ var globalIdentifiers: {[name: string]: boolean} = {
     nextPlus: true,
     index: true,
     concatStr: true,
+    concat: true,
     subStr: true,
     numberToString: true,
     bool: true,

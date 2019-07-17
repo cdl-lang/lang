@@ -1066,6 +1066,7 @@ var unmergeableBuiltInFunctions: {[funName: string]: boolean} = {
 	"intersection":                  true,
 	"index":                         true,
 	"concatStr":                     true,
+    "concat":                        true,
 	"subStr":                        true,
 	"bool":                          true,
 	"notEmpty":                      true,
