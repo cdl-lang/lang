@@ -82,11 +82,11 @@ class GoogleMapsFI extends ForeignInterface {
             if (!(options instanceof Object) || options instanceof NonAV) {
                 options = {};
             }
-            this.options = mergeConst(options, {
+            this.options = mergeCopyValue(options, {
                 zoom: 1,
                 center: {lat: 0, lng: 0},
                 mapTypeId: "terrain"
-            });
+            }, undefined, undefined);
             if (this.map !== undefined) {
                 this.map.setOptions(this.options);
             }
@@ -325,7 +325,8 @@ class GoogleMapsFI extends ForeignInterface {
                     }
                 }
                 if (wrElem.styles instanceof Object) {
-                    this.options.styles = mergeConst(wrElem.styles, this.options.styles);
+                    this.options.styles = mergeCopyValue(
+                        wrElem.styles, this.options.styles, undefined, undefined);
                 }
             }
         }
@@ -433,7 +434,7 @@ class GoogleMapsFI extends ForeignInterface {
         if (v instanceof Array) {
             options = v[0];
             for (var i = 0; i < v.length; i++) {
-                options = mergeConst(options, v[i]);
+                options = mergeCopyValue(options, v[i], undefined, undefined);
             }
         } else {
             options = v;

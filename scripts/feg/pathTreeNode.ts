@@ -862,6 +862,25 @@ class PathInfo implements QualifierClause {
         }
         return undefined;
     }
+
+    // true if this value is a push() merge directive
+    isMergeDirective(): boolean
+    {
+        return (this.expression !== undefined &&
+                this.expression.isMergeDirective())
+    }
+
+    // true if this value is an atomic() merge directive
+    isAtomic(): boolean
+    {
+        return this.expression !== undefined && this.expression.isAtomic() 
+    }
+    
+    // true if this value is a push() merge directive
+    isPush(): boolean
+    {
+        return this.expression !== undefined && this.expression.isPush() 
+    }
 }
 
 function arraysEqual(p1: PathInfo[], p2: PathInfo[]): boolean {
@@ -1590,9 +1609,11 @@ class PathTreeNode {
     // in this.values[0].value.
     isSingleValue(): boolean {
         return this.values.length > 0 && 
-               (this.values[0].alwaysTrue() ||
-                (this.allValuesIdentical() && this.atLeastOneAlwaysTrue())) &&
-               Utilities.isEmptyObj(this.next);
+            (this.values[0].alwaysTrue() ||
+             (this.allValuesIdentical() && this.atLeastOneAlwaysTrue())) &&
+            Utilities.isEmptyObj(this.next) &&
+            (this.values[0].isAtomic() ||
+             !this.values.some(v => v.isMergeDirective()));
     }
 
     isSingleSimpleValue(): boolean {
@@ -1964,7 +1985,10 @@ class PathTreeNode {
         for (var i: number = 0; i < this.values.length; i++) {
             if (this.values[i].isUnmergeable) {
                 // Remove subsequent values with implied qualifiers
+                // (unless they are merge directives).
                 while (i + 1 < this.values.length &&
+                       (!this.values[i + 1].expression ||
+                        !this.values[i + 1].expression.isMergeDirective()) &&
                       qInQs(this.values[i].qualifierTerms,
                             this.values[i + 1].qualifierTerms)) {
                     this.eliminatedValues.push(this.values[i + 1]);
@@ -3053,7 +3077,8 @@ function replaceAbbreviatedPaths(obj: any): any {
         if (/\./.test(attr)) {
             var replacement: any =
                 pathToQueryObject(attr.split("."), obj[attr]);
-            obj2 = mergeConst(shallowCopyMinus(obj2, attr), replacement);
+            obj2 = mergeValueOverwrite(shallowCopyMinus(obj2, attr),
+                                       replacement, undefined, undefined);
         }
     }
     return obj2;

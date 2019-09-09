@@ -438,6 +438,21 @@ abstract class Expression {
         return false;
     }
 
+    // is this a merge directive?
+    isMergeDirective(): boolean {
+        return false;
+    }
+
+    // is this the atomic merge directive?
+    isAtomic(): boolean {
+        return false;
+    }
+    
+    // is this the push merge directive?
+    isPush(): boolean {
+        return false;
+    }
+    
     buildFunctionNode(origin: number, defun: number, suppressSet: boolean, context: number): FunctionNode {
         Utilities.error("implement in derived class");
         return undefined;
@@ -1833,13 +1848,38 @@ class ExpressionQuery extends ExpressionFunctionApplication {
                     node = resolveLocalQuery(nQuery, refArea.id, defun, origin, this);
                 }
                 if (node !== undefined) {
-                    return node;
+                    return this.cancelMergeDirectives(node, origin);
                 } else if (!queryHasDefinedResult(refArea.areaNode, nQuery)) {
                     return buildConstNode(undefined, false, suppressSet, 0, gUndefinedExpr);
                 }
             }
         }
-        return buildQueryNodeOnFunction(query, data, origin, defun, this, context);
+        return this.cancelMergeDirectives(
+            buildQueryNodeOnFunction(query, data, origin, defun, this,
+                                     context), origin);
+    }
+
+    // Given a function node, this checks whether there are any merge directives
+    // (atomic, push) which are active within this function node (that is,
+    // would influence the merge of the value returned by this function node).
+    // If there are any such merge directives, the function node is wrapped
+    // by a internalCancelMergeDirectives function node, to cancel their effect.
+    // The result (after wrapping) is returned.
+    
+    cancelMergeDirectives(functionNode: FunctionNode,
+                          origin: number) : FunctionNode
+    {
+        if(!functionNode)
+            return functionNode;
+
+        // check whether there are any active merge directive (atmoic/push)
+        // at or under this node.
+        if(!functionNode.hasMergeDirectives())
+            return functionNode;
+        
+        return FunctionApplicationNode.buildFunctionApplication(
+            internalCancelMergeDirectives, [functionNode], undefined, undefined,
+            origin, this);
     }
 }
 
@@ -1871,6 +1911,22 @@ class ExpressionJsFunctionApplication extends ExpressionWithArguments {
         return this.arguments.some(e => e.isTrue());
     }
 
+    // is this a merge directive (atomic or push)?
+    isMergeDirective(): boolean {
+        return (this.jsFunctionName == "push" ||
+                this.jsFunctionName == "atomic");
+    }
+
+    // is this the atomic merge directive?
+    isAtomic(): boolean {
+        return this.jsFunctionName == "atomic";
+    }
+    
+    // is this the push merge directive?
+    isPush(): boolean {
+        return this.jsFunctionName == "push";
+    }
+    
     buildFunctionNode(origin: number, defun: number, suppressSet: boolean, context: number): FunctionNode {
         var funDef: BuiltInFunction;
         var functionArguments = this.arguments.map((fn: Expression): FunctionNode => {

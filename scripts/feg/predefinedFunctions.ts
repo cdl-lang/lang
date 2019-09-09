@@ -330,6 +330,7 @@ var internalApply: BuiltInFunction = new BuiltInFunction("internalApply", 2, 2, 
 var internalPush: BuiltInFunction = new BuiltInFunction("internalPush", 1, 1, undefined);
 var internalAtomic: BuiltInFunction = new BuiltInFunction("internalAtomic", 1, 1, undefined);
 var internalDelete: BuiltInFunction = new BuiltInFunction("internalDelete", 0, 0, new ValueType().addUndefined().addSize(0));
+var internalCancelMergeDirectives: BuiltInFunction = new BuiltInFunction("internalCancelMergeDirectives", 1, 1, undefined);
 var compareAreasQuery: BuiltInFunction = new BuiltInFunction("compareAreasQuery", 2, 2, undefined);
 var nCompareAreasQuery: BuiltInFunction = new BuiltInFunction("nCompareAreasQuery", 2, 2, undefined);
 var internalFilterAreaByClass: BuiltInFunction = new BuiltInFunction("internalFilterAreaByClass", 2, 2, undefined);

@@ -2064,7 +2064,8 @@ class EFDynamicAttribute extends EFNSetOperator {
             }
             res = shallowCopyMinus(base, attr);
             if (attr in base) {
-                res[attr] = mergeCopyValue(arg2, base[attr], undefined);
+                res[attr] = mergeCopyValue(arg2, base[attr], undefined,
+                                           undefined);
             } else {
                 res[attr] = arg2;
             }

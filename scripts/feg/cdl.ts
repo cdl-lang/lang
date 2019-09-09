@@ -2300,57 +2300,194 @@ function isUnmergeable(v: any): boolean {
          (v instanceof Array && (v.length !== 1 || isUnmergeable(v[0]))));
 }
 
-function mergeConst(a: any, b: any): any {
+// This function performs the basic merge of a sequence of variant values
+// (given in 'variants') which are ordered by their priority (first is
+// highest priority). 'qualifiers' is an array of booleans indicating
+// which variants are active (if no 'qualifiers' are given, all variants
+// are assumes active). The argument 'isVariantUnmergeable' is again an
+// array which can indicate (at the corresponding position) that a variant
+// cannot be merged further with lower priority variants. This is optional,
+// if undefined, it is assumed that all variants are mergeable.
+// 'firstToMerge' and 'lastToMerge' (if given)
+// indicate the range of indexes in the 'variants' list which need to
+// participate in the merge (some of the variants in this range may still
+// be inactive due to their qualifier). The variant with index
+// 'lastToMerge' is not merged.
+// Finally, 'result' could optionally be the Result object which should store
+// the result of the merge. If given, this object is modified by this function.
+// If this object is not given, a new Result object is created to store the
+// result. This function results the Result object which stores the
+// result of the merge (either the object provided as argument or the
+// object created by the function).
+
+function mergeVariants(variants: Result[], qualifiers: boolean[],
+                       isVariantUnmergeable: boolean[],
+                       firstToMerge: number, lastToMerge: number,
+                       result: Result): Result
+{
+    var nrMerges: number = 0;
+    var attributes: MergeAttributes = undefined;
+    // 'result' attributes to be returned with result (if not the same as
+    // 'attributes')
+    var rAttributes: MergeAttributes = undefined;
+    var firstResult: Result = undefined;
+    var mergeValue: any[] = undefined;
+
+    if(firstToMerge === undefined)
+        firstToMerge = 0;
+    if(lastToMerge === undefined)
+        lastToMerge = variants.length;
+    
+    for (var i: number = firstToMerge; i < lastToMerge; i++) {
+        if ((qualifiers !== undefined && !qualifiers[i]) ||
+            variants[i].value === undefined)
+            continue;
+
+        if (firstResult === undefined)
+            firstResult = variants[i];
+
+        // the next variant to merge. This may be a virtual variant created
+        // by merging the suffix of the sequence of variants.
+        var nextVariant: Result = variants[i];
+        
+        if(attributes && attributes.push && i < lastToMerge - 1) {
+            // merge all lower priority variants (if there is more than
+            // one of them) before performing the push below
+            nextVariant = mergeVariants(variants, qualifiers,
+                                        isVariantUnmergeable, i,
+                                        lastToMerge, undefined);
+            // make the loop quit when this pass is done
+            i = lastToMerge - 1;
+        }
+
+        // if this is not yet the last merge, must check whether the
+        // lower priority variant has unmergeable node which are mergeable
+        // in the (higher priority) merge produced so far.
+        var isUnmergeable: any[] = (i < lastToMerge - 1) ? [] : undefined
+        
+        if(nrMerges === 0) {
+            mergeValue = nextVariant.value;
+            nrMerges = 1;
+        } else if(nrMerges === 1) {
+            var prevMergeValue: any[] = mergeValue;
+            mergeValue = mergeCopyValue(mergeValue, nextVariant.value,
+                                        attributes, isUnmergeable);
+            if(mergeValue !== prevMergeValue && mergeValue != nextVariant.value)
+                // means copy of array (and object in it, if any)
+                nrMerges++
+        } else // mergeValue is already a copy, can merge into it
+            mergeValue = mergeValueOverwrite(mergeValue, nextVariant.value,
+                                             attributes, isUnmergeable);
+        
+        attributes = attributes ?
+            attributes.copyMerge(nextVariant.mergeAttributes) :
+            nextVariant.mergeAttributes;
+
+        if(rAttributes !== undefined)
+            rAttributes = rAttributes.copyMerge(nextVariant.mergeAttributes);
+        
+        if (isVariantUnmergeable && isVariantUnmergeable[i])
+            break;
+        
+        if(isUnmergeable && isUnmergeable[0]) {
+            // lower nodes are unmergeable. These paths become atomic in
+            // subsequent merge steps (but are not atomic in the total
+            // result of the merge)
+            if(!rAttributes) {
+                rAttributes = attributes ? attributes :
+                    new MergeAttributes(undefined, undefined, undefined);
+            }
+
+            // atomic merge attributes for the unmergeable paths
+            var unmergeableAtomic =
+                new MergeAttributes(undefined, isUnmergeable[0], undefined);
+            attributes = attributes ? attributes.copyMerge(unmergeableAtomic) :
+                unmergeableAtomic;
+        }
+    }
+
+    if(result === undefined)
+        result = new Result();
+    
+    if (nrMerges === 1)
+        result.copyLabelsMinusDataSource(firstResult);
+    
+    result.value = mergeValue;
+    if(rAttributes)
+        attributes = rAttributes;
+    if(attributes && attributes.notEmpty())
+        result.mergeAttributes = attributes;
+    else if(result.mergeAttributes)
+        result.mergeAttributes = undefined;
+
+    return result;
+}
+
+// Merges a and b, assuming that a's top level object is the "accumulated" value
+// of multiple sequential merges: it only makes copies of b, and assumes a is
+// "owned" by the caller. Consequently, if a and b are objects, copies of
+// attributes of b can be added to a.
+//   This can be improved by keeping track of the state of the qualifiers and
+// the inputs, combined with a merge function that knows when a change is made.
+function mergeValueOverwrite(a: any, b: any, attributes: MergeAttributes,
+                             isUnmergeable: any[]): any
+{
     if (a instanceof Array) {
         if (a.length === 0) {
-            return a;
+            return []; // This seems to be the behavior.
         }
-        if (a.length !== 1 || b === undefined || (b instanceof Array && b.length !== 1)) {
+        if(b === undefined)
+            return a;
+        if (a.length !== 1)
+            return a;
+        if (b instanceof Array && b.length !== 1) {
+            // b unmergeable
+            if(isUnmergeable !== undefined && isAV(a[0]))
+                isUnmergeable[0] = true;
             return a;
         }
     } else if (b instanceof Array && b.length !== 1) {
+        // b unmergeable
+        if(isUnmergeable !== undefined && isAV(a))
+            isUnmergeable[0] = true;
         return a;
-    } else if (a === undefined) {
-        return b;
     }
     var a0: any = a instanceof Array? a[0]: a;
     var b0: any = b instanceof Array? b[0]: b;
-    if (!isAV(a0) || !isAV(b0)) {
+    if (!isAV(a0))
+        return a;
+    if(!isAV(b0)) {
+        // b unmergeable
+        if(isUnmergeable !== undefined)
+            isUnmergeable[0] = true;
         return a;
     }
-    var a0Empty: boolean = true;
-    var o: any = {};
-    for (var attr in a0) {
-        a0Empty = false;
-        if (attr in b0) {
-            var repl: any = mergeConst(a0[attr], b0[attr]);
-            if (repl !== undefined) {
-                o[attr] = repl;
-            }
-        } else {
-            o[attr] = a0[attr];
-        }
-    }
-    if (a0Empty) {
-        return b;
-    }
-    for (var attr in b0) {
-        if (!(attr in a0)) {
-            o[attr] = b0[attr];
-        }
-    }
-    return a instanceof Array? [o]: o;
+    mergeCopyAV(a0,b0, attributes, true, isUnmergeable);
+    return a;
 }
 
 // Returns the merge of a and b, trying to use as much of the original
 // objects as possible; if the result differs from a and b, it is a
 // new object, otherwise it's the original parameter.
 // If push is true, a is appended to b. If push is an object, it describes at
-// which paths the data under b should be pushed onto that under a. Note: this
+// which paths the data under b should be pushed onto under a. Similarly
+// holds for the 'atomic' property, which is handled here in the same way.
+// This function returns b iff a is undefined. In all other cases it either
+// returns 'a' or a new object/array.
+// The optional array 'isUnmergeable' allows this function to return information
+// about the merge that was produced. Specifically, it indicates in which
+// paths in the returned object, 'b' had an unmergeable value, while 'a'
+// had a mergeable value. The merge value at that path would be
+// a's, but any further merging (with lower priority objects) would be blocked
+// at those paths by the fact that b's value was unmergeable.
+// Note: this
 // function is not completely compatible with the classic [merge], as [merge,
 // o(), x] = x in classic, but here it is o(). The implementation here is
-// compatible with the idea that o() === false.
-function mergeCopyValue(a: any, b: any, attributes: MergeAttributes): any[] {
+// compatible with the idea that ordered set of length != 1 cannot be merged
+// without identifiers. 
+function mergeCopyValue(a: any, b: any, attributes: MergeAttributes,
+                        isUnmergeable: any[]): any[]
+{
     var a0: any, b0: any;
 
     if (a === undefined) {
@@ -2365,47 +2502,80 @@ function mergeCopyValue(a: any, b: any, attributes: MergeAttributes): any[] {
         }
     }
     if (a instanceof Array && b instanceof Array) {
-        if (a.length !== 1 || b.length !== 1) {
-            // Cannot merge ordered sets with length !== 1
+        // Cannot merge ordered sets with length !== 1
+        if (a.length !== 1)
+            return a;
+        if(b.length !== 1) {
+            // b unmergeable (and a is mergeable)
+            if(isUnmergeable !== undefined && isAV(a[0]))
+                isUnmergeable[0] = true;
             return a;
         }
         a0 = a[0]; b0 = b[0];
     } else if (b instanceof Array) {
         if (b.length !== 1) {
+            // b unmergeable
+            if(isUnmergeable !== undefined && isAV(a))
+                isUnmergeable[0] = true;
             return a;
         }
         a0 = a; b0 = b[0];
     } else if (a instanceof Array) {
         if (a.length !== 1) {
+            // a is unmergeable
             return a;
         }
         a0 = a[0]; b0 = b;
     } else {
         a0 = a; b0 = b;
     }
-    if (!isAV(a0) || !isAV(b0)) {
+    if (!isAV(a0))
+        return a;
+    if(!isAV(b0)) {
         // This is also the case when b = o()
+        // b is unmergeable
+        if(isUnmergeable !== undefined)
+            isUnmergeable[0] = true;
         return a;
     }
-    var o: any = mergeCopyAV(a0, b0, attributes);
-    return o === a0? a: [o];
+    var o: any = mergeCopyAV(a0, b0, attributes, false, isUnmergeable);
+    return o === a0? a : (o === b0? b : (a instanceof Array ? [o] : o));
 }
 
-function mergeCopyAV(a0: any, b0: any, attributes: MergeAttributes): any {
+// The optional array 'isUnmergeable' allows this function to return information
+// about the merge that was produced. Specifically, it indicates in which
+// paths in the returned object, b0 had an unmergeable value, while a0
+// (possibly) had a mergeable value. The merge value at that path would be
+// a0's, but any further merging (with lower priority objects) would be blocked
+// at those paths by the fact that b0's value was unmergeable.
+
+function mergeCopyAV(a0: any, b0: any, attributes: MergeAttributes,
+                     overwrite: boolean, isUnmergeable: any[]): any
+{
     if (!isAV(a0) || !isAV(b0) ||
           (attributes !== undefined && attributes.atomic === true)) {
         return a0 !== undefined? a0: b0;
     }
-    var o: any = {};
+    var o: any = overwrite ? a0 : {};
     var a0Empty: boolean = true; // When true, a0 is an empty AV
     var a0Repl: boolean = false; // when true, at least one attribute of a[0] has been replaced
+    var attrIsUnmergeable: any[] = isUnmergeable ? [] : undefined;
     for (var attr in a0) {
         a0Empty = false;
         if (attr in b0) {
             var mAttr2: MergeAttributes = attributes === undefined? undefined:
                                           attributes.popPathElement(attr);
-            var repl: any = mergeCopyValue(a0[attr], b0[attr], mAttr2);
-            if (repl !== undefined) {
+            var repl: any = mergeCopyValue(a0[attr], b0[attr], mAttr2,
+                                           attrIsUnmergeable);
+            if(attrIsUnmergeable !== undefined && attrIsUnmergeable[0]) {
+                if(!isUnmergeable[0])
+                    isUnmergeable[0] = {};
+                isUnmergeable[0][attr] = attrIsUnmergeable[0];
+                attrIsUnmergeable[0] = false;
+            }
+            if(overwrite)
+                o[attr] = repl;
+            else if (repl !== undefined) {
                 o[attr] = repl;
                 if (repl !== a0[attr]) {
                     a0Repl = true;
@@ -2413,11 +2583,11 @@ function mergeCopyAV(a0: any, b0: any, attributes: MergeAttributes): any {
             } else {
                 a0Repl = true;
             }
-        } else {
+        } else if(!overwrite) {
             o[attr] = a0[attr];
         }
     }
-    if (a0Empty) {
+    if (a0Empty && !overwrite) {
         return b0;
     }
     for (var attr in b0) {

@@ -955,6 +955,7 @@ var globalIdentifiers: {[name: string]: boolean} = {
     internalPush: true,
     internalAtomic: true,
     internalDelete: true,
+    internalCancelMergeDirectives: true,
     compareAreasQuery: true,
     nCompareAreasQuery: true,
     internalFilterAreaByClass: true,

@@ -5,8 +5,6 @@ all: genIncJS.js old2new.js
 
 genIncJS.js: cdl.ts genIncJS.ts pyth2jscompat/misc.ts pyth2jscompat/os.ts \
 			 pyth2jscompat/sys.ts pyth2jscompat/parseargs.ts aux/cdlBuiltInFunctions.ts
-	-npm install -g typescript
-	-npm install
 	tsc --target es2018 --lib es2018 --module commonjs --strict genIncJS.ts
 
 old2new.js: old2new.ts pyth2jscompat/parseargs.ts aux/cdlBuiltInFunctions.ts

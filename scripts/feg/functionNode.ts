@@ -606,6 +606,14 @@ abstract class FunctionNode implements EqualityTest, EvaluationNodeFactory {
         return false;
     }
 
+    isAtomic(): boolean {
+        return false;
+    }
+    
+    isPush(): boolean {
+        return false;
+    }
+    
     // Returns the template id of the single area that this expression can
     // (conditionally) yield, and undefined otherwise. So if this expression is
     // if x then [me]; if y then [me], then the template id for [me] should be
@@ -1013,7 +1021,12 @@ abstract class FunctionNode implements EqualityTest, EvaluationNodeFactory {
 
     // Performs a merge between this and fn, such that the outcome of 
     // this will be identical to [merge, this, fn] at runtime.
-    mergeUnderQualifier(fn: FunctionNode): FunctionNode {
+    // If 'checkUnmergeable' is true and 'fn' contains unmergeable nodes
+    // which are mergeable in 'this' (and therefore remain mergeable in
+    // the result) the merge fails and undefined is returned. This should
+    // be used in cases where the result is again merged with a lower priority
+    // function.
+    mergeUnderQualifier(fn: FunctionNode, checkUnmergeable: boolean): FunctionNode {
         Utilities.error("implement in derived class when canMergeUnderQualifier returns true");
         return undefined;
     }
@@ -1215,6 +1228,12 @@ abstract class FunctionNode implements EqualityTest, EvaluationNodeFactory {
             functionNodeToExpressionPathsStringCache.push(path);
         }
         return nr;
+    }
+
+    // Nodes which may have active merge directives under them should
+    // override this function.
+    hasMergeDirectives(): boolean {
+        return false;
     }
 }
 
@@ -1465,7 +1484,10 @@ class AVFunctionNode extends FunctionNode {
 
     // Performs a merge between this and fn, such that the outcome of 
     // this will be identical to [merge, this, fn] at runtime.
-    mergeUnderQualifier(fn: FunctionNode): AVFunctionNode {
+    // If 'checkUnmergeable' is true and 'fn' has unmergeable nodes which
+    // are mergeable in 'this' (and therefore also in the result of the merge)
+    // this function returns undefined.
+    mergeUnderQualifier(fn: FunctionNode, checkUnmergeable: boolean): AVFunctionNode {
         var attributes: {[attribute: string]: FunctionNode} = {};
         var locality: number = this.localToArea;
         var defun: number = this.localToDefun;
@@ -1483,7 +1505,10 @@ class AVFunctionNode extends FunctionNode {
         }
         for (attr in this.attributes) {
             if (attr in an.attributes) {
-                attributes[attr] = this.attributes[attr].mergeUnderQualifier(an.attributes[attr]);
+                attributes[attr] = this.attributes[attr].mergeUnderQualifier(an.attributes[attr], checkUnmergeable);
+                if(checkUnmergeable && attributes[attr] === undefined &&
+                   this.attributes[attr] !== undefined)
+                    return undefined; // cannot merge
             } else {
                 attributes[attr] = this.attributes[attr];
             }
@@ -1654,6 +1679,15 @@ class AVFunctionNode extends FunctionNode {
         for (var attr in this.attributes) {
             this.attributes[attr].tagExpressionPath(templateId, defunId, path + "." + attr);
         }
+    }
+
+    hasMergeDirectives(): boolean {
+        for (var attr in this.attributes) {
+            var attrFunc: FunctionNode = this.attributes[attr];
+            if(attrFunc.hasMergeDirectives())
+                return true;
+        }
+        return false;
     }
 }
 
@@ -3517,6 +3551,35 @@ class FunctionApplicationNode extends FunctionNode {
         return false;
     }
 
+    // Returns true if the function is a merge directive (atomic, push, etc.)
+    
+    hasMergeDirectives(): boolean {
+        if(!this.builtInFunction)
+            return false;
+        switch (this.builtInFunction.name) {
+          case "internalAtomic":
+          case "internalPush":
+          case "internalErase":
+            return true;
+          case "merge":
+            return this.functionArguments.some(x => x.hasMergeDirectives());
+          default:
+            return false;
+        }
+    }
+
+    // return true if this is the atomic merge directive
+    isAtomic(): boolean {
+        return this.builtInFunction !== undefined &&
+            this.builtInFunction.name == "internalAtomic";
+    }
+    
+    // return true if this is the push merge directive
+    isPush(): boolean {
+        return this.builtInFunction !== undefined &&
+            this.builtInFunction.name == "internalPush";
+    }
+    
     setPriority(prio: number): void {
         if (prio <= this.prio)
             return;
@@ -6982,9 +7045,16 @@ class ConstNode extends FunctionNode {
 
     // Performs a merge between this and fn, such that the outcome of 
     // this will be identical to [merge, this, fn] at runtime.
-    mergeUnderQualifier(fn: FunctionNode): ConstNode {
+    // If 'checkUnmergeable' is true and 'fn' has unmergeable nodes which
+    // are mergeable in 'this' (and therefore also in the result of the merge)
+    // this function returns undefined.
+    mergeUnderQualifier(fn: FunctionNode, checkUnmergeable: boolean): ConstNode {
         var cn = <ConstNode> fn;
-        var mergedValue: any = mergeConst(this.value, cn.value);
+        var isUnmergeable: any[] = checkUnmergeable ? [] : undefined;
+        var mergedValue: any = mergeCopyValue(this.value, cn.value, undefined,
+                                              isUnmergeable);
+        if(isUnmergeable && isUnmergeable[0])
+            return undefined; // 'fn' has unmergeable nodes
         var mergedType: ValueType = this.valueType.merge(fn.valueType);
 
         return new ConstNode(mergedValue, mergedType,

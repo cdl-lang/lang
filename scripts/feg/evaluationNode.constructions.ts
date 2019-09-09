@@ -298,21 +298,43 @@ class EvaluationAV extends EvaluationNode {
         var avFunctionNode = <AVFunctionNode> this.prototype;
         var res: any = {};
 
+        if(this.result.mergeAttributes !== undefined)
+            this.result.mergeAttributes = undefined;
+        
         for (var attr in this.inputByAttr) {
-            var attrRes: any = this.inputByAttr[attr].result.value;
-            if (attrRes !== undefined && !this.inputByAttr[attr].result.erase) {
+            var attrRes: Result = this.inputByAttr[attr].result;
+            var attrResValue: any = attrRes.value;
+            if (attrResValue !== undefined && !attrRes.erase) {
                 if (this.prototype.suppressSet !== undefined &&
                       attr in avFunctionNode.suppressSetAttr) {
-                    if (attrRes instanceof Array && attrRes.length === 0) {
+                    if (attrResValue instanceof Array &&
+                        attrResValue.length === 0) {
                         // Some attributes need [] -> false, others don't
                         if (avFunctionNode.suppressSetAttr[attr]) {
                             res[attr] = false;
                         }
                     } else {
-                        res[attr] = stripArray(attrRes);
+                        res[attr] = stripArray(attrResValue);
                     }
                 } else {
-                    res[attr] = attrRes;
+                    res[attr] = attrResValue;
+                }
+                var atomic: any = attrRes.atomic;
+                var push: any = attrRes.push;
+                if(attrRes.mergeAttributes) {
+                    if(!atomic && attrRes.mergeAttributes.atomic)
+                        atomic = attrRes.mergeAttributes.atomic;
+                    if(!push && attrRes.mergeAttributes.push)
+                        push = attrRes.mergeAttributes.push;
+                }
+                if(atomic || push) {
+                    if(this.result.mergeAttributes === undefined)
+                        this.result.mergeAttributes =
+                        new MergeAttributes(undefined, undefined, undefined);
+                    if(atomic)
+                        this.result.mergeAttributes.addAtomicAttr(attr, atomic);
+                    if(push)
+                        this.result.mergeAttributes.addPushAttr(attr, push);
                 }
             }
         }
@@ -1306,7 +1328,6 @@ class EvaluationVariant extends EvaluationNode
         return false;
     }
 
-    // Merge not correct when atomic(...) is in the middle of the list
     eval(): boolean {
         var oldValue: any[] = this.result.value;
         var oldDatasource: DataSourceComposable = this.result.dataSource;
@@ -1335,11 +1356,11 @@ class EvaluationVariant extends EvaluationNode
                     if ("dataSource" in this.variants[i]) {
                         resultIsDataSource = true;
                     }
-                    if (this.isVariantUnmergeable[i]) {
-                        break;
-                    }
                 } else {
                     resultIsDataSource = false;
+                }
+                if (this.isVariantUnmergeable[i]) {
+                    break;
                 }
             }
         }
@@ -1349,7 +1370,6 @@ class EvaluationVariant extends EvaluationNode
         if (!change) {
             return false;
         }
-        nrMerges = 0;
         this.prevMerged = variantsToMerge;
         if (resultIsDataSource && this.dataSourceResultMode) {
             for (var i: number = this.firstActive; i < this.lastActive; i++) {
@@ -1368,39 +1388,10 @@ class EvaluationVariant extends EvaluationNode
             }
             return false;
         } else {
-            for (var i: number = this.firstActive; i < this.lastActive; i++) {
-                if (this.qualifiedVariants[i] &&
-                      this.variants[i].value !== undefined) {
-                    if (firstResult === undefined) {
-                        firstResult = this.variants[i];
-                    }
-                    if (this.variants[i].push) {
-                        if (mergeResult === undefined) {
-                            mergeResult = this.variants[i].value;
-                            nrMerges++;
-                        } else {
-                            if (!(mergeResult instanceof Array)) {
-                                mergeResult = [mergeResult];
-                            }
-                            Array.prototype.push.apply(mergeResult, this.variants[i].value);
-                        }
-                    } else {
-                        mergeResult = nrMerges === 0? this.variants[i].value:
-                            nrMerges === 1? mergeValueCopy(mergeResult, this.variants[i].value):
-                            mergeValueOverwrite(mergeResult, this.variants[i].value);
-                        nrMerges++;
-                    }
-                    if (nrMerges === 1 && this.isVariantUnmergeable[i]) {
-                        break;
-                    }
-                }
-            }
-            if (nrMerges === 1) {
-                this.result.copyLabelsMinusDataSource(firstResult);
-            } else {
-                this.result.resetLabels();
-            }
-            this.result.value = mergeResult;
+            mergeVariants(this.variants, this.qualifiedVariants,
+                          this.isVariantUnmergeable,
+                          this.firstActive, this.lastActive,
+                          this.result);
             this.variantChange = {};
             return this.result.dataSource !== oldDatasource ||
                    !objectEqual(oldValue, this.result.value);
@@ -1719,11 +1710,10 @@ class EvaluationVariant1 extends EvaluationNode
         return false;
     }
 
-    // Merge not correct when atomic(...) is in the middle of the list
     eval(): boolean {
         if (this.qualifiedVariant) {
             if (!objectEqual(this.result.value, this.variant.value) ||
-                  !this.result.equalLabels(this.variant)) {
+                !this.result.equalLabels(this.variant)) {
                 this.result.copy(this.variant);
                 return true;
             }

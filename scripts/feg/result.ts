@@ -66,6 +66,9 @@ class Result {
     atomic?: boolean;
     // If true, the result should be added to an os in a write
     push?: boolean;
+    // merge attributes indicate specific paths in the value (assuming it is
+    // an AV) that have special merge properties, such as atomic or push.
+    mergeAttributes?: MergeAttributes;
     // If true, identities should be ignored. This flag is not copied, so
     // use it only directly in the area set data expression.
     anonymize?: boolean;
@@ -121,6 +124,7 @@ class Result {
 
     copy(r: Result): void {
         this.value = r.value;
+        this.mergeAttributes = r.mergeAttributes;
         if ("incremental" in r) {
             this.incremental = r.incremental;
             this.added = r.added;
@@ -591,6 +595,10 @@ class MergeAttributes {
         this.erase = erase;
     }
 
+    notEmpty(): boolean {
+        return <boolean> (this.push || this.atomic || this.erase)
+    }
+    
     // Prefix the push and atomic paths with the write path so at merge time
     // it's known where to push/atomic
     extendWithPath(path: string[]): MergeAttributes {
@@ -613,11 +621,118 @@ class MergeAttributes {
         );
     }
 
+    // 'atomic' is either true (if the given attribute is atomic) or
+    // an existing object representing the atomic part of a MergeAttributes
+    // object.
+    addAtomicAttr(attr: string, atomic: any): void {
+        if(!this.atomic || typeof(this.atomic) != "object")
+            this.atomic = {};
+        this.atomic[attr] = atomic;
+    }
+
+    // 'push' is either true (if the given attribute has a push) or
+    // an existing object representing the push part of a MergeAttributes
+    // object.
+    addPushAttr(attr: string, push: any): void {
+        if(!this.push || typeof(this.push) != "object")
+            this.push = {};
+        this.push[attr] = push;
+    }
+    
     popPathElement(elt: string): MergeAttributes {
         return new MergeAttributes(
             this.push instanceof Object? this.push[elt]: undefined,
             this.atomic instanceof Object? this.atomic[elt]: undefined,
             this.erase instanceof Object? this.erase[elt]: undefined
         );
+    }
+
+    // Merge the paths in 'attributes' with those in this object and
+    // return a new merged object (the copy is as shallow as possible).
+    // When there are two directives at a path and its extension, the
+    // directive at the shorter path makes the other meaningless.
+    // Two different directives at the same path, however, conflict.
+    // Therefore, after the merge, we prune the trees to keep only the
+    // shortests paths, and if two trees contain the same path, we keep
+    // that which comes from the 'this' object.
+    
+    copyMerge(attributes: MergeAttributes): MergeAttributes  {
+
+        // merge the paths in a and b
+        function mergePaths(a: any,b: any): any {
+            if(b === true || a === true)
+                return true;
+            // merge common attributes and add attributes from b to a.
+            var merged: any = {};
+            for (var attr in a)
+                merged[attr] = a[attr];
+            for (var attr in b)
+                merged[attr] = (attr in a) ? mergePaths(a[attr],b[attr]) : b[attr];
+            
+            return merged;
+        }
+        
+        if(!attributes)
+            return this;
+        var mergedAttributes = new MergeAttributes(this.push, this.atomic,
+                                                   this.erase);
+        if(attributes.push) {
+            mergedAttributes.push = this.push ?
+                mergePaths(this.push, attributes.push) : attributes.push;
+        }
+        if(attributes.atomic) {
+            mergedAttributes.atomic = this.atomic ?
+                mergePaths(this.atomic,attributes.atomic) : attributes.atomic; 
+        }
+        if(attributes.erase) {
+            mergedAttributes.erase = this.erase ?
+                mergePaths(this.erase,attributes.erase) : attributes.erase;
+        }
+
+        if(this.push)
+            mergedAttributes.prunePaths(this.push, "push");
+        if(this.atomic)
+            mergedAttributes.prunePaths(this.atomic, "atomic");
+        if(this.erase)
+            mergedAttributes.prunePaths(this.erase, "erase");
+        
+        return mergedAttributes;
+    }
+
+    prunePaths(pruningPaths: any, pruneByDirective: string): void {
+        
+        // returns the pruned tree (may be a copy)
+        function prune(pruningPaths: any, prunedPaths: any): any {
+            if(pruningPaths === undefined)
+                return prunedPaths;
+            if(pruningPaths === true)
+                return undefined; // prune everything
+            if(prunedPaths === true || prunedPaths === undefined)
+                return prunedPaths;
+            var copyPaths: any = undefined;
+            for(var attr in pruningPaths) {
+                if(!(attr in prunedPaths))
+                    continue;
+                var prunedAttr = prune(pruningPaths[attr],prunedPaths[attr]);
+                if(prunedAttr !== prunedPaths[attr]) {
+                    // pruning took place, must create a new object
+                    if(copyPaths === undefined) { // create a shallow copy
+                        copyPaths = {};
+                        for(var origAttr in prunedPaths)
+                            copyPaths[origAttr] = prunedPaths[origAttr];
+                    }
+                    copyPaths[attr] = prunedAttr;
+                }
+            }
+            return copyPaths ? copyPaths : prunedPaths
+        } // end auxiliary function
+        
+        for(var mergeDirective in this) {
+            if(mergeDirective == pruneByDirective)
+                continue; // this is the directive by which we are pruning
+            if(this[mergeDirective] === undefined)
+                continue; // nothing to prune
+            this[mergeDirective] = prune(pruningPaths, this[mergeDirective]);
+        }
     }
 }

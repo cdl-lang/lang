@@ -694,7 +694,7 @@ class EvaluationParam extends EvaluationStore {
         function updateInputAttr(attrib: string, value: any, endValue: any): boolean {
             var curValue: any = self.latchedValue !== undefined?
                 self.latchedValue.value[0]: self.lastUpdate.value[0];
-            var update: any = mergeValueCopy({input: value}, curValue);
+            var update: any = mergeCopyValue({input: value}, curValue, undefined, undefined);
 
             if(valueEqual(curValue, update))
                 return true;
@@ -1157,7 +1157,8 @@ function determineWrite(curValue: any, result: Result, mode: WriteMode, attribut
             if (resultValue instanceof Array && resultValue.length === 0) {
                 newValue = resultValue;
             } else {
-                newValue = mergeCopyValue(resultValue, curValue, attributes);
+                newValue = mergeCopyValue(resultValue, curValue, attributes,
+                                          undefined);
             }
             break;
         }
@@ -1240,7 +1241,7 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
             repl = newValue.length !== 1? newValue:
                 mergeCopyValue(newValue,
                                os.slice(index, index + position.length),
-                               attributes);
+                               attributes, undefined);
             break;
         }
         if (position.addedAttributes !== undefined) {

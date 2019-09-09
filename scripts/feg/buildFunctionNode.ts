@@ -347,10 +347,21 @@ function isImpliedBy(g1: SingleQualifier[], g2: SingleQualifier[]): boolean {
 // Returns index of the last function node that is unmergeable and implied
 // by the current qualifier. If there is no such node, it returns -1.
 // Used to check if there is any point in adding a new function node.
-function lastImpliedUnmergeable(qualifier: SingleQualifier[], qualifiers: SingleQualifier[][], functionNodes: FunctionNode[]): number {
+function lastImpliedUnmergeable(qualifier: SingleQualifier[], qualifiers: SingleQualifier[][], functionNodes: FunctionNode[], nextExpr: Expression): number {
+    if(nextExpr !== undefined && nextExpr.isMergeDirective()) {
+        // merging of a merge directive is only blocked by an atomic()
+        // merge directive of higher priority
+        for (var i: number = qualifiers.length - 1; i >= 0; i--) {
+            if(functionNodes[i].isAtomic() &&
+               isImpliedBy(qualifiers[i], qualifier))
+                return i;
+        }
+        return -1;
+    }
     for (var i: number = qualifiers.length - 1; i >= 0; i--) {
         if ((functionNodes[i].isUnmergeable() ||
-               !functionNodes[i].valueType.isPotentiallyMergeable()) &&
+             (!functionNodes[i].isPush() &&
+              !functionNodes[i].valueType.isPotentiallyMergeable())) &&
               isImpliedBy(qualifiers[i], qualifier)) {
             return i;
         }
@@ -456,7 +467,7 @@ function buildQualifierNode(values: PathInfo[], origin: number, defun: number,
             var qualifierWithCycles = buildQualifier(values[i].qualifierTerms, origin, defun, undefined, knownFalseQualifiers);
             if (qualifierWithCycles !== undefined) {
                 var lib: number = lastImplied(qualifierWithCycles.qualifiers);
-                var libc: number = lastImpliedUnmergeable(qualifierWithCycles.qualifiers, qualifiers, functionNodes);
+                var libc: number = lastImpliedUnmergeable(qualifierWithCycles.qualifiers, qualifiers, functionNodes, values[i].expression);
                 var fun: FunctionNode = undefined;
                 var qualifier: SingleQualifier[] = qualifierWithCycles.qualifiers;
                 if (lib === -1 /* && libc === -1 */) {
@@ -503,7 +514,8 @@ function buildQualifierNode(values: PathInfo[], origin: number, defun: number,
                         values[i].expression, values[i], origin, defun,
                         suppressSet, qualifier, knownFalseQualifiers,
                         undefined, origin);
-                    if (optimize &&
+                    if (optimize && !functionNodes[lib].isPush() &&
+                        (!fun.isPush() || functionNodes[lib].isAtomic()) &&
                          (fun.isUnmergeable() || 
                           !fun.valueType.isPotentiallyMergeable())) {
                         // There is a last implied variant, and this one cannot be
@@ -1012,6 +1024,7 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
       case "anonymize":
       case "internalAtomic":
       case "internalPush":
+      case "internalCancelMergeDirectives":
       case "first":
       case "last":
       case "reverse":
@@ -1510,7 +1523,8 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
             } else {
                 var merge: any[] = consts[0].value;
                 for (var i: number = 1; i !== consts.length; i++) {
-                    merge = mergeCopyValue(merge, consts[i].value, undefined);
+                    merge = mergeCopyValue(merge, consts[i].value, undefined,
+                                           undefined);
                 }
                 return buildConstNode(merge, wontChangeValue, undefined, undefined, origExpr);
             }
@@ -3651,7 +3665,7 @@ function buildMergeNode(node: PathTreeNode, origin: number, suppressSet: boolean
     for (var i: number = 0; i !== allPathInfo.length; i++) {
         var qualifierWithCycles = buildQualifier(allPathInfo[i].qualifierTerms, origin, 0, undefined, undefined);
         if (qualifierWithCycles !== undefined) {
-            var libc: number = lastImpliedUnmergeable(qualifierWithCycles.qualifiers, qualifiers, functionNodes);
+            var libc: number = lastImpliedUnmergeable(qualifierWithCycles.qualifiers, qualifiers, functionNodes, allPathInfo[i].expression);
             gErrContext.enter(undefined, allPathInfo[i]);
             var fun: FunctionNode = libc !== -1? undefined:
                 buildSimpleFunctionNode(allPathInfo[i].expression,
@@ -3703,11 +3717,20 @@ function buildMergeNode(node: PathTreeNode, origin: number, suppressSet: boolean
                     allFunctionsIdentical = false;
                 }
                 valueType = valueType.merge(fun.valueType);
+                var mergedFun;
                 if (lastFun !== undefined &&
                       lastFun.canMergeUnderQualifier(fun) &&
                       identicalQualifiers(qualifiers[qualifiers.length - 1],
-                                          qualifierWithCycles.qualifiers)) {
-                    lastFun = lastFun.mergeUnderQualifier(fun);
+                                          qualifierWithCycles.qualifiers) &&
+                    // try to merge, but if 'fun' is not the last to merge,
+                    // check whether 'fun' has unmergeable nodes (if it does,
+                    // the merge fails)
+                    (mergedFun =
+                     lastFun.mergeUnderQualifier(fun,
+                                                 i<allPathInfo.length-1)) !==
+                    undefined) {
+                    // successfully merged
+                    lastFun = mergedFun;           
                     functionNodes[functionNodes.length - 1] = lastFun;
                     usedPathInfo[usedPathInfo.length - 1] = allPathInfo[i];
                     firstValue = undefined;

@@ -1596,6 +1596,10 @@ class ToMergeEvaluationNode implements Watcher {
                 this.mergeExpression.result.atomic,
                 this.mergeExpression.result.erase
             );
+            if(this.mergeExpression.result.mergeAttributes !== undefined) {
+                mergeAttributes = mergeAttributes.
+                    copyMerge(this.mergeExpression.result.mergeAttributes);
+            }
             if (debugWrites || shouldBreak)
                 gSimpleLog.log("write", this.writeNode.name, this.caseName,
                             vstringify(this.mergeExpression.result.value),
@@ -4241,7 +4245,8 @@ class DisplayArea extends CoreArea {
             // The changes are considered a write, and will be handled in the
             // next round of updates. They are therefore added to this.lastUpdate.
             var writeBase = latched !== undefined? latched: lastUpdate;
-            var writeVal = mergeCopyValue(mergeVal, writeBase, undefined);
+            var writeVal = mergeCopyValue(mergeVal, writeBase, undefined,
+                                          undefined);
             if (!valueEqual(writeVal, writeBase)) {
                 paramNode.latchedValue = new Result(writeVal);
                 paramNode.latch();
@@ -4253,9 +4258,9 @@ class DisplayArea extends CoreArea {
             // is a difference between the two, it will be posted in the next
             // round of updates.
             if (latched !== undefined) {
-                paramNode.latchedValue.set(mergeCopyValue(mergeVal, latched, undefined));
+                paramNode.latchedValue.set(mergeCopyValue(mergeVal, latched, undefined, undefined));
             }
-            paramNode.set(new Result(mergeCopyValue(mergeVal, lastUpdate, undefined)));
+            paramNode.set(new Result(mergeCopyValue(mergeVal, lastUpdate, undefined, undefined)));
         }
     }
 

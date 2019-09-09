@@ -3394,22 +3394,30 @@ class EvaluationMerge extends EvaluationFunctionApplication {
                         ids.push(id);
                     } else {
                         // Element with existing id, so merge
-                        res[dest] = getDeOSedValue(mergeCopyAV(res[dest], val, undefined));
+                        res[dest] = getDeOSedValue(mergeCopyAV(res[dest], val, undefined, false, undefined));
                     }
                 }
             }
         } else if ("identifiers" in this.arguments[0]) {
             return this.evalSet();
         } else {
-            res = this.arguments[0].value;
-            ids = this.arguments[0].identifiers;
-            for (var i: number = 1; i !== this.arguments.length; i++) {
-                res = mergeCopyValue(res, this.arguments[i].value, undefined);
-                if (ids === undefined) {
-                    ids = this.arguments[i].identifiers;
-                }
-            }
+            var prevValue: any = this.result.value;
+            var prevMergeAttributes: MergeAttributes =
+                this.result.mergeAttributes;
+            var prevIds: any[] = this.result.identifiers;
+            // given the previous case, this must be undefined????
+            // see commented out code below, where the identifiers of the
+            // first argument which has them are taken (this is not the
+            // right way, probably) xxxxxxxxxxxxxx
+            this.result.identifiers = this.arguments[0].identifiers;
+            mergeVariants(this.arguments, undefined, undefined, undefined,
+                          undefined, this.result);
+            return (!objectEqual(prevValue, this.result.value) ||
+                    !objectEqual(prevMergeAttributes,
+                                 this.result.mergeAttributes) ||
+                    !objectEqual(prevIds, this.result.identifiers));
         }
+        
         if (!objectEqual(this.result.value, res) ||
               !objectEqual(this.result.identifiers, ids)) {
             this.result.set(res);
@@ -3442,7 +3450,7 @@ class EvaluationMerge extends EvaluationFunctionApplication {
                 for (var j: number = 0; j < res.length; j++) {
                     var id: any = ids[j];
                     if (id in argIds) {
-                        nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[argIds[id]], undefined));
+                        nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[argIds[id]], undefined, false, undefined));
                     } else {
                         nRes[j] = res[j];
                     }
@@ -3471,7 +3479,7 @@ class EvaluationMerge extends EvaluationFunctionApplication {
                 var nrElt: number = Math.max(res.length, arg_i.length);
                 var nRes: any[] = new Array<any>(nrElt);
                 for (var j: number = 0; j < nrElt; j++) {
-                    nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[j], undefined));
+                    nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[j], undefined, false, undefined));
                 }
                 res = nRes;
             }
@@ -3508,7 +3516,8 @@ class EvaluationMergeWrite extends EvaluationMerge {
                 ids = this.arguments[0].identifiers;
             }
             for (var i: number = 1; i !== this.arguments.length; i++) {
-                res = mergeCopyValue(res, this.arguments[i].value, undefined);
+                res = mergeCopyValue(res, this.arguments[i].value, undefined,
+                                     undefined);
                 if (ids === undefined) {
                     ids = this.arguments[i].identifiers;
                 }

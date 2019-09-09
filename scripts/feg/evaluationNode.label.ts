@@ -43,9 +43,17 @@ class EvaluationLabeler extends EvaluationFunctionApplication {
 class EvaluationAtomic extends EvaluationLabeler {
 
     eval(): boolean {
-        this.result.copyLabels(this.arguments[0]);
-        this.result.value = this.arguments[0].value;
+        if(this.arguments[0]) {
+            this.result.copyLabels(this.arguments[0]);
+            this.result.value = this.arguments[0].value;
+        } else {
+            this.result.resetLabels();
+            this.result.value = constEmptyOS;
+        }
         this.result.atomic = true;
+        if(!this.result.mergeAttributes)
+            this.result.mergeAttributes = new MergeAttributes(undefined, true,
+                                                              undefined);
         return true;
     }
 
@@ -59,9 +67,19 @@ internalAtomic.classConstructor = EvaluationAtomic;
 class EvaluationPush extends EvaluationLabeler {
 
     eval(): boolean {
-        this.result.copyLabels(this.arguments[0]);
-        this.result.value = this.arguments[0].value;
+        if(this.arguments[0]) {
+            this.result.copyLabels(this.arguments[0]);
+            this.result.value = this.arguments[0].value;
+        }
+        else {
+            this.result.resetLabels();
+            this.result.value = constEmptyOS;
+        }
+
         this.result.push = true;
+        if(!this.result.mergeAttributes)
+            this.result.mergeAttributes = new MergeAttributes(true, undefined,
+                                                              undefined);
         return true;
     }
 
@@ -89,6 +107,27 @@ class EvaluationDelete extends EvaluationLabeler {
 
 }
 internalDelete.classConstructor = EvaluationDelete;
+
+class EvaluationCancelMergeDirectives extends EvaluationLabeler {
+
+    eval(): boolean {
+        this.result.copyLabels(this.arguments[0]);
+        this.result.value = this.arguments[0].value;
+        if(this.result.atomic)
+            this.result.atomic = false;
+        if(this.result.push)
+            this.result.push = false;
+        if(this.result.erase)
+            this.result.erase = false;
+        return true;
+    }
+
+    debugName(): string {
+        return "internalCancelMergeDirectives";
+    }
+
+}
+internalCancelMergeDirectives.classConstructor = EvaluationCancelMergeDirectives;
 
 class EvaluationAnonymize extends EvaluationLabeler {
 
