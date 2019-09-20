@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -588,6 +589,10 @@ var nrOutputAreasEmbeddedStar: {[templateId: number]: number} = {};
 
 // Determines and updates the size of the result
 function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: FunctionNode[], origin: number): void {
+    if(singleValueBuiltInFunctions[fun.name]) {
+        valueType.sizes = [_r(1, 1)];
+        return;
+    }
     switch (fun.name) {
       // functions that have size 0
       case "debugBreak":
@@ -598,13 +603,19 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
       case "last":
         valueType.sizes = [_r(0, 1)];
         break;
-      // The result of evaluating push() is 1, but when it is merged, the result
+      // The result of evaluating push() is the size of its (single) argument,
+      // but when it is merged, the result
       // can be infinitely large, so this is a bit of a trick to propagate
       // Infinity to the write target. A better solution would be to check the
       // guaranteed absence of a push() in every merge: clause, and assume
-      // r(1, Infinity) when it might be present.
+      // r(0, Infinity) when it might be present.
       case "internalPush":
-        valueType.sizes = [_r(1, Infinity)];
+        if(args[0] === undefined || args[0].valueType === undefined ||
+           args[0].valueType.sizes === undefined ||
+           args[0].valueType.sizes.length == 0)
+            valueType.sizes = [_r(1, Infinity)];
+        else
+            valueType.sizes = ValueTypeSize.makeUnbound(args[0].valueType.sizes);
         break;
       case "index":
         if (args[0] !== undefined && args[0].valueType !== undefined) {
@@ -628,11 +639,14 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
             valueType.sizes = [_r(0, Infinity)];
         }
         break;
-      // arithmetic functions
       case "lessThan":
       case "lessThanOrEqual":
       case "greaterThanOrEqual":
       case "greaterThan":
+      case "equal":
+      case "notEqual":
+        // comparison functions: always perform a comparison, but never
+        // return more values than the number of values compared.
         if (args[0] !== undefined && args[0].valueType !== undefined && args[1] !== undefined && args[1].valueType !== undefined) {
             valueType.sizes = ValueTypeSize.minOfSizes(args[0].valueType.sizes, args[1].valueType.sizes);
         }
@@ -641,9 +655,14 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
       case "testStore":
         valueType.sizes = [_r(0, Infinity)];
         break;
-      // Basic arithmentic and foreign functions return one result per element
+      // Basic arithmetic and foreign functions return one result per element
       // in the arguments. Since there's a special case for arguments of length
-      // 1, the maximum length of all arguments is used as the default.
+      // 1, the manimal length of all arguments is used as the default.
+      // As most of these functions may return an empty set either if some
+      // of their arguments are empty sets or if the argument types do not
+      // match the types required by the function, we add here the zero size
+      // to the list of possible sizes (where it is known that an empty
+      // ordered set is not a possible result, this should be handled above.
       default:
         valueType.sizes = undefined;
         for (var i: number = 0; i < args.length; i++) {
@@ -660,6 +679,8 @@ function updateValueSize(valueType: ValueType, fun: BuiltInFunction, args: Funct
                 }
             }
         }
+        valueType.sizes = ValueTypeSize.mergeSizes(valueType.sizes,
+                                                   [_r(0,0)])
     }
 }
 
@@ -973,7 +994,6 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
         }
         break;
       case "merge":
-      case "mergeWrite":
         if (args.length >= 1) {
             // All should be data
             for (var i: number = 0; i < args.length; i++) {
@@ -1068,7 +1088,7 @@ function getValueType(fun: BuiltInFunction, args: FunctionNode[], origin: number
         for (var i: number = 1; i < args.length; i++) {
             valueType = valueType.merge(args[i].valueType);
         }
-        valueType.sizes = [_r(1, 1)];
+        valueType.sizes = [_r(0, 1)];
         break;
       case "internalApply":
         var appl = args[0];
@@ -1513,20 +1533,24 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
         }
         break;
       case "merge":
-      case "mergeWrite":
         if (constantArguments) {
-            var consts: ConstNode[] = <ConstNode[]> args;
+            var consts: ConstNode[] = <ConstNode[]> args;            
             if (consts.length === 0) {
                 return new ConstNode([], emptyValueType, origExpr, undefined, wontChangeValue);
             } else if (consts.length === 1) {
                 return consts[0];
             } else {
-                var merge: any[] = consts[0].value;
-                for (var i: number = 1; i !== consts.length; i++) {
-                    merge = mergeCopyValue(merge, consts[i].value, undefined,
-                                           undefined);
-                }
-                return buildConstNode(merge, wontChangeValue, undefined, undefined, origExpr);
+                var variants: Result[] = [];
+                // last argument has highest priority
+                for(var i: number = consts.length - 1 ; i >= 0 ; --i)
+                    variants.push(new Result(consts[i].value));
+                var mergeResult: Result = mergeVariants(variants, undefined,
+                                                        undefined, undefined,
+                                                        undefined, undefined);
+                var mergeValue: any = mergeResult.value;
+                if(mergeValue === undefined)
+                    mergeValue = [];
+                return buildConstNode(mergeValue, wontChangeValue, undefined, undefined, origExpr);
             }
         }
         break;
@@ -1848,6 +1872,9 @@ function determineQueryValueType(q: Expression, data: FunctionNode): ValueType {
         valueType.sizes =
             ValueTypeSize.multiplySizes(data.valueType.sizes, valueType.sizes);
     }
+    // the query may select fewer than the number of available elements,
+    // so the size we have so far is only a maximum
+    valueType.sizes = ValueTypeSize.max(valueType.sizes);
     if (data.valueType.remote) {
         valueType = valueType.copy().addRemote();
     }
@@ -3786,14 +3813,16 @@ function buildFunctionNodeNC(node: PathTreeNode, origin: number, defun: number, 
     if (node.id in gBuildNodeBreak) {
         debugger;
     }
+    node.removeEmptyOSs();
     if (node.values.length === 0) {
         gErrContext.enter(node, undefined);
+        // will create an empty value if there are not attributes
         fn = buildAVNode1(node, origin, defun, suppressSet, undefined);
     } else if (node.hasChildren()) {
         gErrContext.enter(node, undefined);
         assert(defun === 0, "merge node in defun?");
         fn = buildMergeNode(node, origin, suppressSet);
-    } else if (node.isSingleValue()) {
+    } else if (node.values.length == 1 || node.isSingleSimpleValue()) {
         gErrContext.enter(node, node.values[0]);
         fn = buildSimpleFunctionNode(node.values[0].expression,
            (node.isWritableReference()? node.values[0]: undefined),

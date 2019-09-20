@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -880,6 +881,11 @@ class PathInfo implements QualifierClause {
     isPush(): boolean
     {
         return this.expression !== undefined && this.expression.isPush() 
+    }
+
+    isConstEmptyOS(): boolean
+    {
+        return this.expression !== undefined && this.expression.isConstEmptyOS()
     }
 }
 
@@ -2000,6 +2006,18 @@ class PathTreeNode {
         return change;
     }
 
+    // Remove all empty OS values (they are equivalent to undefined)
+    // but always leave at least one value, even if it is an empty OS.
+    removeEmptyOSs(): void {
+        for (var i: number = this.values.length - 1;
+             i >= 0 && this.values.length > 1 ; i--) {
+            if (this.values[i].isConstEmptyOS()) {
+                this.eliminatedValues.push(this.values[i]);
+                this.values.splice(i, 1);
+            }
+        }
+    }
+    
     eliminateQual(existQual: CDLQualifierTerm[]): boolean {
         var change: boolean = false;
 

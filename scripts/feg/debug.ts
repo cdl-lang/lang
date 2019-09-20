@@ -288,7 +288,7 @@ function setGlobalDefault(pathStr: any, value: any, mode?: string): void {
         <EvaluationWrite> globalEvaluationNodes[globalDefaultsNodeIndex];
     var writeResult: Result = new Result(normalizeObject(value));
     var mergeAttributes: MergeAttributes = new MergeAttributes(
-        mode === "push", mode === "atomic", mode === "erase").
+        mode === "push", mode === "atomic").
         extendWithPath(path);
     var pct: PositionChangeTracker = new PositionChangeTracker();
 

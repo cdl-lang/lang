@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -304,7 +305,7 @@ class EvaluationAV extends EvaluationNode {
         for (var attr in this.inputByAttr) {
             var attrRes: Result = this.inputByAttr[attr].result;
             var attrResValue: any = attrRes.value;
-            if (attrResValue !== undefined && !attrRes.erase) {
+            if (attrResValue !== undefined) {
                 if (this.prototype.suppressSet !== undefined &&
                       attr in avFunctionNode.suppressSetAttr) {
                     if (attrResValue instanceof Array &&
@@ -319,22 +320,23 @@ class EvaluationAV extends EvaluationNode {
                 } else {
                     res[attr] = attrResValue;
                 }
-                var atomic: any = attrRes.atomic;
-                var push: any = attrRes.push;
-                if(attrRes.mergeAttributes) {
-                    if(!atomic && attrRes.mergeAttributes.atomic)
-                        atomic = attrRes.mergeAttributes.atomic;
-                    if(!push && attrRes.mergeAttributes.push)
-                        push = attrRes.mergeAttributes.push;
+                var atomic: any = undefined;
+                var push: any = undefined;
+                if(attrRes.mergeAttributes &&
+                   attrRes.mergeAttributes.length == 1 &&
+                   attrRes.mergeAttributes[0] !== undefined) {
+                    atomic = attrRes.mergeAttributes[0].atomic;
+                    push = attrRes.mergeAttributes[0].push;
                 }
                 if(atomic || push) {
                     if(this.result.mergeAttributes === undefined)
                         this.result.mergeAttributes =
-                        new MergeAttributes(undefined, undefined, undefined);
+                        [new MergeAttributes(undefined, undefined)];
                     if(atomic)
-                        this.result.mergeAttributes.addAtomicAttr(attr, atomic);
+                        this.result.mergeAttributes[0].addAtomicAttr(attr,
+                                                                     atomic);
                     if(push)
-                        this.result.mergeAttributes.addPushAttr(attr, push);
+                        this.result.mergeAttributes[0].addPushAttr(attr, push);
                 }
             }
         }
@@ -1114,7 +1116,7 @@ class EvaluationVariant extends EvaluationNode
         this.variantInputs[pos] = evalNode;
         this.variants[pos] = evalNode.result;
         this.isVariantUnmergeable[pos] =
-            (evalNode.result.atomic && !evalNode.result.push) ||
+            (evalNode.result.isAtomic() && !evalNode.result.isPush()) ||
             isUnmergeable(evalNode.result.value);
         if (!evalNode.isConstant()) {
             evalNode.addWatcher(this, pos, false, false, this.dataSourceResultMode);
@@ -1133,7 +1135,7 @@ class EvaluationVariant extends EvaluationNode
             this.variants[i] = result;
             this.variantChange[this.variantInputs[i].watcherId] = true;
             this.isVariantUnmergeable[i] = result !== undefined &&
-                ((result.atomic && !result.push) || isUnmergeable(result.value));
+                ((result.isAtomic() && !result.isPush()) || isUnmergeable(result.value));
             if (this.qualifiedVariants[i]) {
                 if (wasUnmergeable && !this.isVariantUnmergeable[i] &&
                       this.lastActive === i + 1) {
@@ -1424,7 +1426,6 @@ class EvaluationVariant extends EvaluationNode
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (0 <= this.firstActive && this.firstActive < this.variantInputs.length) {
             if (positions !== undefined && "identifiers" in this.result) {
-                // See mergeWrite.write() for an explanation
                 positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
             }
             return this.variantInputs[this.firstActive].write(result, mode, attributes, positions, reportDeadEnd);
@@ -1754,7 +1755,6 @@ class EvaluationVariant1 extends EvaluationNode
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.qualifiedVariant) {
             if (positions !== undefined && "identifiers" in this.result) {
-                // See mergeWrite.write() for an explanation
                 positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
             }
             return this.variantInput.write(result, mode, attributes, positions, reportDeadEnd);

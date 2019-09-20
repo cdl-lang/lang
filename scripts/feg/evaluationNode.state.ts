@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -965,18 +966,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
                             this.latchedValue: this.lastUpdate;
         var oldPct: PositionChangeTracker = this.positionChangeTracker.clone();
 
-        // When the top level value is erased, the initial expression becomes
-        // live again.
-        if (attributes.erase === true) {
-            if (this.initialValue === undefined) {
-                if (this.appStateIdentifier !== undefined) {
-                    gAppStateMgr.markDeleted(this.appStateIdentifier);
-                }
-                this.reinitialize();
-            }
-            return true;
-        }
-        // Otherwise, terminate the live update (if still alive) and determine
+        // terminate the live update (if still alive) and determine
         // the new value
         this.unregisterInitialValue();
         newValue = determineWrite(curValue, result, mode, attributes, positions, this.positionChangeTracker);
@@ -1178,9 +1168,6 @@ function determineWrite(curValue: any, result: Result, mode: WriteMode, attribut
 
 // Merges newValue in the os in the place indicated by position, and returns
 // a new object with the result.
-// If attributes.erase is true at this level, the result will be o(), as we
-// cannot and should not erase top-level values completely (i.e. replace them
-// with undefined).
 function updateValue(os: any[], newValue: any[], position: DataPosition, mode: WriteMode, attributes: MergeAttributes, pct: PositionChangeTracker): any[] {
     var oldValue: any;
     var repl: any;
@@ -1217,7 +1204,7 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
         assert(position.path === undefined, "meaningless?");
         return os.concat(newValue);
     }
-    if (attributes.atomic === true || attributes.erase === true) {
+    if (attributes.atomic === true) {
         assert(position.path === undefined, "meaningless?");
         if (pct.markShift(0, Infinity, newValue, false, mode) === undefined) {
             Utilities.warn("dead-ended write (atomic): " + gWriteAction + " at " + gWriteAction);
@@ -1272,23 +1259,21 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
         repl = shallowCopyMinus(oldValue, attr);
         var subOS: any[] = attr in oldValue? oldValue[attr]: [];
         var mAttr2: MergeAttributes = attributes.popPathElement(attr);
-        if (mAttr2.erase !== true) {
-            var posChange: PositionChange = pct.markShift(index, 1, [{}], true, mode);
-            if (posChange !== undefined) {
-                var projPositionChangeTracker = posChange.markProjection(attr);
-                for (var i: number = 0; i < position.sub.length; i++) {
-                    var subPos: DataPosition = position.sub[i];
-                    subOS = updateValue(subOS, newValue, subPos, mode, mAttr2, projPositionChangeTracker);
-                }
-            } else
-                Utilities.warn("versus: " + gWriteAction);
-            
-            repl[attr] = subOS;
-            if (position.addedAttributes !== undefined) {
-                repl = addAttributes(repl, position.addedAttributes);
-                if (repl === undefined) {
-                    return os;
-                }
+        var posChange: PositionChange = pct.markShift(index, 1, [{}], true, mode);
+        if (posChange !== undefined) {
+            var projPositionChangeTracker = posChange.markProjection(attr);
+            for (var i: number = 0; i < position.sub.length; i++) {
+                var subPos: DataPosition = position.sub[i];
+                subOS = updateValue(subOS, newValue, subPos, mode, mAttr2, projPositionChangeTracker);
+            }
+        } else
+            Utilities.warn("versus: " + gWriteAction);
+        
+        repl[attr] = subOS;
+        if (position.addedAttributes !== undefined) {
+            repl = addAttributes(repl, position.addedAttributes);
+            if (repl === undefined) {
+                return os;
             }
         }
         positionLength = 1;

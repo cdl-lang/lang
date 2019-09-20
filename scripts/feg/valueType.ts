@@ -73,7 +73,10 @@ class ValueType implements EqualityTest {
 
     isPotentiallyMergeable(): boolean {
         return "unknown" in this || "object" in this || "anyData" in this ||
-               "query" in this || "undef" in this;
+            "query" in this || "undef" in this ||
+            // empty ordered sets are also mergeable
+            this.sizes === undefined || this.sizes.length == 0 ||
+            ValueTypeSize.containsSize(this.sizes, 0);
     }
 
     isData(): boolean {
@@ -1224,7 +1227,7 @@ module ValueTypeSize {
             return sizes;
         }
     }
-
+    
     // Returns the range from 0 to max of sizes
     export function max(sizes: RangeValue[]): RangeValue[] {
         return sizes === undefined || sizes === []? undefined:
@@ -1238,6 +1241,20 @@ module ValueTypeSize {
                !sizes[0].closedLower && !sizes[0].closedUpper;
     }
 
+    // check whether the given 'num' is within the range of sizes specified
+    // in 'sizes'.
+    export function containsSize(sizes: RangeValue[], num: number): boolean {
+        for(var i: number = 0; i < sizes.length ; ++i) {
+            var range: RangeValue = sizes[i];
+            if(range.min > num || (range.min == num && !range.closedLower))
+                return false;
+            if(range.max < num || (range.max == num && !range.closedUpper))
+                continue;
+            return true;
+        }
+        return false;
+    }
+    
     export function upperLimit(sizes: RangeValue[], upb: number): RangeValue[] {
         if (sizes === undefined) {
             return undefined;
@@ -1257,6 +1274,23 @@ module ValueTypeSize {
             }
             return nSizes;
         }
+    }
+
+    // Duplicate the given ranges and extend the last range to infinity.
+    export function makeUnbound(sizes: RangeValue[]): RangeValue[] {
+        var nSizes: RangeValue[] = [];
+
+        if(sizes === undefined || sizes.length === 0)
+            return [_r(0,Infinity)];
+        
+        for (var i: number = 0, l: number = sizes.length; i < l; i++) {
+            if(i < l - 1)
+                nSizes.push(sizes[i]);
+            else
+                nSizes.push(_r(sizes[i].min, Infinity));
+        }
+
+        return nSizes;
     }
 }
 

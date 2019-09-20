@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1056,81 +1057,42 @@ class ExpressionAttributeValue extends ExpressionWithArguments {
     }
 }
 
-var unmergeableBuiltInFunctions: {[funName: string]: boolean} = {
-	"plus":                          true,
-	"minus":                         true,
-	"mul":                           true,
-	"div":                           true,
-	"pow":                           true,
-	"mod":                           true,
-	"remainder":                     true,
+// functions which always return a single atomic value (never an empty
+// ordered set). These include mainly aggregation functions which have
+// a value defined even when the input is empty (e.g. "sum", as opposed to
+// "min" which has no value when the set is empty) as well as functions
+// which return a value available for each area (such as 'me' and
+// 'displayWidth').
+var singleValueBuiltInFunctions: {[funName: string]: boolean} = {
+    // boolean value
 	"and":                           true,
-	"ln":                            true,
-	"log10":                         true,
-	"logb":                          true,
-	"exp":                           true,
 	"or":                            true,
-	"not":                           true,
-	"offset":                        true,
-	"lessThan":                      true,
-	"lessThanOrEqual":               true,
-	"equal":                         true,
-	"notEqual":                      true,
-	"greaterThanOrEqual":            true,
-	"greaterThan":                   true,
-	"intersection":                  true,
-	"index":                         true,
-	"concatStr":                     true,
-    "concat":                        true,
-	"subStr":                        true,
 	"bool":                          true,
 	"notEmpty":                      true,
 	"empty":                         true,
+    "changed":                       true,
+    // string value 
+    "concat":                        true,
+    // number
 	"sum":                           true,
-	"min":                           true,
-	"max":                           true,
-	"me":                            true,
-	"embedded":                      true,
-	"embeddedStar":                  true,
-	"embedding":                     true,
-	"embeddingStar":                 true,
-	"expressionOf":                  true,
-	"referredOf":                    true,
-	"intersectionParentOf":          true,
-	"debugNodeToStr":                true,
-	"size":                          true,
-	"pointer":                       true,
-	"sequence":                      true,
-	"areaOfClass":                   true,
-	"allAreas":                      true,
-	"overlap":                       true,
-	"time":                          true,
-	"changed":                       true,
-	"displayWidth":                  true,
+    "size":                          true,
+    "time":                          true,
+    "displayWidth":                  true,
 	"displayHeight":                 true,
     "baseLineHeight":                true,
-	"dateToNum":                     true,
-	"numToDate":                     true,
-	"stringToNumber":                true,
-	"areasUnderPointer":             true,
-	"classOfArea":                   true,
-	"debugBreak":                    true,
+    // area
+	"me":                            true,
+    // function definition
 	"defun":                         true,
-	"internalPush":                  true,
-	"internalAtomic":                true,
-	"compareAreasQuery":             true,
-	"nCompareAreasQuery":            true,
-	"internalFilterAreaByClass":     true,
-	"internalFilterAreaByClassName": true,
-	"floor":                         true,
-	"ceil":                          true,
-	"round":                         true,
-	"abs":                           true,
-	"sqrt":                          true,
-	"sign":                          true,
-	"uminus":                        true,
-	"evaluateFormula":               true,
-	"testFormula":                   true,
+};
+
+// Functions which are guaranteed to always return a simple value (and
+// never an object or an empty ordered set).
+
+var unmergeableBuiltInFunctions: {[funName: string]: boolean} = {
+    ... singleValueBuiltInFunctions,
+	"allAreas":                      true,
+	"internalAtomic":                true
 };
 
 class ExpressionFunctionApplication extends ExpressionWithArguments {
@@ -1940,9 +1902,6 @@ class ExpressionJsFunctionApplication extends ExpressionWithArguments {
             break;
           case "atomic":
             funDef = internalAtomic;
-            break;
-          case "erase":
-            funDef = internalDelete;
             break;
           default:
             Utilities.syntaxError("unsupported function: " + this.jsFunctionName);

@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,18 +63,21 @@ class Result {
     // CompiledQueryInfo.
     writePaths?: any;
 
-    // If the result is to be treated as atomic in a merge, this label is true
-    atomic?: boolean;
-    // If true, the result should be added to an os in a write
-    push?: boolean;
     // merge attributes indicate specific paths in the value (assuming it is
     // an AV) that have special merge properties, such as atomic or push.
-    mergeAttributes?: MergeAttributes;
+    // If there is a single element in the mergeAttributes array, it applies
+    // to the whole ordered set of values. If there is more than a single
+    // element in mergeAttributes, the merge attributes apply for each value
+    // in the ordered set of values separately (this only makes sense for
+    // merge by identification, otherwise, if the value is an ordered set
+    // of size > 1, the merge is anyway atomic). In this case, even if the
+    // merge attributes are only defined for the first element in the ordered
+    // set, the array under mergedAttributes will be set to have the same
+    // length as the value ordered set.
+    mergeAttributes?: MergeAttributes[];
     // If true, identities should be ignored. This flag is not copied, so
     // use it only directly in the area set data expression.
     anonymize?: boolean;
-    // When true, the destination of a write is deleted. Otherwise it's o().
-    erase?: boolean;
 
     // The identifiers for the values in the result
     identifiers?: any[];
@@ -190,12 +194,6 @@ class Result {
         if ("compiledQuery" in this) {
             delete this.compiledQuery;
         }
-        if ("atomic" in this) {
-            delete this.atomic;
-        }
-        if ("push" in this) {
-            delete this.push;
-        }
         if ("queryArguments" in this) {
             delete this.queryArguments;
         }
@@ -204,6 +202,9 @@ class Result {
         }
         if ("writePaths" in this) {
             delete this.writePaths;
+        }
+        if ("mergeAttributes" in this) {
+            delete this.mergeAttributes
         }
         if ("identifiers" in this) {
             delete this.identifiers;
@@ -220,9 +221,6 @@ class Result {
         if ("anonymize" in this) {
             delete this.anonymize;
         }
-        if ("erase" in this) {
-            delete this.erase;
-        }
     }
 
     copyLabelsMinusDataSource(r: Result, ignoreDS: boolean = false): void {
@@ -234,16 +232,6 @@ class Result {
             this.compiledQuery = r.compiledQuery;
         } else if ("compiledQuery" in this) {
             delete this.compiledQuery;
-        }
-        if ("atomic" in r) {
-            this.atomic = r.atomic;
-        } else if ("atomic" in this) {
-            delete this.atomic;
-        }
-        if ("push" in r) {
-            this.push = r.push;
-        } else if ("push" in this) {
-            delete this.push;
         }
         if ("queryArguments" in r) {
             this.queryArguments = r.queryArguments;
@@ -259,6 +247,11 @@ class Result {
             this.writePaths = r.writePaths;
         } else if ("writePaths" in this) {
             delete this.writePaths;
+        }
+        if("mergeAttributes" in r && r.mergeAttributes !== undefined) {
+            this.mergeAttributes = r.mergeAttributes.slice(0)
+        } else if ("mergeAttributes" in this) {
+            delete this.mergeAttributes
         }
         if ("identifiers" in r) {
             this.identifiers = r.identifiers;
@@ -282,11 +275,6 @@ class Result {
             this.anonymize = r.anonymize;
         } else if ("anonymize" in this) {
             delete this.anonymize;
-        }
-        if ("erase" in r) {
-            this.erase = r.erase;
-        } else if ("erase" in this) {
-            delete this.erase;
         }
     }
 
@@ -320,12 +308,6 @@ class Result {
         if ("compiledQuery" in this) {
             delete this.compiledQuery;
         }
-        if ("atomic" in this) {
-            delete this.atomic;
-        }
-        if ("push" in this) {
-            delete this.push;
-        }
         if ("queryArguments" in this) {
             delete this.queryArguments;
         }
@@ -334,6 +316,9 @@ class Result {
         }
         if ("writePaths" in this) {
             delete this.writePaths;
+        }
+        if("mergeAttributes" in this) {
+            delete this.mergeAttributes;
         }
         if ("identifiers" in this) {
             delete this.identifiers;
@@ -350,9 +335,6 @@ class Result {
         if ("anonymize" in this) {
             delete this.anonymize;
         }
-        if ("erase" in this) {
-            delete this.erase;
-        }
     }
 
     setIdentifiers(identifiers: any[]): void {
@@ -366,28 +348,11 @@ class Result {
     getLabels(): any {
         var labels: any = undefined;
 
-        if ("atomic" in this) {
-            labels = {atomic: this.atomic};
-        }
-        if ("push" in this) {
-            if (labels === undefined) {
-                labels = {push: this.push};
-            } else {
-                labels.push = this.push;
-            }
-        }
         if ("anonymize" in this) {
             if (labels === undefined) {
                 labels = {anonymize: this.anonymize};
             } else {
                 labels.anonymize = this.anonymize;
-            }
-        }
-        if ("erase" in this) {
-            if (labels === undefined) {
-                labels = {del: this.erase};
-            } else {
-                labels.del = this.erase;
             }
         }
         if ("compiledQuery" in this) {
@@ -404,6 +369,13 @@ class Result {
             }
             if ("writePaths" in this) {
                 labels.writePaths = this.writePaths;
+            }
+        }
+        if ("mergeAttributes" in this) {
+            if (labels === undefined) {
+                labels = {mergeAttributes: this.mergeAttributes};
+            } else {
+                labels.mergeAttributes = this.mergeAttributes;
             }
         }
         if ("identifiers" in this) {
@@ -438,9 +410,10 @@ class Result {
     }
 
     hasLabels(): boolean {
-        return "compiledQuery" in this || "atomic" in this || "push" in this ||
+        return "compiledQuery" in this ||
                "queryArguments" in this || "nrQueryElements" in this ||
-               "writePaths" in this || "identifiers" in this || "erase" in this ||
+               "writePaths" in this || "mergeAttributes" in this ||
+               "identifiers" in this ||
                "anonymize" in this ||  "dataSource" in this ||
                "remoteStatus" in this || "foreignInterfaceSource" in this;
     }
@@ -448,30 +421,26 @@ class Result {
     equalLabels(lbls: any): boolean {
         return (lbls === undefined &&
                 this.compiledQuery === undefined &&
-                this.atomic === undefined &&
-                this.push === undefined &&
                 this.queryArguments === undefined &&
                 this.nrQueryElements === undefined &&
                 this.writePaths === undefined &&
+                this.mergeAttributes === undefined &&
                 this.identifiers === undefined &&
                 this.dataSource === undefined &&
                 this.remoteStatus === undefined &&
                 this.foreignInterfaceSource === undefined &&
-                this.anonymize === undefined &&
-                this.erase === undefined) ||
+                this.anonymize === undefined) ||
             (lbls !== undefined &&
              this.compiledQuery === lbls.compiledQuery &&
-             objectEqual(this.atomic, lbls.atomic) &&
-             objectEqual(this.push, lbls.push) &&
              array2Equal(this.queryArguments, lbls.queryArguments) &&
              objectEqual(this.nrQueryElements, lbls.nrQueryElements) &&
              objectEqual(this.writePaths, lbls.writePaths) &&
+             objectEqual(this.mergeAttributes, lbls.mergeAttributes) &&
              valueEqual(this.identifiers, lbls.identifiers) &&
              this.dataSource === lbls.dataSource &&
              this.remoteStatus === lbls.remoteStatus &&
              this.foreignInterfaceSource === lbls.foreignInterfaceSource &&
-             this.anonymize === lbls.anonymize &&
-             this.erase === lbls.del);
+             this.anonymize === lbls.anonymize);
     }
 
     // Tests if two results are equal
@@ -485,12 +454,6 @@ class Result {
     sub(pos: number, length: number = 1): Result {
         var res: Result = new Result(this.value !== undefined? this.value.slice(pos, pos + length): []);
 
-        if ("atomic" in this) {
-            res.atomic = this.atomic;
-        }
-        if ("push" in this) {
-            res.push = this.push;
-        }
         if ("compiledQuery" in this) {
             res.compiledQuery = this.compiledQuery.slice(pos, pos + length);
             if ("queryArguments" in this) {
@@ -503,14 +466,16 @@ class Result {
                 res.writePaths = this.writePaths;
             }
         }
+        if("mergeAttributes" in this && this.mergeAttributes !== undefined){
+            res.mergeAttributes = this.mergeAttributes.length > 1 ?
+                this.mergeAttributes.slice(pos, pos + length) :
+                this.mergeAttributes.slice(0)
+        }
         if ("identifiers" in this && this.identifiers !== undefined) {
             res.identifiers = this.identifiers.slice(pos, pos + length);
         }
         if ("anonymize" in this) {
             res.anonymize = this.anonymize;
-        }
-        if ("erase" in this) {
-            res.erase = this.erase;
         }
         return res;
     }
@@ -540,7 +505,17 @@ class Result {
         //     });
         // }
         // return this.identifiers;
-        return this.value.map((v: any): undefined => undefined);
+        var identifiers = this.identifiers;
+        if(identifiers === undefined) {
+            // create an array with one entry for each value, where all
+            // identities are undefined 
+            identifiers = [];
+            identifiers.length = this.value.length;
+        } else if(identifiers.length < this.value.length) {
+            identifiers = identifiers.slice(0);
+            identifiers.length = this.value.length;
+        }
+        return identifiers;
     }
 
     // Doesn't test all labels, only value, identifiers and dataSource
@@ -573,6 +548,22 @@ class Result {
                (this.value === undefined ||
                 (this.value instanceof Array && this.value.length === 0));
     }
+
+    // The whole result is at an atomic merge path
+    isAtomic(): boolean {
+        return this.mergeAttributes !== undefined &&
+            this.mergeAttributes.length == 1 &&
+            this.mergeAttributes[0] !== undefined &&
+            this.mergeAttributes[0].atomic === true;
+    }
+
+    // The whole result is at a push merge path
+    isPush(): boolean {
+        return this.mergeAttributes !== undefined &&
+            this.mergeAttributes.length == 1 &&
+            this.mergeAttributes[0] !== undefined &&
+            this.mergeAttributes[0].push === true;
+    }
 }
 
 enum WriteMode {
@@ -587,16 +578,14 @@ enum WriteMode {
 class MergeAttributes {
     push: any;
     atomic: any;
-    erase: any;
 
-    constructor(push: any, atomic: any, erase: any) {
+    constructor(push: any, atomic: any) {
         this.push = push;
         this.atomic = atomic;
-        this.erase = erase;
     }
 
     notEmpty(): boolean {
-        return <boolean> (this.push || this.atomic || this.erase)
+        return <boolean> (this.push || this.atomic)
     }
     
     // Prefix the push and atomic paths with the write path so at merge time
@@ -616,8 +605,7 @@ class MergeAttributes {
 
         return path === undefined? this:
                new MergeAttributes(extendObjWithPath(this.push),
-                                   extendObjWithPath(this.atomic),
-                                   extendObjWithPath(this.erase)
+                                   extendObjWithPath(this.atomic)
         );
     }
 
@@ -642,8 +630,7 @@ class MergeAttributes {
     popPathElement(elt: string): MergeAttributes {
         return new MergeAttributes(
             this.push instanceof Object? this.push[elt]: undefined,
-            this.atomic instanceof Object? this.atomic[elt]: undefined,
-            this.erase instanceof Object? this.erase[elt]: undefined
+            this.atomic instanceof Object? this.atomic[elt]: undefined
         );
     }
 
@@ -674,8 +661,7 @@ class MergeAttributes {
         
         if(!attributes)
             return this;
-        var mergedAttributes = new MergeAttributes(this.push, this.atomic,
-                                                   this.erase);
+        var mergedAttributes = new MergeAttributes(this.push, this.atomic);
         if(attributes.push) {
             mergedAttributes.push = this.push ?
                 mergePaths(this.push, attributes.push) : attributes.push;
@@ -684,17 +670,11 @@ class MergeAttributes {
             mergedAttributes.atomic = this.atomic ?
                 mergePaths(this.atomic,attributes.atomic) : attributes.atomic; 
         }
-        if(attributes.erase) {
-            mergedAttributes.erase = this.erase ?
-                mergePaths(this.erase,attributes.erase) : attributes.erase;
-        }
 
         if(this.push)
             mergedAttributes.prunePaths(this.push, "push");
         if(this.atomic)
             mergedAttributes.prunePaths(this.atomic, "atomic");
-        if(this.erase)
-            mergedAttributes.prunePaths(this.erase, "erase");
         
         return mergedAttributes;
     }
@@ -736,3 +716,4 @@ class MergeAttributes {
         }
     }
 }
+

@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,8 +90,7 @@ var reverse: BuiltInFunction = new BuiltInFunction("reverse", 1, 1, undefined);
 var pos: BuiltInFunction = new BuiltInFunction("pos", 2, 2, undefined);
 var range: BuiltInFunction = new BuiltInFunction("range", 2, 2, undefined);
 var arg: BuiltInFunction = new BuiltInFunction("arg", 2, 2, numOrStrOrBoolValueType.copy().addSize(0, 1));
-var merge: BuiltInFunction = new BuiltInFunction("merge", 1, Infinity, undefined);
-var mergeWrite: BuiltInFunction = new BuiltInFunction("mergeWrite", 1, Infinity, undefined);
+var merge: BuiltInFunction = new BuiltInFunction("merge", 1, Infinity, undefined,false, false, false, true);
 var areaOfClass: BuiltInFunction = new BuiltInFunction("areaOfClass", 1, 1, undefined, false, true);
 var allAreas: BuiltInFunction = new BuiltInFunction("allAreas", 0, 0, undefined, false, true);
 var identify: BuiltInFunction = new BuiltInFunction("identify", 2, 2, undefined);
@@ -327,10 +327,9 @@ var databases: BuiltInFunction = new BuiltInFunction("databases", 0, 0,
 var internalApply: BuiltInFunction = new BuiltInFunction("internalApply", 2, 2, undefined);
 // [EXECUTECOMPILEDQUERY]
 // var executeCompiledQuery: BuiltInFunction = new BuiltInFunction("executeCompiledQuery", 2, 2, undefined);
-var internalPush: BuiltInFunction = new BuiltInFunction("internalPush", 1, 1, undefined);
-var internalAtomic: BuiltInFunction = new BuiltInFunction("internalAtomic", 1, 1, undefined);
-var internalDelete: BuiltInFunction = new BuiltInFunction("internalDelete", 0, 0, new ValueType().addUndefined().addSize(0));
-var internalCancelMergeDirectives: BuiltInFunction = new BuiltInFunction("internalCancelMergeDirectives", 1, 1, undefined);
+var internalPush: BuiltInFunction = new BuiltInFunction("internalPush", 1, 1, undefined,false, false, false, true);
+var internalAtomic: BuiltInFunction = new BuiltInFunction("internalAtomic", 1, 1, undefined,false, false, false, true);
+var internalCancelMergeDirectives: BuiltInFunction = new BuiltInFunction("internalCancelMergeDirectives", 1, 1, undefined,false, false, false, true);
 var compareAreasQuery: BuiltInFunction = new BuiltInFunction("compareAreasQuery", 2, 2, undefined);
 var nCompareAreasQuery: BuiltInFunction = new BuiltInFunction("nCompareAreasQuery", 2, 2, undefined);
 var internalFilterAreaByClass: BuiltInFunction = new BuiltInFunction("internalFilterAreaByClass", 2, 2, undefined);

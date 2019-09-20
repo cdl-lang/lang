@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1483,7 +1484,7 @@ class AVFunctionNode extends FunctionNode {
     }
 
     // Performs a merge between this and fn, such that the outcome of 
-    // this will be identical to [merge, this, fn] at runtime.
+    // this will be identical to [merge, fn, this] at runtime.
     // If 'checkUnmergeable' is true and 'fn' has unmergeable nodes which
     // are mergeable in 'this' (and therefore also in the result of the merge)
     // this function returns undefined.
@@ -1775,9 +1776,9 @@ class BoolGateNode extends FunctionNode {
         this.b.setPriority(prio);
     }
 
-    // The result is o() or b; o() is unmergeable
+    // May return o(), which is mergeable
     isUnmergeable(): boolean {
-        return this.b.isUnmergeable();
+        return false;
     }
 
     conditionalSingleArea(): number {
@@ -1982,9 +1983,9 @@ class BoolMatchNode extends FunctionNode {
         this.c.setPriority(prio);
     }
 
-    // The result is o() or c; o() is unmergeable
+    // The result may be o(), which is mergeable
     isUnmergeable(): boolean {
-        return this.c.isUnmergeable();
+        return false;
     }
 
     makeEvaluationNode(local: EvaluationEnvironment): EvaluationNode {
@@ -3426,7 +3427,6 @@ class FunctionApplicationNode extends FunctionNode {
           case "first":
           case "last":
           case "makeDefined":
-          case "mergeWrite":
             return [this.functionArguments[0]];
           case "prev":
           case "next":
@@ -3442,6 +3442,10 @@ class FunctionApplicationNode extends FunctionNode {
             return [this.functionArguments[1]];
           case "max":
           case "min":
+          case "merge":
+          case "internalAtomic":
+          case "internalPush":
+          case "internalCancelMergeDirectives":
             // Can write through any of their arguments
             return this.functionArguments;
           default:
@@ -3513,40 +3517,18 @@ class FunctionApplicationNode extends FunctionNode {
     isUnmergeable(): boolean {
         switch (this.builtInFunction.name) {
           case "internalAtomic":
-          case "offset":
           case "size":
-          case "me": case "embedding": case "embeddingStar": case "embedded": case "embeddedStar":
-          case "plus": case "minus": case "mul": case "div": case "pow": case "mod":
-          case "ln": case "log10": case "logb": case "exp":
-          case "and": case "or": case "not":
-          case "lessThan": case "lessThanOrEqual": case "equal": case "notEqual": case "greaterThanOrEqual": case "greaterThan":
-          case "index":
-          case "concatStr":
+          case "me":
+          case "and": case "or":
           case "concat":
-          case "numberToString":
           case "bool":
           case "notEmpty": case "empty":
-          case "sum": case "min": case "max":
-          case "expressionOf": case "referredOf": case "intersectionParentOf":
-          case "debugNodeToStr":
+          case "sum":
           case "pointer":
-          case "allAreas": case "areaOfClass": case "classOfArea":
+          case "allAreas":
           case "time": case "changed":
-          case "makeDefined":
-          case "databases":
-          case "database":
-          case "download":
+          case "displayWidth": case "displayHeight": case "baseLineHeight":
             return true;
-          case "first":
-          case "prev":
-          case "next":
-          case "last":
-          case "prevStar":
-          case "prevPlus":
-          case "nextStar":
-          case "nextPlus":
-            return this.functionArguments.length === 0 ||
-                   this.functionArguments[0].valueType.isStrictlyAreas();
         }
         return false;
     }
@@ -4195,7 +4177,7 @@ class AreaOfClassNode extends FunctionApplicationNode {
     }
 
     isUnmergeable(): boolean {
-        return true;
+        return false; // may be o()
     }
 
     getDataSourceInputs(): FunctionNode[] {
@@ -5301,14 +5283,7 @@ class AreaProjectionNode extends FunctionNode {
     }
 
     isUnmergeable(): boolean {
-        for (var areaTemplateId of this.data.valueType.areas.keys()) {
-            var areaTemplate: AreaTemplate = areaTemplates[areaTemplateId];
-            var exportNode: FunctionNode = areaTemplate.exports[this.exportId];
-            if (exportNode === undefined && !exportNode.isUnmergeable()) {
-                return false;
-            }
-        }
-        return true;
+        return false;
     }
 
     setPriority(prio: number): void {
@@ -5583,7 +5558,7 @@ class ClassOfAreaNode extends AreaProjectionNode {
     }
 
     isUnmergeable(): boolean {
-        return true;
+        return false; // may be o()
     }
 
     makeEvaluationNode(local: EvaluationEnvironment): EvaluationNode {
@@ -5784,7 +5759,7 @@ class AreaSelectionNode extends FunctionNode {
     }
 
     isUnmergeable(): boolean {
-        return true;
+        return false; // may be o()
     }
 
     setPriority(prio: number): void {
@@ -5975,7 +5950,7 @@ class ChildAreasNode extends FunctionNode {
     }
 
     isUnmergeable(): boolean {
-        return true;
+        return false; // may be o()
     }
 
     getMaximumInputId(stack: NumberSet, process: (fn: FunctionNode, stack: NumberSet, isEndNode: boolean) => FunctionNode, setId: boolean): number {
@@ -6467,7 +6442,7 @@ class NegationNode extends FunctionNode {
     }
 
     isUnmergeable(): boolean {
-        return true;
+        return false; // the negation of o() is o()
     }
 
     getMaximumInputId(stack: NumberSet, process: (fn: FunctionNode, stack: NumberSet, isEndNode: boolean) => FunctionNode, setId: boolean): number {
@@ -7044,7 +7019,7 @@ class ConstNode extends FunctionNode {
     }
 
     // Performs a merge between this and fn, such that the outcome of 
-    // this will be identical to [merge, this, fn] at runtime.
+    // this will be identical to [merge, fn, this] at runtime.
     // If 'checkUnmergeable' is true and 'fn' has unmergeable nodes which
     // are mergeable in 'this' (and therefore also in the result of the merge)
     // this function returns undefined.
@@ -7181,12 +7156,7 @@ class CondNode extends FunctionNode {
     }
 
     isUnmergeable(): boolean {
-        for (var i: number = 0; i !== this.altList.length; i++) {
-            if (!this.altList[i].use.isUnmergeable()) {
-                return false;
-            }
-        }
-        return true;
+        return false; // if none of the conditions matches, is o()
     }
 
     conditionalSingleArea(): number {

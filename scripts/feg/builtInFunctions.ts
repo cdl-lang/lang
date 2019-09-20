@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -2050,7 +2051,7 @@ class EFDynamicAttribute extends EFNSetOperator {
         var arg1: any[] = args[0], arg2: any[] = args[1], arg3: any[] = args[2];
         var res: any = undefined;
 
-        if (arg1 !== undefined && arg2 !== undefined && arg !== undefined) {
+        if (arg1 !== undefined && arg2 !== undefined && arg3 !== undefined) {
             var attr: any = getDeOSedValue(arg1);
             var base: any = getDeOSedValue(arg3);
             if (typeof(attr) !== "string") {

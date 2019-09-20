@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1582,7 +1583,6 @@ class ToMergeEvaluationNode implements Watcher {
                (this.mergeExpression === undefined || !this.mergeExpression.deferred);
     }
 
-    // TODO: always merges. Get info for atomic and push from where?
     commit(): void {
         if (this.toExpression.deferred || this.mergeExpression.deferred) {
             Utilities.error("result of a loop?");
@@ -1591,15 +1591,15 @@ class ToMergeEvaluationNode implements Watcher {
         if (this.toExpression.isQualified() &&
               this.mergeExpression.isQualified()) {
             var shouldBreak: boolean = this.shouldDebugBreak();
-            var mergeAttributes: MergeAttributes = new MergeAttributes(
-                this.mergeExpression.result.push,
-                this.mergeExpression.result.atomic,
-                this.mergeExpression.result.erase
-            );
-            if(this.mergeExpression.result.mergeAttributes !== undefined) {
-                mergeAttributes = mergeAttributes.
-                    copyMerge(this.mergeExpression.result.mergeAttributes);
-            }
+            // merge attributes which apply to all element in the written value,
+            // even if it is an ordered set with multiple elements.
+            // When merging by identities, the merge attributes are takes
+            // directly from the result object (as they may apply to each
+            // element separately).
+            var mergeAttributes: MergeAttributes =
+                (this.mergeExpression.result.mergeAttributes &&
+                 this.mergeExpression.result.mergeAttributes.length == 1) ?
+                this.mergeExpression.result.mergeAttributes[0] : undefined;
             if (debugWrites || shouldBreak)
                 gSimpleLog.log("write", this.writeNode.name, this.caseName,
                             vstringify(this.mergeExpression.result.value),

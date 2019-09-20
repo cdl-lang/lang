@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -371,10 +372,6 @@ function apply(...args: any[]): JavascriptFunction {
 
 function push(...args: any[]): JavascriptFunction {
     return new JavascriptFunction("push", args);
-}
-
-function erase(...args: any[]): JavascriptFunction {
-    return new JavascriptFunction("erase", args);
 }
 
 abstract class MoonOrderedSetBase extends NonAV {
@@ -2291,13 +2288,13 @@ function cdlifyNormalized(v: any): string {
     }
 }
 
-// Unmergeable values are: strings, numbers, booleans, arrays of length != 1,
+// Unmergeable values are: strings, numbers, booleans, arrays of length > 1,
 // references ranges, and arrays of length 1 with an unmergeable value. The ugly
 // logic comes from the fact that an array is instanceof Object.
 function isUnmergeable(v: any): boolean {
     return v !== undefined &&
         (!(v instanceof Object) || (!(v instanceof Array) && !isAV(v)) ||
-         (v instanceof Array && (v.length !== 1 || isUnmergeable(v[0]))));
+         (v instanceof Array && (v.length > 1 || isUnmergeable(v[0]))));
 }
 
 // This function performs the basic merge of a sequence of variant values
@@ -2316,7 +2313,7 @@ function isUnmergeable(v: any): boolean {
 // Finally, 'result' could optionally be the Result object which should store
 // the result of the merge. If given, this object is modified by this function.
 // If this object is not given, a new Result object is created to store the
-// result. This function results the Result object which stores the
+// result. This function returns the Result object which stores the
 // result of the merge (either the object provided as argument or the
 // object created by the function).
 
@@ -2340,7 +2337,8 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     
     for (var i: number = firstToMerge; i < lastToMerge; i++) {
         if ((qualifiers !== undefined && !qualifiers[i]) ||
-            variants[i].value === undefined)
+            variants[i].value === undefined ||
+            (!variants[i].isAtomic() && isEmptyOS(variants[i].value)))
             continue;
 
         if (firstResult === undefined)
@@ -2349,15 +2347,26 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
         // the next variant to merge. This may be a virtual variant created
         // by merging the suffix of the sequence of variants.
         var nextVariant: Result = variants[i];
-        
+
+        // If the next variant has identites, merge the lower priority
+        // variants first.
+        if(nextVariant.identifiers !== undefined) {
+            nextVariant = mergeByIdentities(variants, qualifiers,
+                                            isVariantUnmergeable, i,
+                                            lastToMerge,
+                                            nrMerges == 0 ?
+                                            result : undefined);
+            if(nrMerges == 0) // no previous merging, so this is it
+                return nextVariant;
+            i = lastToMerge - 1; // make the loop quit when this pass is done
+        }
         if(attributes && attributes.push && i < lastToMerge - 1) {
             // merge all lower priority variants (if there is more than
             // one of them) before performing the push below
             nextVariant = mergeVariants(variants, qualifiers,
                                         isVariantUnmergeable, i,
                                         lastToMerge, undefined);
-            // make the loop quit when this pass is done
-            i = lastToMerge - 1;
+            i = lastToMerge - 1; // make the loop quit when this pass is done
         }
 
         // if this is not yet the last merge, must check whether the
@@ -2378,29 +2387,37 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
         } else // mergeValue is already a copy, can merge into it
             mergeValue = mergeValueOverwrite(mergeValue, nextVariant.value,
                                              attributes, isUnmergeable);
-        
-        attributes = attributes ?
-            attributes.copyMerge(nextVariant.mergeAttributes) :
-            nextVariant.mergeAttributes;
 
-        if(rAttributes !== undefined)
-            rAttributes = rAttributes.copyMerge(nextVariant.mergeAttributes);
+        // merging without identities, only global merge attributes
+        // (for all value elements) apply
+        if(nextVariant.mergeAttributes !== undefined &&
+           nextVariant.mergeAttributes.length == 1) {
+            var nextAttributes: MergeAttributes = nextVariant.mergeAttributes[0];
+            attributes = attributes ?
+                attributes.copyMerge(nextAttributes) : nextAttributes;
+            if(rAttributes !== undefined)
+                rAttributes = rAttributes.copyMerge(nextAttributes);
+        }
         
         if (isVariantUnmergeable && isVariantUnmergeable[i])
             break;
         
         if(isUnmergeable && isUnmergeable[0]) {
+
+            if(isUnmergeable[0] === true)
+                break; // nothing can be merged
+            
             // lower nodes are unmergeable. These paths become atomic in
             // subsequent merge steps (but are not atomic in the total
             // result of the merge)
             if(!rAttributes) {
                 rAttributes = attributes ? attributes :
-                    new MergeAttributes(undefined, undefined, undefined);
+                    new MergeAttributes(undefined, undefined);
             }
 
             // atomic merge attributes for the unmergeable paths
             var unmergeableAtomic =
-                new MergeAttributes(undefined, isUnmergeable[0], undefined);
+                new MergeAttributes(undefined, isUnmergeable[0]);
             attributes = attributes ? attributes.copyMerge(unmergeableAtomic) :
                 unmergeableAtomic;
         }
@@ -2416,10 +2433,160 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     if(rAttributes)
         attributes = rAttributes;
     if(attributes && attributes.notEmpty())
-        result.mergeAttributes = attributes;
+        result.mergeAttributes = [attributes];
     else if(result.mergeAttributes)
         result.mergeAttributes = undefined;
 
+    return result;
+}
+
+// Merges 'variants' (given in decreasing order of priority) using
+// identities of elements in ordered sets to determine which elements
+// to merge with each other. Since higher priority variants modify
+// lower priority variants, if one of the variants does nto carry
+// identities, it is first merged with all lower priroity variants
+// without using identities and only then is the result of this merge
+// merged (with identities) with the higher priority variants
+// (all of which have identities).
+
+function mergeByIdentities(variants: Result[], qualifiers: boolean[],
+                           isVariantUnmergeable: boolean[],
+                           firstToMerge: number, lastToMerge: number,
+                           result: Result): Result
+{
+    if(firstToMerge === undefined)
+        firstToMerge = 0;
+    if(lastToMerge === undefined)
+        lastToMerge = variants.length;
+
+    var mergeWithIdentities = [];
+
+    var i: number;
+    for (i = firstToMerge; i < lastToMerge; i++) {
+        if ((qualifiers !== undefined && !qualifiers[i]) ||
+            variants[i].value === undefined ||
+            (!variants[i].isAtomic() && isEmptyOS(variants[i].value)))
+            continue;
+        if(variants[i].identifiers !== undefined) {
+            if(variants[i].isAtomic() && isEmptyOS(variants[i].value))
+                // merging an atomic empty set by identity does nothing
+                continue;
+            mergeWithIdentities.push(variants[i]);
+        } else {
+            // first non-identified variant to merge
+            break;
+        }
+    }
+
+    // 'i' is the first active variant without identities.
+    // First merge it and all lower priority variants.
+    if(i < lastToMerge - 1) {
+        // add the result of this merge as the last variant in the list
+        // of variants to merge by identities.
+        mergeWithIdentities.push(
+            mergeVariants(variants, qualifiers, isVariantUnmergeable,
+                          i, lastToMerge,
+                          // this is the whole merge, so can return immediately
+                          mergeWithIdentities.length == 0 ? result:undefined));
+        if(mergeWithIdentities.length == 1)
+            return mergeWithIdentities[0];
+    } else if(mergeWithIdentities.length == 0) {
+        if(result) {
+            result.value = constEmptyOS;
+            result.mergeAttributes = undefined;
+            result.identifiers = undefined;
+        } else
+            result = new Result();
+        return result;
+    }
+    
+    // merge variants by identities.
+    
+    var valuesById: Result[][] = []; // ordering as in the result of the merge
+    var mergedIds = []; // identities of the resulting ordered set 
+    var posById: Map<any,any> = new Map();
+    var mergedValues = []; // array of merged values
+    var allMergeAttributes = []; // array of resulting merge attributes
+
+    // loop over variants in ascending order of priorities.
+    for(i = mergeWithIdentities.length - 1 ; i >= 0 ; --i) {
+        var variant: Result = mergeWithIdentities[i];
+        // lowest priority variant may have no identities
+        var identities: any[] = variant.identifiers ? variant.identifiers : [];
+        var value: any = variant.value;
+
+        for(var j: number = 0 ; j < value.length ; ++j) {
+            var identity: any = identities[j];
+            var mergeAttributes: MergeAttributes = undefined;
+            
+            if(variant.mergeAttributes !== undefined)
+                mergeAttributes = variant.mergeAttributes.length == 1 ? 
+                    variant.mergeAttributes[0] : variant.mergeAttributes[j];
+
+            if(identity === undefined || typeof(identity) == "object") {
+                // no identity, so the value is not merged with anything,
+                // insert it at the right place in the merged result
+                mergedValues[valuesById.length] = value[j];
+                mergedIds.length++;
+                if(mergeAttributes)
+                    allMergeAttributes[valuesById.length] = mergeAttributes; 
+                valuesById.length++; // reserve the position
+                continue;
+            }
+            
+            // may have to merge this value with other values
+            var labeledValue = new Result(value[j]);
+            if(mergeAttributes !== undefined)
+                labeledValue.mergeAttributes = [mergeAttributes];
+            
+            var pos: number = posById.get(identity);
+            if(pos !== undefined)
+                valuesById[pos].push(labeledValue);
+            else {
+                pos = valuesById.length;
+                valuesById.push([labeledValue]);
+                mergedIds.push(identity);
+                posById.set(identity, pos);
+            }
+        }
+    }
+
+    // now, merge the array of values at each position (highest priority
+    // values are at end).
+
+    for(i = 0 ; i < valuesById.length ; ++i) {
+        if(!valuesById[i])
+            continue;
+        var mergeResult: Result;
+        if(valuesById[i].length == 1)
+            mergeResult = valuesById[i][0];
+        else {
+            // the list of values was constructed with the lowest priority
+            // elements first.
+            valuesById[i].reverse();
+            var mergeResult: Result = mergeVariants(valuesById[i], undefined,
+                                                    undefined, undefined,
+                                                    undefined, undefined);
+        }
+        mergedValues[i] = mergeResult.value;
+        if(mergeResult.mergeAttributes !== undefined)
+            allMergeAttributes[i] = mergeResult.mergeAttributes[0];
+    }
+
+    // create the new result object
+    if(!result)
+        result = new Result(mergedValues);
+    else
+        result.value = mergedValues;
+
+    if(allMergeAttributes.length > 0) {
+        allMergeAttributes.length = mergedValues.length;
+        result.mergeAttributes = allMergeAttributes;
+    } else if(result.mergeAttributes !== undefined)
+        result.mergeAttributes = undefined;
+
+    result.identifiers = mergedIds;
+    
     return result;
 }
 
@@ -2434,21 +2601,21 @@ function mergeValueOverwrite(a: any, b: any, attributes: MergeAttributes,
 {
     if (a instanceof Array) {
         if (a.length === 0) {
-            return []; // This seems to be the behavior.
+            return (attributes && attributes.atomic === true) ? [] : b;
         }
         if(b === undefined)
             return a;
         if (a.length !== 1)
             return a;
         if (b instanceof Array && b.length !== 1) {
-            // b unmergeable
-            if(isUnmergeable !== undefined && isAV(a[0]))
+            // b unmergeable unless its empty
+            if(isUnmergeable !== undefined && b.length !== 0 && isAV(a[0]))
                 isUnmergeable[0] = true;
             return a;
         }
     } else if (b instanceof Array && b.length !== 1) {
-        // b unmergeable
-        if(isUnmergeable !== undefined && isAV(a))
+        // b unmergeable unless its empty
+        if(isUnmergeable !== undefined && b.length !== 0 && isAV(a))
             isUnmergeable[0] = true;
         return a;
     }
@@ -2504,26 +2671,28 @@ function mergeCopyValue(a: any, b: any, attributes: MergeAttributes,
     if (a instanceof Array && b instanceof Array) {
         // Cannot merge ordered sets with length !== 1
         if (a.length !== 1)
-            return a;
+            return (a.length == 0 &&
+                    !(attributes && attributes.atomic === true)) ? b : a;
         if(b.length !== 1) {
-            // b unmergeable (and a is mergeable)
-            if(isUnmergeable !== undefined && isAV(a[0]))
+            // b unmergeable (and a is mergeable) unless b is empty
+            if(isUnmergeable !== undefined && b.length !== 0 && isAV(a[0]))
                 isUnmergeable[0] = true;
             return a;
         }
         a0 = a[0]; b0 = b[0];
     } else if (b instanceof Array) {
         if (b.length !== 1) {
-            // b unmergeable
-            if(isUnmergeable !== undefined && isAV(a))
+            // b unmergeable unless it is empty
+            if(isUnmergeable !== undefined && b.length !== 0 && isAV(a))
                 isUnmergeable[0] = true;
             return a;
         }
         a0 = a; b0 = b[0];
     } else if (a instanceof Array) {
         if (a.length !== 1) {
-            // a is unmergeable
-            return a;
+            // a is unmergeable unless it is empty
+            return (a.length == 0 &&
+                    !(attributes && attributes.atomic === true)) ? b : a;
         }
         a0 = a[0]; b0 = b;
     } else {
@@ -2597,91 +2766,6 @@ function mergeCopyAV(a0: any, b0: any, attributes: MergeAttributes,
         }
     }
     return a0Repl? o: a0;
-}
-
-// Returns the merge of a and b, trying to use as much of the original
-// objects as possible; if the result differs from a and b, it is a
-// new object, otherwise it's the original parameter.
-// If push is true, a is appended to b. If push is an object, it describes at
-// which paths the data under b should be pushed onto that under a. Note: this
-// function treats o() as transparent.
-function mergeThroughEmptyOCopyValue(a: any, b: any, attributes: MergeAttributes): any[] {
-    var a0: any, b0: any;
-
-    function mergeThroughEmptyOCopyAV(a0: any, b0: any, attributes: MergeAttributes): any {
-        if (!isAV(a0) || !isAV(b0) ||
-            (attributes !== undefined && attributes.atomic === true)) {
-            return a0 !== undefined? a0: b0;
-        }
-        var o: any = {};
-        var a0Empty: boolean = true; // When true, a0 is an empty AV
-        var a0Repl: boolean = false; // when true, at least one attribute of a[0] has been replaced
-        for (var attr in a0) {
-            a0Empty = false;
-            if (attr in b0) {
-                var mAttr2: MergeAttributes = attributes === undefined? undefined:
-                                            attributes.popPathElement(attr);
-                var repl: any = mergeThroughEmptyOCopyValue(a0[attr], b0[attr], mAttr2);
-                if (repl !== undefined) {
-                    o[attr] = repl;
-                    if (repl !== a0[attr]) {
-                        a0Repl = true;
-                    }
-                } else {
-                    a0Repl = true;
-                }
-            } else {
-                o[attr] = a0[attr];
-            }
-        }
-        if (a0Empty) {
-            return b0;
-        }
-        for (var attr in b0) {
-            if (!(attr in a0)) {
-                o[attr] = b0[attr];
-                a0Repl = true;
-            }
-        }
-        return a0Repl? o: a0;
-    }
-
-    if (a === undefined || (a instanceof Array && a.length === 0)) {
-        return b;
-    }
-    if (b === undefined || (b instanceof Array && b.length === 0)) {
-        return a;
-    }
-    if (attributes !== undefined) {
-        if (attributes.push === true) {
-            return b instanceof Array? b.concat(a): [b].concat(a);
-        }
-    }
-    if (a instanceof Array && b instanceof Array) {
-        if (a.length !== 1 || b.length !== 1) {
-            // Cannot merge ordered sets with length > 1
-            return a;
-        }
-        a0 = a[0]; b0 = b[0];
-    } else if (b instanceof Array) {
-        if (b.length > 1) {
-            return a;
-        }
-        a0 = a; b0 = b[0];
-    } else if (a instanceof Array) {
-        if (a.length > 1) {
-            return a;
-        }
-        a0 = a[0]; b0 = b;
-    } else {
-        a0 = a; b0 = b;
-    }
-    if (!isAV(a0) || !isAV(b0)) {
-        // This is also the case when b = o()
-        return a;
-    }
-    var o: any = mergeThroughEmptyOCopyAV(a0, b0, attributes);
-    return o === a0? a: [o];
 }
 
 // Returns a normalized path for an area query, i.e. it prefixes a query path

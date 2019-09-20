@@ -127,11 +127,13 @@ class EvaluationOrderedSet extends EvaluationNode {
             return r.identifiers !== undefined;
         }
 
+        var singleNonEmpty: Result;
+        
         if (this.elements === undefined) {
             this.result.value = constEmptyOS;
-        } else if (this.elements.length === 1) {
+        } else if (singleNonEmpty = this.singleNonEmptyElement()) {
             var resultLabels: any = this.result.getLabels();
-            this.result.copy(this.elements[0]);
+            this.result.copy(singleNonEmpty);
             if (this.result.value === undefined) {
                 this.result.value = constEmptyOS;
             }
@@ -146,24 +148,74 @@ class EvaluationOrderedSet extends EvaluationNode {
             } else {
                 delete this.result.identifiers;
             }
+            if(this.result.mergeAttributes !== undefined)
+                this.result.mergeAttributes = undefined;
             for (var i: number = 0; i !== this.elements.length; i++) {
-                if (this.elements[i].value !== undefined) {
-                    this.result.value = cconcat(this.result.value,
-                                                this.elements[i].value);
-                    if (id) {
-                        // add identifiers; fill up if there aren't; use the
-                        // values themselves as identifiers; result is removal
-                        // of duplicate simple values in projections.
-                        this.result.identifiers = cconcat(
-                            this.result.identifiers,
-                            this.elements[i].getIdentifiers());
-                    }
+                if (this.elements[i].value === undefined)
+                    continue;
+                var mergeAttributes: MergeAttributes[] =
+                    this.elements[i].mergeAttributes;
+                if(mergeAttributes && !this.result.mergeAttributes) {
+                    this.result.mergeAttributes = [];
+                    this.result.mergeAttributes.length =
+                        this.result.value.length;
                 }
+                
+                this.result.value = cconcat(this.result.value,
+                                            this.elements[i].value);
+                if (id) {
+                    // add identifiers; fill up if there aren't; use the
+                    // values themselves as identifiers; result is removal
+                    // of duplicate simple values in projections.
+                    this.result.identifiers = cconcat(
+                        this.result.identifiers,
+                        this.elements[i].getIdentifiers());
+                }
+                
+                // since there are at least two non-empty elements in the
+                // ordered set (See above), the merge attributes are per value
+                // element (apply only when merging with identities)
+
+                if(mergeAttributes) {
+                    if(!(this.elements[i].value instanceof Array))
+                        this.result.mergeAttributes.push(mergeAttributes[0]);
+                    else {
+                        var valueLen: number = this.elements[i].value.length;
+                        if(mergeAttributes.length == 1) {
+                            for(var j: number = 0 ; j < valueLen ; ++j)
+                                mergeAttributes.push(mergeAttributes[0]);
+                        } else
+                            for(var j: number = 0 ; j < valueLen ; ++j)
+                                mergeAttributes.push(mergeAttributes[j]);
+                    }
+                } else if(this.result.mergeAttributes)
+                    this.result.mergeAttributes.length = this.result.value.length;
             }
         }
         return !valueEqual(oldValue, this.result.value);
     }
 
+    // Returns the non-empty element if there is a single such element,
+    // or the first element if all elements are empty. Returns undefined
+    // if there is more than one non-empty element.
+    singleNonEmptyElement(): Result {
+        if(this.elements.length === 1)
+            return this.elements[0];
+        var singleNonEmpty: Result = undefined;
+        for(var i = 0, l = this.elements.length ; i < l ; ++i) {
+            if(this.elements[i].isEmpty())
+                continue;
+            if(singleNonEmpty === undefined)
+                singleNonEmpty = this.elements[i];
+            else
+                return undefined;
+        }
+        if(singleNonEmpty === undefined) // all empty
+            return this.elements[0];
+        
+        return singleNonEmpty;
+    }
+    
     activateInputs(): void {
         if (this.elements !== undefined) {
             super.activateInputs();

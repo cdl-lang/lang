@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,10 +51,8 @@ class EvaluationAtomic extends EvaluationLabeler {
             this.result.resetLabels();
             this.result.value = constEmptyOS;
         }
-        this.result.atomic = true;
         if(!this.result.mergeAttributes)
-            this.result.mergeAttributes = new MergeAttributes(undefined, true,
-                                                              undefined);
+            this.result.mergeAttributes = [new MergeAttributes(undefined, true)];
         return true;
     }
 
@@ -76,10 +75,8 @@ class EvaluationPush extends EvaluationLabeler {
             this.result.value = constEmptyOS;
         }
 
-        this.result.push = true;
         if(!this.result.mergeAttributes)
-            this.result.mergeAttributes = new MergeAttributes(true, undefined,
-                                                              undefined);
+            this.result.mergeAttributes = [new MergeAttributes(true, undefined)];
         return true;
     }
 
@@ -90,35 +87,13 @@ class EvaluationPush extends EvaluationLabeler {
 }
 internalPush.classConstructor = EvaluationPush;
 
-class EvaluationDelete extends EvaluationLabeler {
-    constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
-        super(prototype, local);
-        this.result.value = constEmptyOS;
-        this.result.erase = true;
-    }
-
-    eval(): boolean {
-        return false;
-    }
-
-    debugName(): string {
-        return "internalDelete";
-    }
-
-}
-internalDelete.classConstructor = EvaluationDelete;
-
 class EvaluationCancelMergeDirectives extends EvaluationLabeler {
 
     eval(): boolean {
         this.result.copyLabels(this.arguments[0]);
         this.result.value = this.arguments[0].value;
-        if(this.result.atomic)
-            this.result.atomic = false;
-        if(this.result.push)
-            this.result.push = false;
-        if(this.result.erase)
-            this.result.erase = false;
+        if(this.result.mergeAttributes !== undefined)
+            this.result.mergeAttributes = undefined;
         return true;
     }
 

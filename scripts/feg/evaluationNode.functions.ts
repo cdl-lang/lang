@@ -3365,199 +3365,42 @@ class EvaluationCond extends EvaluationNode
 }
 
 class EvaluationMerge extends EvaluationFunctionApplication {
+
     eval(): boolean {
-        var res: any[];
-        var ids: any[];
-
         if (this.arguments.length === 0) {
-            ids = undefined;
-            res = constEmptyOS;
-        } else if (this.arguments.length === 1) {
-            // Merge with one argument merges the elements in the os based on
-            // their identity.
-            var val0 = this.arguments[0].value;
-            var id0 = this.arguments[0].identifiers;
-            if (id0 === undefined) {
-                res = val0.slice(0);
-            } else {
-                var idMap: Map<any, number> = new Map<any, number>();
-                res = [];
-                ids = [];
-                for (var j: number = 0; j < val0.length; j++) {
-                    var id: any = id0[j];
-                    var val: any = val0[j];
-                    var dest: number|undefined = idMap.get(id);
-                    if (dest === undefined) {
-                        // Element with new id
-                        idMap.set(id, res.length);
-                        res.push(val);
-                        ids.push(id);
-                    } else {
-                        // Element with existing id, so merge
-                        res[dest] = getDeOSedValue(mergeCopyAV(res[dest], val, undefined, false, undefined));
-                    }
-                }
+            if(!(this.result.value instanceof Array) ||
+               this.result.value.length > 0 ||
+               this.result.identifiers !== undefined ||
+               this.result.mergeAttributes !== undefined) {
+                // was not an empty value (or was an atomic empty value),
+                // need to update
+                this.result.value = constEmptyOS;
+                if(this.result.identifiers !== undefined)
+                    this.result.identifiers = undefined;
+                if(this.result.mergeAttributes !== undefined)
+                    this.result.mergeAttributes = undefined;
+                return true;
             }
-        } else if ("identifiers" in this.arguments[0]) {
-            return this.evalSet();
-        } else {
-            var prevValue: any = this.result.value;
-            var prevMergeAttributes: MergeAttributes =
-                this.result.mergeAttributes;
-            var prevIds: any[] = this.result.identifiers;
-            // given the previous case, this must be undefined????
-            // see commented out code below, where the identifiers of the
-            // first argument which has them are taken (this is not the
-            // right way, probably) xxxxxxxxxxxxxx
-            this.result.identifiers = this.arguments[0].identifiers;
-            mergeVariants(this.arguments, undefined, undefined, undefined,
-                          undefined, this.result);
-            return (!objectEqual(prevValue, this.result.value) ||
-                    !objectEqual(prevMergeAttributes,
-                                 this.result.mergeAttributes) ||
-                    !objectEqual(prevIds, this.result.identifiers));
+            return false;
         }
+
+        var prevValue: any = this.result.value;
+        var prevMergeAttributes: MergeAttributes[] =
+            this.result.mergeAttributes;
+        var prevIds: any[] = this.result.identifiers;
+        // reverse the order of the arguments (last argument has highest
+        // priority and mergeVariants takes variants in decreasing order
+        // of priority)
+        mergeVariants(this.arguments.slice(0).reverse(), undefined, undefined,
+                      undefined, undefined, this.result);
         
-        if (!objectEqual(this.result.value, res) ||
-              !objectEqual(this.result.identifiers, ids)) {
-            this.result.set(res);
-            if (ids !== undefined) {
-                this.result.identifiers = ids;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    evalSet(): boolean {
-        var oldValue: any = this.result.value;
-        var oldIdentifiers: any = this.result.identifiers;
-        var res: any[] = this.arguments[0].value;
-        var ids: any[] = this.arguments[0].identifiers;
-        var idsCloned: boolean = false;
-
-        for (var i: number = 1; i !== this.arguments.length; i++) {
-            var arg_i: any[] = this.arguments[i].value;
-            if (ids !== undefined && this.arguments[i].identifiers !== undefined) {
-                // Merge by identifier
-                var arg_ids: any[] = this.arguments[i].identifiers;
-                var argIds: {[id: string]: number} = {}; // map for new arg
-                for (var j: number = 0; j < arg_ids.length; j++) {
-                    argIds[arg_ids[j]] = j;
-                }
-                var nRes: any[] = new Array<any>(res.length);
-                // combine res with arg_i by id; first for existing ids
-                for (var j: number = 0; j < res.length; j++) {
-                    var id: any = ids[j];
-                    if (id in argIds) {
-                        nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[argIds[id]], undefined, false, undefined));
-                    } else {
-                        nRes[j] = res[j];
-                    }
-                }
-                // repeat for new ids from this.arguments[i]
-                argIds = {}; // map for new arg
-                for (var j: number = 0; j < ids.length; j++) {
-                    argIds[ids[j]] = j;
-                }
-                res = nRes;
-                for (var j: number = 0; j < arg_ids.length; j++) {
-                    var id: any = arg_ids[j];
-                    if (id !== undefined && arg_i[j] !== undefined &&
-                        !(id in argIds)) {
-                        res.push(arg_i[j]);
-                        if (!idsCloned) {
-                            ids = ids.slice(0);
-                            idsCloned = true;
-                        }
-                        ids.push(id);
-                    }
-                }
-            } else {
-                // Merge by position. Note that if arg_i is longer than
-                // res, identifiers of the final elements are undefined.
-                var nrElt: number = Math.max(res.length, arg_i.length);
-                var nRes: any[] = new Array<any>(nrElt);
-                for (var j: number = 0; j < nrElt; j++) {
-                    nRes[j] = getDeOSedValue(mergeCopyAV(res[j], arg_i[j], undefined, false, undefined));
-                }
-                res = nRes;
-            }
-        }
-        if (!objectEqual(oldValue, res) || !objectEqual(oldIdentifiers, ids)) {
-            this.result.set(res);
-            this.result.identifiers = ids;
-            return true;
-        }
-        return false;
+        return (!objectEqual(prevValue, this.result.value) ||
+                !objectEqual(prevMergeAttributes,
+                             this.result.mergeAttributes) ||
+                !objectEqual(prevIds, this.result.identifiers));
     }
 }
 merge.classConstructor = EvaluationMerge;
-
-// [mergeWrite] allows writing through the first argument, and merges the empty
-// ordered set as if it were undefined (but only for the first argument and 
-// not in set mode either, since that would be inside a [map]).
-class EvaluationMergeWrite extends EvaluationMerge {
-    eval(): boolean {
-        var oldValue: any = this.result.value;
-        var oldIdentifiers: any = this.result.identifiers;
-        var res: any[] = undefined;
-        var ids: any[] = undefined;
-
-        if (this.arguments.length < 1) {
-            ids = undefined;
-            res = constEmptyOS;
-        } else if ("identifiers" in this.arguments[0]) {
-            return this.evalSet();
-        } else {
-            if (!(this.arguments[0].value instanceof Array) ||
-                  this.arguments[0].value.length !== 0) {
-                res = this.arguments[0].value;
-                ids = this.arguments[0].identifiers;
-            }
-            for (var i: number = 1; i !== this.arguments.length; i++) {
-                res = mergeCopyValue(res, this.arguments[i].value, undefined,
-                                     undefined);
-                if (ids === undefined) {
-                    ids = this.arguments[i].identifiers;
-                }
-            }
-            if (res === undefined) {
-                res = constEmptyOS;
-            }
-        }
-        if (!objectEqual(oldValue, res) || !objectEqual(oldIdentifiers, ids)) {
-            this.result.set(res);
-            if (ids !== undefined) {
-                this.result.identifiers = ids;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    // Writes go through to the first argument, but when the result of the
-    // mergeWrite is identified, the identities are added to the write positions.
-    // The identity is added as an extra attribute in the write operation by a
-    // deeper [identify]. This assures that written value can be merged with the 
-    // value that provided the identity, regardless of the source.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
-        var input0 = this.inputs[0];
-
-        if (input0 !== undefined) {
-            if (positions !== undefined && "identifiers" in this.result) {
-                positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
-            }
-            return input0.write(result, mode, attributes, positions,
-                                reportDeadEnd);
-        } else {
-            this.reportDeadEndWrite(reportDeadEnd,
-                                    "no first argument to write through"); 
-            return false;
-        }
-    }
-}
-mergeWrite.classConstructor = EvaluationMergeWrite;
 
 class EvaluationIsDisjoint extends EvaluationFunctionApplication
 implements FuncResultWatcherInterface
