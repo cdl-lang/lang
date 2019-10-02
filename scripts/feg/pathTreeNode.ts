@@ -1618,8 +1618,9 @@ class PathTreeNode {
             (this.values[0].alwaysTrue() ||
              (this.allValuesIdentical() && this.atLeastOneAlwaysTrue())) &&
             Utilities.isEmptyObj(this.next) &&
-            (this.values[0].isAtomic() ||
-             !this.values.some(v => v.isMergeDirective()));
+            (this.values.length == 1 ||
+             ((this.values[0].isAtomic() || this.values[0].isSimpleValue()) &&
+              !this.values.some(v => v.isPush())));
     }
 
     isSingleSimpleValue(): boolean {

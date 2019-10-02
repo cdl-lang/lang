@@ -3822,7 +3822,7 @@ function buildFunctionNodeNC(node: PathTreeNode, origin: number, defun: number, 
         gErrContext.enter(node, undefined);
         assert(defun === 0, "merge node in defun?");
         fn = buildMergeNode(node, origin, suppressSet);
-    } else if (node.values.length == 1 || node.isSingleSimpleValue()) {
+    } else if (node.isSingleValue()) {
         gErrContext.enter(node, node.values[0]);
         fn = buildSimpleFunctionNode(node.values[0].expression,
            (node.isWritableReference()? node.values[0]: undefined),

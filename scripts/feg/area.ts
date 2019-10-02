@@ -1599,7 +1599,8 @@ class ToMergeEvaluationNode implements Watcher {
             var mergeAttributes: MergeAttributes =
                 (this.mergeExpression.result.mergeAttributes &&
                  this.mergeExpression.result.mergeAttributes.length == 1) ?
-                this.mergeExpression.result.mergeAttributes[0] : undefined;
+                this.mergeExpression.result.mergeAttributes[0] :
+                new MergeAttributes(undefined,undefined);
             if (debugWrites || shouldBreak)
                 gSimpleLog.log("write", this.writeNode.name, this.caseName,
                             vstringify(this.mergeExpression.result.value),
