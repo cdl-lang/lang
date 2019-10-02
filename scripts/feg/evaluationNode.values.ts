@@ -164,16 +164,14 @@ class EvaluationOrderedSet extends EvaluationNode {
                 this.result.value = cconcat(this.result.value,
                                             this.elements[i].value);
                 if (id) {
-                    // add identifiers; fill up if there aren't; use the
-                    // values themselves as identifiers; result is removal
-                    // of duplicate simple values in projections.
+                    // add identifiers; fill up if there aren't;
                     this.result.identifiers = cconcat(
                         this.result.identifiers,
                         this.elements[i].getIdentifiers());
                 }
                 
                 // since there are at least two non-empty elements in the
-                // ordered set (See above), the merge attributes are per value
+                // ordered set (see above), the merge attributes are per value
                 // element (apply only when merging with identities)
 
                 if(mergeAttributes) {
@@ -183,10 +181,10 @@ class EvaluationOrderedSet extends EvaluationNode {
                         var valueLen: number = this.elements[i].value.length;
                         if(mergeAttributes.length == 1) {
                             for(var j: number = 0 ; j < valueLen ; ++j)
-                                mergeAttributes.push(mergeAttributes[0]);
+                                this.result.mergeAttributes.push(mergeAttributes[0]);
                         } else
                             for(var j: number = 0 ; j < valueLen ; ++j)
-                                mergeAttributes.push(mergeAttributes[j]);
+                                this.result.mergeAttributes.push(mergeAttributes[j]);
                     }
                 } else if(this.result.mergeAttributes)
                     this.result.mergeAttributes.length = this.result.value.length;

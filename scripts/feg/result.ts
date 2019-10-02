@@ -81,9 +81,9 @@ class Result {
 
     // The identifiers for the values in the result
     identifiers?: any[];
-
-    // Label for generating unique identifiers
-    uniqueIdPrefix?: string;
+    // Identifiers at lower paths (one entry per element in the value
+    // ordered set)
+    subIdentifiers?: any[];
 
     // Label for data sources
     dataSource?: DataSourceComposable;
@@ -95,9 +95,6 @@ class Result {
     // "waiting": waiting for server/foreign interface to return app state
     // "error": not properly synced to server or error during execution
     remoteStatus?: string;
-
-    // Counter for generating unique identifiers
-    static nextUniqueIdPrefix: number = 0;
 
     // The following are precursors to incremental updates. They are currently
     // only set by the areaMonitor (and it even doesn't use "modified").
@@ -149,46 +146,6 @@ class Result {
         r.copy(this);
         return r;
     }
-
-    copyMinusUndefinedValues(r: Result): void {
-        var values: any[] = r.value;
-        var ids: any[] = r.identifiers;
-        var res: any[];
-
-        if (values === undefined) {
-            this.value = undefined;
-            this.resetLabels();
-        }
-        if (ids === undefined) {
-            res = [];
-            for (var i: number = 0; i < values.length; i++) {
-                if (values[i] !== undefined) {
-                    res.push(values[i]);
-                }
-            }
-            this.value = res;
-            if ("identifiers" in this) {
-                delete this.identifiers;
-            }
-        } else {
-            var nids: any[] = [];
-            res = [];
-            for (var i: number = 0; i < values.length; i++) {
-                if (values[i] !== undefined) {
-                    res.push(values[i]);
-                    nids.push(ids[i]);
-                }
-            }
-            this.value = res;
-            this.copyLabels(r);
-            this.identifiers = nids;
-        }
-        if ("dataSource" in r) {
-            this.dataSource = r.dataSource;
-        } else if ("dataSource" in this) {
-            delete this.dataSource;
-        }
-    }
     
     resetLabels(): void {
         if ("compiledQuery" in this) {
@@ -208,6 +165,9 @@ class Result {
         }
         if ("identifiers" in this) {
             delete this.identifiers;
+        }
+        if ("subIdentifiers" in this) {
+            delete this.subIdentifiers;
         }
         if ("dataSource" in this) {
             delete this.dataSource;
@@ -257,6 +217,11 @@ class Result {
             this.identifiers = r.identifiers;
         } else if ("identifiers" in this) {
             delete this.identifiers;
+        }
+        if ("subIdentifiers" in r) {
+            this.subIdentifiers = r.subIdentifiers;
+        } else if ("subIdentifiers" in this) {
+            delete this.subIdentifiers;
         }
         if (!ignoreDS && "dataSource" in this) {
             delete this.dataSource;
@@ -323,6 +288,9 @@ class Result {
         if ("identifiers" in this) {
             delete this.identifiers;
         }
+        if ("subIdentifiers" in this) {
+            delete this.subIdentifiers;
+        }
         if ("dataSource" in this) {
             delete this.dataSource;
         }
@@ -337,6 +305,17 @@ class Result {
         }
     }
 
+    setMergeAttributesUnderAttr(attr: string,
+                                mergeAttributes: MergeAttributes[]): void {
+        if(!mergeAttributes || mergeAttributes.length == 0)
+            return;
+        
+        if(this.mergeAttributes === undefined)
+            this.mergeAttributes = [new MergeAttributes(undefined, undefined)];
+        
+        this.mergeAttributes[0].addUnderAttr(attr, mergeAttributes);
+    }
+    
     setIdentifiers(identifiers: any[]): void {
         if (identifiers !== undefined) {
             this.identifiers = identifiers;
@@ -345,6 +324,58 @@ class Result {
         }
     }
 
+    // sets both identifiers and sub-identifiers, depending on the input
+    // (which may be an array (identifiers only) an A-V (sub-identifiers
+    // only) or a SubIdentifiers object (both identifiers and sub-identifiers).
+    setSubIdentifiers(subIdentifiers: any): void {
+        if(subIdentifiers === undefined) {
+            if(this.identifiers)
+                this.identifiers = undefined;
+            if(this.subIdentifiers)
+                this.subIdentifiers = undefined;
+            return;
+        }
+        if(subIdentifiers instanceof SubIdentifiers) {
+            this.identifiers = subIdentifiers.identifiers;
+            this.subIdentifiers = subIdentifiers.subIdentifiers;
+        } else if(subIdentifiers instanceof Array) {
+            this.identifiers = subIdentifiers;
+            if(this.subIdentifiers)
+                this.subIdentifiers = undefined;
+        } else { // A-V and therefore represents sub-identifiers
+            this.subIdentifiers = [subIdentifiers];
+            if(this.identifiers)
+                this.identifiers = undefined;
+        }
+    }
+
+    // Add the given identifiers and sub-identifiers as sub-identifiers
+    // under the given attribute. One of the two input arrays may be
+    // undefined, but if both are defined, both are expected to have the same
+    // length.
+    
+    addSubIdentifiersUnderAttr(attr: string, identifiers: any[],
+                               subIdentifiers: any[]): void
+    {
+        if(!identifiers && !subIdentifiers)
+            return;
+
+        var attrSubIdentifiers: any;
+
+        if(subIdentifiers) {
+            if(identifiers || subIdentifiers.length > 1) {
+                attrSubIdentifiers =
+                    new SubIdentifiers(identifiers, subIdentifiers);
+            } else
+                attrSubIdentifiers = subIdentifiers[0];
+        } else
+            attrSubIdentifiers = identifiers;
+
+        if(this.subIdentifiers === undefined)
+            this.subIdentifiers = [{}];
+        this.subIdentifiers[0][attr] = attrSubIdentifiers; 
+    }
+    
     getLabels(): any {
         var labels: any = undefined;
 
@@ -385,6 +416,13 @@ class Result {
                 labels.identifiers = this.identifiers;
             }
         }
+        if ("subIdentifiers" in this) {
+            if (labels === undefined) {
+                labels = {subIdentifiers: this.subIdentifiers};
+            } else {
+                labels.subIdentifiers = this.subIdentifiers;
+            }
+        }
         if ("dataSource" in this) {
             if (labels === undefined) {
                 labels = {dataSource: this.dataSource};
@@ -413,7 +451,7 @@ class Result {
         return "compiledQuery" in this ||
                "queryArguments" in this || "nrQueryElements" in this ||
                "writePaths" in this || "mergeAttributes" in this ||
-               "identifiers" in this ||
+               "identifiers" in this || "subIdentifiers" in this ||
                "anonymize" in this ||  "dataSource" in this ||
                "remoteStatus" in this || "foreignInterfaceSource" in this;
     }
@@ -426,6 +464,7 @@ class Result {
                 this.writePaths === undefined &&
                 this.mergeAttributes === undefined &&
                 this.identifiers === undefined &&
+                this.subIdentifiers === undefined &&
                 this.dataSource === undefined &&
                 this.remoteStatus === undefined &&
                 this.foreignInterfaceSource === undefined &&
@@ -437,6 +476,7 @@ class Result {
              objectEqual(this.writePaths, lbls.writePaths) &&
              objectEqual(this.mergeAttributes, lbls.mergeAttributes) &&
              valueEqual(this.identifiers, lbls.identifiers) &&
+             valueEqual(this.subIdentifiers, lbls.subIdentifiers) &&
              this.dataSource === lbls.dataSource &&
              this.remoteStatus === lbls.remoteStatus &&
              this.foreignInterfaceSource === lbls.foreignInterfaceSource &&
@@ -474,46 +514,33 @@ class Result {
         if ("identifiers" in this && this.identifiers !== undefined) {
             res.identifiers = this.identifiers.slice(pos, pos + length);
         }
+        if ("subIdentifiers" in this && this.subIdentifiers !== undefined) {
+            res.subIdentifiers = this.subIdentifiers.slice(pos, pos + length);
+        }
         if ("anonymize" in this) {
             res.anonymize = this.anonymize;
         }
         return res;
     }
 
-    // getUniqueIdPrefix(): string {
-    //     if (!("uniqueIdPrefix" in this)) {
-    //         this.uniqueIdPrefix = "R" + String(Result.nextUniqueIdPrefix++) + "_";
-    //     }
-    //     return this.uniqueIdPrefix;
-    // }
-
-    // Generates unique ids for the elements in this.value. The id is the value
-    // itself when it is a simple value, or a local unique id as a prefix and
-    // the position in the array. These identifiers are accessible to other
-    // functions, but only simple values can have the same identity as elements
-    // from another os.
+    // Return a array of identifiers. This function makes sure that the array
+    // returned has the same length as the number of elements in the value
+    // (ordered set). If needed, the array is padded by undefined elements.
+    
     getIdentifiers(): any[] {
-        // if (this.value === undefined) {
-        //     return [];
-        // }
-        // if (!("identifiers" in this)) {
-        //     var idPref: string = this.getUniqueIdPrefix();
-        //     this.identifiers = this.value.map(function(v: any, i: number): string {
-        //         return typeof(v) !== "object"? v:
-        //                v instanceof ElementReference? v.getElement():
-        //                idPref + i;
-        //     });
-        // }
-        // return this.identifiers;
+        if(this.value === undefined)
+            return [];
         var identifiers = this.identifiers;
+        var length = (this.value instanceof Array) ? this.value.length : 1;
+        
         if(identifiers === undefined) {
             // create an array with one entry for each value, where all
             // identities are undefined 
             identifiers = [];
-            identifiers.length = this.value.length;
-        } else if(identifiers.length < this.value.length) {
+            identifiers.length = length;
+        } else if(identifiers.length < length) {
             identifiers = identifiers.slice(0);
-            identifiers.length = this.value.length;
+            identifiers.length = length;
         }
         return identifiers;
     }
@@ -521,7 +548,8 @@ class Result {
     // Doesn't test all labels, only value, identifiers and dataSource
     isEqual(r: Result): boolean {
         if (!valueEqual(this.value, r.value) ||
-              !valueEqual(this.identifiers, r.identifiers)) {
+            !valueEqual(this.identifiers, r.identifiers) ||
+            !valueEqual(this.subIdentifiers, r.subIdentifiers)) {
             return false;
         }
         if ("dataSource" in this || "dataSource" in r) {
@@ -575,6 +603,20 @@ enum WriteMode {
 // or atomic. The paths are represented in an av structure, so multiple paths
 // can apply at the same time. Push/atomic is applied where a path ends in
 // true.
+// An attribute in this a-v strcture can also hold an array. Each entry in
+// the array may then store an a-v structure representing paths which are
+// atomic/push. Such an array only appears at a path corresponding to
+// identified elements (this is because if at that path there is more than
+// one element but the elements are not identified merging is anyway atomic
+// (or push) for the ordered set of elements as a whole (since there is
+// no way to align them for merging). This means that where there are no
+// identifiers, on can process the MergeAttributes object under the assumption
+// that the value under each attribute is either an a-v or 'true'.
+// No array can appear directly at the top of this structure (under 'push'
+// or 'atomic'). If the elements at this level are identified and have
+// different merge attributes these are stored as seperate MergeAttributes
+// objects (in an array).
+
 class MergeAttributes {
     push: any;
     atomic: any;
@@ -626,7 +668,53 @@ class MergeAttributes {
             this.push = {};
         this.push[attr] = push;
     }
+
+    // Add the given merge attributes under the given attribute of this
+    // MergeAttributes object. This would overwrite any other values
+    // under that attribute (the assumption is that there aren't any).
+    // If 'attributes' contains a single MergeAttributes object, its
+    // atomic/push structure are added as is under 'attr'. If
+    // 'attributes' more than one entry, all the atomic entries are collected
+    // into an array and all the push entries are collected into an array
+    // and these arrays are placed under the attribute.
+    addUnderAttr(attr: string, attributes :MergeAttributes[]): void
+    {
+        if(!attributes || attributes.length == 0)
+            return;
+
+        var push: any = undefined;
+        var atomic: any = undefined;
+
+        if(attributes.length == 1) {
+            if(attributes[0] !== undefined) {
+                push = attributes[0].push;
+                atomic = attributes[0].atomic;
+            }
+        } else {
+            push = attributes.map(x => x ? x.push : undefined);
+            if(!push.some((x: any): boolean => !!x)) // all entries are empty
+                push = undefined;
+            atomic = attributes.map(x => x ? x.atomic : undefined);
+            if(!atomic.some((x: any): boolean => !!x)) // all entries are empty
+                atomic = undefined;
+        }
+        
+        if(push && this.push !== true) {
+            if(!this.push)
+                this.push = {};
+            this.push[attr] = push;
+        }
+
+        if(atomic && this.atomic !== true) {
+            if(!this.atomic)
+                this.atomic = {};
+            this.atomic[attr] = atomic;
+        }
+    }
     
+    // Only to be used when the values under 'elt' are not identified
+    // (otherwise there may be an array of merge attributes under
+    // push[elt] or atomic[elt]).
     popPathElement(elt: string): MergeAttributes {
         return new MergeAttributes(
             this.push instanceof Object? this.push[elt]: undefined,
@@ -634,6 +722,52 @@ class MergeAttributes {
         );
     }
 
+    // When the elements under 'elt' are identified, use this function
+    // to pop the merge attributes. This may return either undefined
+    // (if there are not merge attributes under 'elt') or an array of
+    // merge attribute objects.
+    // 'numElements' may optionally be used to indicate the number of
+    // elements in the ordered set these merge attributes are associated with.
+    popPathElementSequence(elt: string, numElements?: number): MergeAttributes[]
+    {
+        var atomic: any = (this.atomic instanceof Object) ?
+            this.atomic[elt] : undefined;
+        var push: any =
+            (this.push instanceof Object) ? this.push[elt] : undefined;
+
+        if(atomic === undefined && push === undefined)
+            return undefined;
+
+        if(!(atomic instanceof Array)) {
+            if(!(push instanceof Array))
+                return [new MergeAttributes(push, atomic)];
+            if(numElements !== undefined && numElements > push.length)
+                push.length = numElements;
+            return push.map(p => new MergeAttributes(p, atomic));
+        }
+
+        if(!(push instanceof Array)) {
+            if(numElements !== undefined && numElements > atomic.length)
+                atomic.length = numElements;
+            return atomic.map(a => new MergeAttributes(push, a));
+        }
+
+        if(numElements !== undefined) {
+            if(numElements > push.length)
+                push.length = numElements;
+            if(numElements > atomic.length)
+                atomic.length = numElements;
+        }
+
+        var sequence: MergeAttributes[] = [];
+        
+        for(var i = 0, l = Math.max(atomic.length, push.length) ; i < l ; ++i)
+            sequence.push(new MergeAttributes(push[i], atomic[i]));
+
+        return sequence;
+    }
+
+    
     // Merge the paths in 'attributes' with those in this object and
     // return a new merged object (the copy is as shallow as possible).
     // When there are two directives at a path and its extension, the
@@ -717,3 +851,44 @@ class MergeAttributes {
     }
 }
 
+// 'identifiers' is always an array of values which are the identities of
+// the o-s elements in the corresponding positions.
+// 'subIdentifiers' is an array (of the same length as 'identifiers')
+// which stores a-v objects which describe the identities under the
+// corresponding path in the o-s element corresponding to the position
+// in the 'subIdentifiers' array.
+// Under each attribute in these a-v objects one can have either another
+// a-v object (to extend the paths) or an array (which then represents
+// the identifiers at that path) or another SubIdentifiers object
+// (in case there are both identifiers and sub-identifiers under the path
+// or if there is more than one sub-identifier object).
+
+class SubIdentifiers {
+    identifiers: any[];
+    subIdentifiers: any[]; // paths where there are sub-identifiers
+
+    constructor(identifiers: any[], subIdentifiers: any[]) {
+        this.identifiers = identifiers;
+        this.subIdentifiers = subIdentifiers;
+    }
+
+    isEmpty(): boolean {
+        return !this.identifiers && !this.subIdentifiers;
+    }
+
+    // Return a SubIdentifiers object representing the same identifiers as
+    // the input IDs, which can be either an SubIdentifiers object
+    // (this function returns the object itself) or an Array
+    // (these are identifiers without sub-identifiers) or an A-V (this is
+    // a single sub-identifiers specification).
+    static makeSubIdentifiers(ids: any): SubIdentifiers {
+        if(!ids)
+            return undefined;
+        if(ids instanceof SubIdentifiers)
+            return ids;
+        if(ids instanceof Array) // identifiers only
+            return new SubIdentifiers(ids, undefined);
+        // must be single A-V, is single entry of sub-identifiers
+        return new SubIdentifiers(undefined, [ids]);
+    }
+};

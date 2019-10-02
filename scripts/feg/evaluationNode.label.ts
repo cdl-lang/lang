@@ -116,7 +116,8 @@ class EvaluationAnonymize extends EvaluationLabeler {
 
         this.inputHasChanged = false;
         this.result.copy(this.arguments[0]);
-        this.result.setIdentifiers(undefined);
+        // removes both identifiers and sub-identifiers
+        this.result.setSubIdentifiers(undefined);
         this.result.anonymize = true;
         return !this.result.equal(oldResult);
     }

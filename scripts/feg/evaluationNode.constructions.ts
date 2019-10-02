@@ -320,24 +320,13 @@ class EvaluationAV extends EvaluationNode {
                 } else {
                     res[attr] = attrResValue;
                 }
-                var atomic: any = undefined;
-                var push: any = undefined;
-                if(attrRes.mergeAttributes &&
-                   attrRes.mergeAttributes.length == 1 &&
-                   attrRes.mergeAttributes[0] !== undefined) {
-                    atomic = attrRes.mergeAttributes[0].atomic;
-                    push = attrRes.mergeAttributes[0].push;
-                }
-                if(atomic || push) {
-                    if(this.result.mergeAttributes === undefined)
-                        this.result.mergeAttributes =
-                        [new MergeAttributes(undefined, undefined)];
-                    if(atomic)
-                        this.result.mergeAttributes[0].addAtomicAttr(attr,
-                                                                     atomic);
-                    if(push)
-                        this.result.mergeAttributes[0].addPushAttr(attr, push);
-                }
+
+                this.result.
+                    setMergeAttributesUnderAttr(attr, attrRes.mergeAttributes);
+
+                this.result.addSubIdentifiersUnderAttr(attr,
+                                                       attrRes.identifiers,
+                                                       attrRes.subIdentifiers);
             }
         }
         this.result.value = this.prototype.suppressSet !== undefined? res: [res];
@@ -1116,8 +1105,9 @@ class EvaluationVariant extends EvaluationNode
         this.variantInputs[pos] = evalNode;
         this.variants[pos] = evalNode.result;
         this.isVariantUnmergeable[pos] =
-            (evalNode.result.isAtomic() && !evalNode.result.isPush()) ||
-            isUnmergeable(evalNode.result.value);
+            (evalNode.result.anonymize || evalNode.result.identifiers === undefined) &&
+            !evalNode.result.isPush() &&
+            (evalNode.result.isAtomic() || isUnmergeable(evalNode.result.value));
         if (!evalNode.isConstant()) {
             evalNode.addWatcher(this, pos, false, false, this.dataSourceResultMode);
         }
