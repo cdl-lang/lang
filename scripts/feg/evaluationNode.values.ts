@@ -122,9 +122,11 @@ class EvaluationOrderedSet extends EvaluationNode {
 
     eval(): boolean {
         var oldValue: any[] = this.result.value;
+        var oldIdentifiers: any[] = this.result.identifiers;
+        var oldSubIdentifiers: any[] = this.result.subIdentifiers;
 
         function isIdentified(r: Result): boolean {
-            return r.identifiers !== undefined;
+            return r.identifiers !== undefined || r.subIdentifiers !== undefined;
         }
 
         var singleNonEmpty: Result;
@@ -140,13 +142,12 @@ class EvaluationOrderedSet extends EvaluationNode {
             return !this.result.equalLabels(resultLabels) ||
                    !valueEqual(oldValue, this.result.value);
         } else {
-            var id: boolean = false;
             this.result.value = [];
+            var identifiers: SubIdentifiers = undefined;
             if (this.elements.some(isIdentified)) {
-                this.result.identifiers = [];
-                id = true;
+                identifiers = new SubIdentifiers([],[]);
             } else {
-                delete this.result.identifiers;
+                this.result.setSubIdentifiers(undefined);
             }
             if(this.result.mergeAttributes !== undefined)
                 this.result.mergeAttributes = undefined;
@@ -160,15 +161,26 @@ class EvaluationOrderedSet extends EvaluationNode {
                     this.result.mergeAttributes.length =
                         this.result.value.length;
                 }
+
+                if (identifiers !== undefined) {
+                    if(this.elements[i].identifiers !== undefined) {
+                        // extend to cover previous entries without identifiers
+                        identifiers.identifiers.length = this.result.value.length;
+                        identifiers.identifiers =
+                            cconcat(identifiers.identifiers,
+                                    this.elements[i].identifiers);
+                    }
+                    if(this.elements[i].subIdentifiers !== undefined) {
+                        // extend to cover previous entries without identifiers
+                        identifiers.subIdentifiers.length = this.result.value.length;
+                        identifiers.subIdentifiers =
+                            cconcat(identifiers.subIdentifiers,
+                                    this.elements[i].subIdentifiers);
+                    }
+                }
                 
                 this.result.value = cconcat(this.result.value,
                                             this.elements[i].value);
-                if (id) {
-                    // add identifiers; fill up if there aren't;
-                    this.result.identifiers = cconcat(
-                        this.result.identifiers,
-                        this.elements[i].getIdentifiers());
-                }
                 
                 // since there are at least two non-empty elements in the
                 // ordered set (see above), the merge attributes are per value
@@ -189,8 +201,18 @@ class EvaluationOrderedSet extends EvaluationNode {
                 } else if(this.result.mergeAttributes)
                     this.result.mergeAttributes.length = this.result.value.length;
             }
+
+            if(identifiers) {
+                if(identifiers.identifiers.length > 0)
+                    identifiers.identifiers.length = this.result.value.length;
+                if(identifiers.subIdentifiers.length > 0)
+                    identifiers.subIdentifiers.length = this.result.value.length;
+                this.result.setSubIdentifiers(identifiers);
+            }
         }
-        return !valueEqual(oldValue, this.result.value);
+        return !valueEqual(oldValue, this.result.value) ||
+            !valueEqual(oldIdentifiers, this.result.identifiers) ||
+            !valueEqual(oldSubIdentifiers, this.result.subIdentifiers);
     }
 
     // Returns the non-empty element if there is a single such element,

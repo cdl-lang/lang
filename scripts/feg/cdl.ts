@@ -1704,6 +1704,9 @@ function interpretedQuery(q: any, v: any): any {
                         if (m.sel) {
                             return {sel: true, res: v};
                         }
+                        // This is not accurate for projections, as matches
+                        // of different queries may overlap (but each element
+                        // should be returned only once).
                         arres = arres.concat(m.res);
                     }
                 }
@@ -1713,6 +1716,8 @@ function interpretedQuery(q: any, v: any): any {
                 if (q instanceof Negation) {
                     var complement: any = interpretedQuery(q.queries, v);
                     if (v instanceof Array) {
+                        // seems this is never called, because v cannot be
+                        // an array (handled at the beginning of the function)
                         if (complement.length === v.length) {
                             return {sel: false, res: []};
                         }
@@ -1798,17 +1803,25 @@ function interpretedQuery(q: any, v: any): any {
     }
 }
 
-function interpretedQueryWithIdentifiers(q: any, v: any, allIds: any[], selectedIds: any[]): any {
+function interpretedQueryWithIdentifiers(q: any, v: any, allIds: SubIdentifiers, selectedIds: SubIdentifiers): any {
     var res: any[] = [];
 
     if (!(v instanceof Array)) {
         v = [v];
     }
+    if(selectedIds && allIds)
+        selectedIds.init(!!allIds.identifiers,!!allIds.subIdentifiers);
+    
     for (var i: number = 0; i !== v.length; i++) {
         var m: any = interpretedQuery(q, v[i]);
         if (m !== undefined) {
             res.push(m);
-            selectedIds.push(allIds[i]);
+            if(allIds) {
+                if(allIds.identifiers)
+                    selectedIds.identifiers.push(allIds.identifiers[i]);
+                if(allIds.subIdentifiers)
+                    selectedIds.subIdentifiers.push(allIds.subIdentifiers[i]);
+            }
         }
     }
     return res;

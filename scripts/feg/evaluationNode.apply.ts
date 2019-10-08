@@ -1,3 +1,4 @@
+// Copyright 2019 Yoav Seginer.
 // Copyright 2017 Theo Vosse.
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -1020,14 +1021,14 @@ class EvaluationApply extends EvaluationFunctionApplication
         var oldResult: Result = this.result.clone();
         var data = this.arguments[0].value;
         var identifiers: any[] = this.arguments[0].identifiers;
+        var subIdentifiers: any[] = this.arguments[0].subIdentifiers;
         var r: any[];
-        var ids: any[];
+        var dataIds: SubIdentifiers = undefined;
+        var ids: SubIdentifiers = undefined;
 
-        if (this.queryIsProjection || identifiers === undefined) {
-            ids = undefined;
-            identifiers = undefined;
-        } else {
-            ids = [];
+        if (identifiers !== undefined || subIdentifiers !== undefined) {
+            dataIds = new SubIdentifiers(identifiers, subIdentifiers);
+            ids = new SubIdentifiers(undefined,undefined);
         }
         if (this.prototype.writable) {
             this.selectedPositions = [];
@@ -1045,19 +1046,24 @@ class EvaluationApply extends EvaluationFunctionApplication
             // the compiled query functions do not return selection info
             this.result.copyLabelsMinusDataSource(this.arguments[0]);
             this.result.value = this.compiledQuery(data,
-                                 this.compiledQueryArguments, identifiers, ids);
+                                 this.compiledQueryArguments, dataIds, ids);
         } else if (this.setSimpleQuery()) {
             this.result.copyLabelsMinusDataSource(this.arguments[0]);
             this.result.value = this.simpleQuery.execute(data,
-                identifiers, ids, this.selectedPositions, undefined);
+                dataIds, ids, this.selectedPositions, undefined);
         } else if ("query" in this) {
             r = constEmptyOS;
+            if(ids)
+                ids.init(!!dataIds.identifiers, !!dataIds.subIdentifiers);
             // Apply complex query, build list of identities and selected positions
             for (var i: number = 0; i !== data.length; i++) {
                 var queryResult: any = interpretedQuery(this.query, data[i]);
                 if (queryResult !== undefined) {
-                    if (ids !== undefined) {
-                        ids.push(identifiers[i]);
+                    if (dataIds !== undefined) {
+                        if(dataIds.identifiers)
+                            ids.identifiers.push(dataIds.identifiers[i]);
+                        if(dataIds.subIdentifiers)
+                            ids.subIdentifiers.push(dataIds.subIdentifiers[i]);
                     }
                     if (!(queryResult instanceof Array) || queryResult.length !== 0) {
                         Array.prototype.push.apply(r, queryResult);
@@ -1078,7 +1084,7 @@ class EvaluationApply extends EvaluationFunctionApplication
             this.result.set([]);
             ids = undefined;
         }
-        this.result.setIdentifiers(ids);
+        this.result.setSubIdentifiers(ids);
         return change || !oldResult.isEqual(this.result);
     }
 
@@ -1447,6 +1453,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
     values: Result[];
     arguments: any[]; // Note: this is not of type Result
     identifiers: any[];
+    subIdentifiers: any[];
 
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
         super(prototype, local);
@@ -1478,6 +1485,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
         delete this.environments;
         delete this.arguments;
         delete this.identifiers;
+        delete this.subIdentifiers;
         delete this.bodies;
         delete this.fun;
         delete this.parameters;
@@ -1577,6 +1585,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
                 }
             } else {
                 this.identifiers = this.inputs[1].result.identifiers;
+                this.subIdentifiers = this.inputs[1].result.subIdentifiers;
             }
         }
         if (!this.fun.environment.isValid()) {
@@ -1655,6 +1664,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
         this.result.copyLabelsMinusDataSource(result);
         if (result !== undefined) {
             this.identifiers = result.identifiers;
+            this.subIdentifiers = result.subIdentifiers;
         }
         if (value === undefined) {
             this.arguments = [];
@@ -1684,6 +1694,10 @@ class EvaluationMap extends EvaluationFunctionApplication {
                   this.identifiers[i] !== undefined) {
                 paramValue.identifiers = [this.identifiers[i]];
             }
+            if (this.subIdentifiers !== undefined &&
+                this.subIdentifiers[i] !== undefined) {
+                paramValue.subIdentifiers = [this.subIdentifiers[i]];
+            }
             this.parameters[i].set(paramValue);
         }
     }
@@ -1703,6 +1717,11 @@ class EvaluationMap extends EvaluationFunctionApplication {
                       this.identifiers[i] !== undefined) {
                     paramValue.identifiers = [this.identifiers[i]];
                 }
+                if (this.subIdentifiers !== undefined &&
+                    this.subIdentifiers[i] !== undefined) {
+                    paramValue.subIdentifiers = [this.subIdentifiers[i]];
+                }
+
                 this.parameters[i].set(paramValue);
                 this.bodies[i].activate(this, true);
             }
@@ -1727,6 +1746,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
     eval(): boolean {
         var oldValue: any[] = this.result.value;
         var oldIdentifiers: any[] = this.result.identifiers;
+        var oldSubIdentifiers: any[] = this.result.subIdentifiers;
         var r: any[];
         var ids: any[] = undefined;
 
@@ -1767,22 +1787,29 @@ class EvaluationMap extends EvaluationFunctionApplication {
             }
         } else if ("query" in this && this.arguments.length === 1) {
             var input0: Result = this.inputs[0].result;
+            var dataIds: SubIdentifiers = undefined;
+            var outIds: SubIdentifiers = undefined;
+            if(input0.identifiers !== undefined ||
+               input0.subIdentifiers !== undefined) {
+                dataIds = new SubIdentifiers(input0.identifiers,
+                                             input0.subIdentifiers);
+                outIds = new SubIdentifiers(undefined, undefined);
+            }
             this.result.copyLabelsMinusDataSource(this.inputs[1].result);
-            if (input0.identifiers !== undefined) {
-                this.result.identifiers = [];
+            if (dataIds !== undefined) {
                 this.result.value = interpretedQueryWithIdentifiers(this.query,
-                   this.arguments, input0.identifiers, this.result.identifiers);
+                                             this.arguments, dataIds, outIds);
+                this.result.setSubIdentifiers(outIds);
             } else {
                 this.result.value = interpretedQuery(this.query, this.arguments);
-                if ("identifiers" in this.result) {
-                    delete this.result.identifiers;
-                }
+                this.result.setSubIdentifiers(undefined);
             }
         } else {
             this.result.set([]);
         }
         return !valueEqual(oldValue, this.result.value) ||
-               !valueEqual(oldIdentifiers, this.result.identifiers);
+            !valueEqual(oldIdentifiers, this.result.identifiers) ||
+            !valueEqual(oldSubIdentifiers, this.result.subIdentifiers);
     }
 
     specificExplanation(explanation: any, classDebugInfo: AreaTemplateDebugInfo, ignoreInputs: boolean = false): void {
@@ -1817,47 +1844,66 @@ class EvaluationFilter extends EvaluationMap {
     eval(): boolean {
         var oldValue: any[] = this.result.value;
         var oldIdentifiers: any[] = this.result.identifiers;
+        var oldSubIdentifiers: any[] = this.result.subIdentifiers;
 
         if ("fun" in this) {
             var r: any[] = [];
             var argumentValues: any[];
             var argumentIdentifiers: any[];
-            var ids: any[];
+            var argumentSubIdentifiers: any[];
+            var ids: SubIdentifiers = undefined;
             if (this.values !== undefined) {
                 argumentValues = this.arguments;
                 argumentIdentifiers = this.inputs[1].result.identifiers;
-                ids = argumentIdentifiers === undefined? undefined: [];
+                argumentSubIdentifiers = this.inputs[1].result.subIdentifiers;
+                var dataIds: SubIdentifiers = undefined;
+                if(argumentIdentifiers || argumentSubIdentifiers) {
+                    dataIds = new SubIdentifiers(argumentIdentifiers,
+                                                 argumentSubIdentifiers);
+                    ids = new SubIdentifiers(undefined, undefined);
+                    ids.init(!!argumentIdentifiers,!!argumentSubIdentifiers);
+                }
                 for (var i: number = 0; i < this.values.length; i++) {
                     if (this.values[i] !== undefined &&
                           isTrue(this.values[i].value)) {
                         r.push(argumentValues[i]);
-                        if (argumentIdentifiers !== undefined) {
-                            ids.push(argumentIdentifiers[i]);
+                        if(dataIds !== undefined) {
+                            if(dataIds.identifiers)
+                                ids.identifiers.push(dataIds.identifiers[i]);
+                            if(dataIds.subIdentifiers)
+                                ids.subIdentifiers.push(dataIds.subIdentifiers[i]);
                         }
                     }
                 }
             }
             this.result.copyLabels(this.inputs[1].result);
             this.result.value = r;
-            this.result.setIdentifiers(ids);
+            this.result.setSubIdentifiers(ids);
+                
             if (this.funResultIsConstant) {
                 this.destroyFunctionNodes();
                 this.funResultIsConstant = false;
             }
         } else if ("query" in this && this.arguments.length === 1) {
-            if (this.identifiers !== undefined) {
-                this.result.identifiers = [];
+            
+            if (this.identifiers !== undefined ||
+                this.subIdentifiers !== undefined) {
+                var dataIds: SubIdentifiers =
+                    new SubIdentifiers(this.identifiers, this.subIdentifiers);
+                var ids: SubIdentifiers = new SubIdentifiers(undefined,undefined);
                 this.result.value = interpretedQueryWithIdentifiers(
-                    this.query, this.arguments,
-                    this.identifiers, this.result.identifiers);
+                    this.query, this.arguments, dataIds, ids);
+                this.result.setSubIdentifiers(ids);
             } else {
                 this.result.value = interpretedQuery(this.query, this.arguments);
+                this.result.setSubIdentifiers(undefined);
             }
         } else {
             this.result.set([]);
         }
         return !valueEqual(oldValue, this.result.value) ||
-               !valueEqual(oldIdentifiers, this.result.identifiers);
+            !valueEqual(oldIdentifiers, this.result.identifiers) ||
+            !valueEqual(oldSubIdentifiers, this.result.subIdentifiers);
     }
 
     multiQuerySourceIds(): number[] {
@@ -2609,11 +2655,16 @@ class EvaluationMultiQuery extends EvaluationFunctionApplication {
         }
 
         var r: any = this.firstQueryChanged === 0? this.lastFunOutput.value:
-                     this.queryResults[this.firstQueryChanged - 1].value;
-        var ids: any[] = this.firstQueryChanged === 0? this.lastFunOutput.identifiers:
-                         this.queryResults[this.firstQueryChanged - 1].identifiers;
-        var oids: any[];
+            this.queryResults[this.firstQueryChanged - 1].value;
+        var ids: SubIdentifiers = undefined;
+        var oids: SubIdentifiers = undefined;
+        var idResult: Result = this.firstQueryChanged === 0 ?
+            this.lastFunOutput : this.queryResults[this.firstQueryChanged - 1];
 
+        if(idResult && (idResult.identifiers || idResult.subIdentifiers))
+            ids = new SubIdentifiers(idResult.identifiers,
+                                     idResult.subIdentifiers);
+        
         if (r !== undefined) {
             for (var i: number = this.firstQueryChanged; i < this.queries.length; i++) {
                 if (this.simpleQueries[i] !== undefined &&
@@ -2621,7 +2672,7 @@ class EvaluationMultiQuery extends EvaluationFunctionApplication {
                        (this.simpleQueries[i].canCache() && r.length > 30))) {
                     if (ids !== undefined) {
                         oids = ids;
-                        ids = [];
+                        ids = new SubIdentifiers(undefined,undefined);
                     }
                     if (this.simpleQueries[i].canCache()) {
                         var res: Result = i === 0? this.lastFunOutput: this.queryResults[i - 1];
@@ -2631,7 +2682,7 @@ class EvaluationMultiQuery extends EvaluationFunctionApplication {
                     }
                 } else if (ids !== undefined) {
                     oids = ids;
-                    ids = [];
+                    ids = new SubIdentifiers(undefined,undefined);
                     if (this.compiledQueries[i] !== undefined) {
                         r = this.compiledQueries[i](r, this.compiledQueryArguments[i], oids, ids);
                     } else {
@@ -2645,15 +2696,11 @@ class EvaluationMultiQuery extends EvaluationFunctionApplication {
                     }
                 }
                 this.queryResults[i] = new Result(r);
-                this.queryResults[i].identifiers = ids;
+                this.queryResults[i].setSubIdentifiers(ids);
             }
         }
         this.result.value = r;
-        if (ids !== undefined) {
-            this.result.identifiers = ids;
-        } else {
-            delete this.result.identifiers;
-        }
+        this.result.setSubIdentifiers(ids);
         if ("dataSource" in this.lastFunOutput) {
             this.result.dataSource = this.lastFunOutput.dataSource;
         } else {

@@ -784,6 +784,7 @@ class EvaluationSort extends EvaluationFunctionApplication
         var data: any = this.arguments[0].value instanceof Array? this.arguments[0].value:
             this.arguments[0].value === undefined? undefined: [this.arguments[0].value];
         var identifiers: any[] = this.arguments[0].identifiers;
+        var subIdentifiers: any[] = this.arguments[0].subIdentifiers;
         var keys: SortKeyValue[][] =
             this.dontSort() || (this.sortDirectly() && identifiers === undefined)?
             undefined:
@@ -796,36 +797,45 @@ class EvaluationSort extends EvaluationFunctionApplication
                 this.result.value = data;
             } else if (this.dontSort()) {
                 this.result.value = data;
-            } else if (this.sortDirectly() && identifiers === undefined) {
+            } else if (this.sortDirectly() && identifiers === undefined &&
+                       subIdentifiers === undefined) {
                 this.result.value = data.map(simpleValueToSortKeys).sort(
                     this.order[0] === 1? compareJSValues: compareJSValuesDesc).
                     map(sortKeysToSimpleValue);
             } else {
                 // Array of data and associated sort values
-                var map: {pos: number; elt: any; key: SortKeyValue[]; identity: any;}[] =
+                var map: {pos: number; elt: any; key: SortKeyValue[]; identity: any; subIdentity: any}[] =
                     new Array(data.length);
                 for (var i: number = 0; i < data.length; i++) {
                     map[i] = {
                         pos: i,
                         elt: data[i],
                         key: keys[i],
-                        identity: identifiers !== undefined? identifiers[i]: undefined
+                        identity: identifiers !== undefined? identifiers[i]: undefined,
+                        subIdentity: subIdentifiers !== undefined? subIdentifiers[i]: undefined
                     };
                 }
-                map.sort(function(a: {pos: number; elt: any; key: SortKeyValue[]; identity: any;}, b: {pos: number; elt: any; key: SortKeyValue[]; identity: any;}): number {
+                map.sort(function(a: {pos: number; elt: any; key: SortKeyValue[]; identity: any; subIdentity: any;}, b: {pos: number; elt: any; key: SortKeyValue[]; identity: any; subIdentity: any}): number {
                     return compareKeys(a, b, order);
                 });
-                this.result.value = map.map(function(a: {pos: number; elt: any; key: any[]; identity: any;}): any {
+                this.result.value = map.map(function(a: {pos: number; elt: any; key: any[]; identity: any; subIdentity: any;}): any {
                     return a.elt;
                 });
                 if (identifiers !== undefined) {
-                    identifiers = map.map(function(a: {pos: number; elt: any; key: any[]; identity: any;}): any {
+                    identifiers = map.map(function(a: {pos: number; elt: any; key: any[]; identity: any; subIdentity: any;}): any {
                         return a.identity;
+                    });
+                }
+                if (subIdentifiers !== undefined) {
+                    subIdentifiers = map.map(function(a: {pos: number; elt: any; key: any[]; identity: any; subIdentity: any;}): any {
+                        return a.subIdentity;
                     });
                 }
             }
         }
-        this.result.setIdentifiers(identifiers);
+        var newIds: SubIdentifiers = (identifiers || subIdentifiers) ?
+            new SubIdentifiers(identifiers, subIdentifiers) : undefined;
+        this.result.setSubIdentifiers(newIds);
         return true;
     }
 
@@ -1347,6 +1357,8 @@ abstract class EvaluationPositionFunction extends EvaluationFunctionApplication
 
     eval(): boolean {
         var oldValue: any = this.result.value;
+        var oldIdentifiers: any = this.result.identifiers;
+        var oldSubIdentifiers: any = this.result.subIdentifiers;
         var change: boolean = false;
 
         if (this.dataSourceInput !== undefined) {
@@ -1367,7 +1379,9 @@ abstract class EvaluationPositionFunction extends EvaluationFunctionApplication
             change = true;
         }
         this.execute();
-        return change || !valueEqual(oldValue, this.result.value);
+        return change || !valueEqual(oldValue, this.result.value) ||
+            !valueEqual(oldIdentifiers, this.result.identifiers) ||
+            !valueEqual(oldSubIdentifiers, this.result.subIdentifiers);
     }
 
     deactivateInputs(): void {
@@ -1457,13 +1471,20 @@ class EvaluationPFFirst extends EvaluationPositionFunction {
         }
         var os: any[] = this.arguments[0].value;
         var identifiers: any[] = this.arguments[0].identifiers;
+        var subIdentifiers: any[] = this.arguments[0].subIdentifiers;
         assert(os instanceof Array, "argument not os");
         this.result.value = os.length === 0? []: [os[0]];
         if (identifiers !== undefined) {
-            this.result.identifiers = identifiers.slice(0, os.length);
-        } else if ("identifiers" in this.result) {
-            delete this.result.identifiers;
+            this.result.identifiers = identifiers.slice(0, 1);
+        } else if (this.result.identifiers !== undefined) {
+            this.result.identifiers = undefined;
         }
+        if (subIdentifiers !== undefined) {
+            this.result.subIdentifiers = subIdentifiers.slice(0, 1);
+        } else if (this.result.subIdentifiers !== undefined) {
+            this.result.subIdentifiers = undefined;
+        }
+
     }
 
     getWritableInput(): EvaluationNode {
@@ -1518,13 +1539,21 @@ class EvaluationPFLast extends EvaluationPositionFunction {
             return;
         }
         var os: any[] = this.arguments[0].value;
-        var inputIdentifiers: any[] = this.arguments[0].identifiers;
+        var identifiers: any[] = this.arguments[0].identifiers;
+        var subIdentifiers: any[] = this.arguments[0].subIdentifiers;
         assert(os instanceof Array, "argument not os");
         this.result.value = os.length === 0? []: [os[os.length - 1]];
-        if (inputIdentifiers !== undefined) {
-            this.result.identifiers = os.length === 0? []: inputIdentifiers.slice(-1);
-        } else if ("identifiers" in this.result) {
-            delete this.result.identifiers;
+        if (identifiers !== undefined &&
+            identifiers[os.length - 1] !== undefined) {
+            this.result.identifiers = [identifiers[os.length - 1]];
+        } else if (this.result.identifiers !== undefined) {
+            this.result.identifiers = undefined;
+        }
+        if (subIdentifiers !== undefined &&
+            subIdentifiers[os.length - 1] !== undefined) {
+            this.result.subIdentifiers = [subIdentifiers[os.length - 1]];
+        } else if (this.result.subIdentifiers !== undefined) {
+            this.result.subIdentifiers = undefined;
         }
     }
 
@@ -1586,35 +1615,66 @@ class EvaluationPFPos extends EvaluationPositionFunction {
               this.arguments[0].value === undefined ||
               this.arguments[1].value === undefined) {
             this.result.set(constEmptyOS);
+            this.result.setSubIdentifiers(undefined);
             return;
         }
         var positions: any[] = this.arguments[0].value;
         var os: any[] = this.arguments[1].value;
-        var identifiers: any[] = this.arguments[0].identifiers;
+        var identifiers: any[] = this.arguments[1].identifiers;
+        var subIdentifiers: any[] = this.arguments[1].subIdentifiers;
         assert(positions instanceof Array && os instanceof Array, "argument not os");
         var res: any[] = [];
-        var ids: any[] = identifiers === undefined? undefined: [];
+        var newIds: SubIdentifiers = undefined;
+        if(identifiers !== undefined || subIdentifiers !== undefined) {
+            newIds = new SubIdentifiers(undefined,undefined);
+            newIds.init(!!identifiers,!!subIdentifiers);
+        }
         for (var i: number = 0; i < positions.length; i++) {
             var p: any = positions[i];
             if (p instanceof RangeValue) {
                 var bounds = rangeToPositions(p);
-                Array.prototype.push.apply(res, os.slice(bounds[0], bounds[1] + 1));
-                if (identifiers !== undefined) {
-                    Array.prototype.push.apply(ids, identifiers.slice(bounds[0], bounds[1] + 1));
+                if (newIds !== undefined) {
+                    if(identifiers !== undefined) {
+                        if(newIds.identifiers.length < res.length)
+                            newIds.identifiers.length = res.length;
+                        newIds.identifiers =
+                            cconcat(newIds.identifiers,
+                                    identifiers.slice(bounds[0], bounds[1] + 1));
+                    }
+                    if(subIdentifiers !== undefined) {
+                        if(newIds.subIdentifiers.length < res.length)
+                            newIds.subIdentifiers.length = res.length;
+                        newIds.subIdentifiers =
+                            cconcat(newIds.subIdentifiers,
+                                    subIdentifiers.slice(bounds[0], bounds[1] + 1));
+                    }
                 }
+                Array.prototype.push.apply(res, os.slice(bounds[0], bounds[1] + 1));
             } else if (typeof(p) === "number") {
                 if (-os.length <= p && p < os.length) {
-                    res.push(p < 0? os[os.length + p]: os[p]);
-                    if (identifiers !== undefined) {
-                        ids.push(p < 0? identifiers[os.length + p]: identifiers[p]);
+                    var pos: number = p < 0? os.length + p : p;
+                    if (newIds !== undefined) {
+                        if(identifiers !== undefined &&
+                           identifiers[pos] !== undefined) {
+                            if(newIds.identifiers.length < res.length)
+                                newIds.identifiers.length = res.length;
+                            newIds.identifiers.push(identifiers[pos]);
+                        }
+                        if(subIdentifiers !== undefined &&
+                           subIdentifiers[pos] !== undefined) {
+                            if(newIds.subIdentifiers.length < res.length)
+                                newIds.subIdentifiers.length = res.length;
+                            newIds.subIdentifiers.push(subIdentifiers[pos]);
+                        }
                     }
+                    res.push(os[pos]);
                 }
             } else {
                 console.error("not a position:", p);
             }
         }
         this.result.value = res;
-        this.result.setIdentifiers(ids);
+        this.result.setSubIdentifiers(newIds);
     }
 
     getWritableInput(): EvaluationNode {

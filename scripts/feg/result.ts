@@ -21,7 +21,7 @@
 // - pointers to original object/value
 
 type CompiledQuery =
-    (v: any, args: SimpleQuery[], allIds?: any[], selectedIds?: any[]) => any;
+    (v: any, args: SimpleQuery[], allIds?: SubIdentifiers, selectedIds?: SubIdentifiers) => any;
 
 class QueryCache {
     // Pointer to the result for which the cache is valid
@@ -327,6 +327,7 @@ class Result {
     // sets both identifiers and sub-identifiers, depending on the input
     // (which may be an array (identifiers only) an A-V (sub-identifiers
     // only) or a SubIdentifiers object (both identifiers and sub-identifiers).
+    // Empty arrays are considered equivalent to undefined.
     setSubIdentifiers(subIdentifiers: any): void {
         if(subIdentifiers === undefined) {
             if(this.identifiers)
@@ -336,10 +337,19 @@ class Result {
             return;
         }
         if(subIdentifiers instanceof SubIdentifiers) {
-            this.identifiers = subIdentifiers.identifiers;
-            this.subIdentifiers = subIdentifiers.subIdentifiers;
+            if(subIdentifiers.identifiers && subIdentifiers.identifiers.length > 0)
+                this.identifiers = subIdentifiers.identifiers;
+            else if(this.identifiers !== undefined)
+                this.identifiers = undefined;
+            if(subIdentifiers.subIdentifiers && subIdentifiers.subIdentifiers.length > 0)
+                this.subIdentifiers = subIdentifiers.subIdentifiers;
+            else if(this.subIdentifiers !== undefined)
+                this.subIdentifiers = undefined;
         } else if(subIdentifiers instanceof Array) {
-            this.identifiers = subIdentifiers;
+            if(subIdentifiers.length > 0)
+                this.identifiers = subIdentifiers;
+            else if(this.identifiers !== undefined)
+                this.identifiers = undefined;
             if(this.subIdentifiers)
                 this.subIdentifiers = undefined;
         } else { // A-V and therefore represents sub-identifiers
@@ -872,6 +882,17 @@ class SubIdentifiers {
         this.subIdentifiers = subIdentifiers;
     }
 
+    init(hasIdentifiers: boolean, hasSubIdentifiers: boolean): void {
+        if(hasIdentifiers)
+            this.identifiers = [];
+        else
+            this.identifiers = undefined;
+        if(hasSubIdentifiers)
+            this.subIdentifiers = [];
+        else
+            this.subIdentifiers = undefined;
+    }
+    
     isEmpty(): boolean {
         return !this.identifiers && !this.subIdentifiers;
     }
@@ -890,5 +911,155 @@ class SubIdentifiers {
             return new SubIdentifiers(ids, undefined);
         // must be single A-V, is single entry of sub-identifiers
         return new SubIdentifiers(undefined, [ids]);
+    }
+
+    // make this object's identities equal to the projection on attribute
+    // 'attr' of the identifiers in 'ids'. 'data' is the (pre-projection)
+    // data on which 'ids' are defined. This is needed in order to determine
+    // the correct position in the array of the projected identities
+    // (they must be aligned with the data).
+    
+    projectAttr(attr: string, data: any[], ids: SubIdentifiers): void {
+        if(ids === undefined || ids.subIdentifiers === undefined) {
+            this.identifiers = undefined;
+            this.subIdentifiers = undefined;
+            return;
+        }
+        this.identifiers = [];
+        this.subIdentifiers = [];
+        
+        var totalDataLen: number = 0;
+        for(var i: number = 0, l: number = data.length ; i < l ; ++i) {
+            // need to reserve space for the data under this attribute,
+            // even if it is not assigned (sub-)identifiers
+            var data_i = data[i];
+            if(typeof(data_i) !== "object" || !(attr in data_i))
+                continue;
+            var attrData: any = data_i[attr];
+            var dataLen: number = attrData === undefined ? 0 :
+                ((attrData instanceof Array) ? attrData.length : 1);
+            if(dataLen === 0)
+                continue;
+            
+            var subIds: any = ids.subIdentifiers[i];
+            var attrIds: any;
+            if(subIds === undefined || (attrIds = subIds[attr]) === undefined)
+                continue;
+
+            if(attrIds instanceof Array) {
+                // identifiers
+                if(this.identifiers.length < totalDataLen)
+                    this.identifiers.length = totalDataLen;
+                this.identifiers = cconcat(this.identifiers, attrIds);
+            } else if(attrIds instanceof SubIdentifiers) {
+                if(attrIds.identifiers !== undefined) {
+                    if(this.identifiers.length < totalDataLen)
+                        this.identifiers.length = totalDataLen;
+                    this.identifiers = cconcat(this.identifiers,
+                                               attrIds.identifiers);
+                }
+                if(attrIds.subIdentifiers !== undefined) {
+                    if(this.subIdentifiers.length < totalDataLen)
+                        this.subIdentifiers.length = totalDataLen;
+                    this.subIdentifiers = cconcat(this.subIdentifiers,
+                                                  attrIds.subIdentifiers);
+                }
+            } else { // must be A-V (of sub-identifiers)
+                if(this.subIdentifiers.length < totalDataLen)
+                    this.subIdentifiers.length = totalDataLen;
+                this.subIdentifiers.push(attrIds);
+            }
+
+            totalDataLen += dataLen;
+        }
+
+        if(this.identifiers.length === 0)
+            this.identifiers = undefined;
+        else if(this.identifiers.length < totalDataLen)
+            this.identifiers.length = totalDataLen;
+
+        if(this.subIdentifiers.length === 0)
+            this.subIdentifiers = undefined;
+        else if(this.subIdentifiers.length < totalDataLen)
+            this.subIdentifiers.length = totalDataLen;
+    }
+
+    // Same as projectAttr() but continues recursively down a path
+    // of attributes.
+    projectAttrPath(path: string[], data: any[], ids: SubIdentifiers): void {
+        
+        if(ids === undefined || ids.subIdentifiers === undefined) {
+            this.identifiers = undefined;
+            this.subIdentifiers = undefined;
+            return;
+        }
+
+        var subIds: any[] = ids.subIdentifiers;
+        
+        // loop over all attributes of the path except the last one
+        // (which is handled by the single attribute projection function)
+        for(var j: number = 0 ; j < path.length - 1 ; ++j) {
+            
+            var attr: string = path[j];
+
+            var projData: any[] = [];
+            var projSubIds: any[] = [];
+            
+            var totalDataLen: number = 0;
+            for(var i: number = 0, l: number = data.length ; i < l ; ++i) {
+                // need to reserve space for the data under this attribute,
+                // even if it is not assigned (sub-)identifiers
+                var data_i = data[i];
+                if(typeof(data_i) !== "object" || !(attr in data_i))
+                    continue;
+                var attrData: any = data_i[attr];
+                var dataLen: number = attrData === undefined ? 0 :
+                    ((attrData instanceof Array) ? attrData.length : 1);
+                if(dataLen === 0)
+                    continue;
+
+                // store the projected data for the next step
+                if(attrData instanceof Array)
+                    projData = cconcat(projData, attrData);
+                else
+                    projData.push(attrData)
+
+                var attrIds: any;
+                if(subIds[i] === undefined ||
+                   (attrIds = subIds[i][attr]) === undefined)
+                    continue;
+
+                if(attrIds instanceof Array)
+                    // identifiers (don't store: will continue down the path)
+                    continue;
+                else if(attrIds instanceof SubIdentifiers) {
+                    if(attrIds.subIdentifiers !== undefined) {
+                        if(projSubIds.length < totalDataLen)
+                            projSubIds.length = totalDataLen;
+                        projSubIds = cconcat(projSubIds, attrIds.subIdentifiers);
+                    }
+                } else { // must be A-V (of sub-identifiers)
+                    if(projSubIds.length < totalDataLen)
+                        projSubIds.length = totalDataLen;
+                    projSubIds.push(attrIds);
+                }
+                totalDataLen += dataLen;
+            }
+
+            if(projSubIds.length === 0) {
+                this.identifiers = undefined;
+                this.subIdentifiers = undefined;
+                return;
+            }
+
+            if(projSubIds.length < totalDataLen)
+                projSubIds.length = totalDataLen;
+
+            data = projData;
+            subIds = projSubIds;
+        }
+
+        this.projectAttr(path[path.length-1], data,
+                         new SubIdentifiers(undefined,subIds));
     }
 };

@@ -26,7 +26,7 @@ interface SimpleQuery extends EqualityTest {
     // dataPositions are the positions corresponding to the
     // elements in data; when undefined, it is  supposed to be an array of
     // DataPosition(i, 1).
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[];
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[];
 
     // Returns true when data matches the query, and data is a single value
     testSingle(data: any): boolean;
@@ -50,7 +50,28 @@ interface SimpleQuery extends EqualityTest {
     // productive. The current implementation caches for simple value and range
     // queries and attribute-range queries ({x: r(...)}), since they are used
     // frequently on the same, large data set in the current applications.
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[];
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[];
+}
+
+function initIdentitySelection(identifiers: SubIdentifiers,
+                               selectedIdentifiers: SubIdentifiers): void {
+    if (identifiers !== undefined) {
+        selectedIdentifiers.init(!!identifiers.identifiers,
+                                 !!identifiers.subIdentifiers);
+    }
+}
+
+function addIdentityOfSelected(index: number, identifiers: SubIdentifiers,
+                               selectedIdentifiers: SubIdentifiers): void
+{
+    if(identifiers.identifiers !== undefined) {
+        selectedIdentifiers.identifiers.
+            push(identifiers.identifiers[index]);
+    }
+    if(identifiers.subIdentifiers !== undefined) {
+        selectedIdentifiers.subIdentifiers.
+            push(identifiers.subIdentifiers[index]);
+    }
 }
 
 // Implements selection based on ids. If the data doesn't have ids, or the
@@ -74,15 +95,24 @@ class IdentityQuery implements SimpleQuery {
         this.query = makeSimpleQueryDefault(this.data, undefined);
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+        var dataIds: any[];
+        var subIds: any[];
         if (identifiers !== undefined) {
+            dataIds = identifiers.identifiers;
+            subIds = identifiers.subIdentifiers;
+        }
+        if(dataIds !== undefined) {
             var r: any[] = [];
+            selectedIdentifiers.init(!!dataIds,!!subIds);
             for (var i: number = 0; i !== data.length; i++) {
                 var d: any = data[i];
-                if (identifiers[i] in this.ids &&
-                      (this.data[this.ids[identifiers[i]]] === d ||
+                if (dataIds[i] in this.ids &&
+                      (this.data[this.ids[dataIds[i]]] === d ||
                        this.testSingle(d))) {
-                    selectedIdentifiers.push(identifiers[i]);
+                    selectedIdentifiers.identifiers.push(dataIds[i]);
+                    if(subIds !== undefined)
+                        selectedIdentifiers.subIdentifiers.push(subIds[i]);
                     r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -134,24 +164,34 @@ class IdentityQuery implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
 }
 
 class SimplePassThrough implements SimpleQuery {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+        var dataIds: any[] = undefined;
+        var subIds: any[] = undefined;
         if (identifiers !== undefined) {
+            dataIds = identifiers.identifiers;
+            subIds = identifiers.subIdentifiers;
+            selectedIdentifiers.init(!!dataIds,!!subIds);
+        }
+
+        if (dataIds !== undefined) {
             var idMap: {[id: string]: boolean} = {};
             var res: any[] = [];
-            assert(data.length === identifiers.length, "number of identifiers should match number of data elements");
+            assert(data.length === dataIds.length, "number of identifiers should match number of data elements");
             for (var i: number = 0; i < data.length; i++) {
-                var id: any = identifiers[i];
+                var id: any = dataIds[i];
                 if (!(id in idMap)) {
                     idMap[id] = true;
                     res.push(data[i]);
-                    selectedIdentifiers.push(id);
+                    selectedIdentifiers.identifiers.push(id);
+                    if(subIds !== undefined)
+                        selectedIdentifiers.subIdentifiers.push(subIds[i]);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -166,6 +206,8 @@ class SimplePassThrough implements SimpleQuery {
                 if (!valueMap.has(val)) {
                     valueMap.add(val);
                     res.push(val);
+                    if(subIds !== undefined)
+                        selectedIdentifiers.subIdentifiers.push(subIds[i]);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
@@ -197,7 +239,7 @@ class SimplePassThrough implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -205,7 +247,7 @@ class SimplePassThrough implements SimpleQuery {
 
 // The query that selects nothing
 class SimpleSelectNone implements SimpleQuery {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         return [];
     }
 
@@ -229,7 +271,7 @@ class SimpleSelectNone implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -243,7 +285,7 @@ class SingleAttributeProjection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeProjection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
@@ -269,6 +311,8 @@ class SingleAttributeProjection implements SimpleQuery {
                 selectedPositions.push(sub);
             }
         }
+        if(identifiers && identifiers.subIdentifiers)
+            selectedIdentifiers.projectAttr(this.attr, data, identifiers);
         return r;
     }
 
@@ -301,7 +345,7 @@ class SingleAttributeProjection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -317,7 +361,7 @@ class DoubleAttributeProjection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"DoubleAttributeProjection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
         for (var i: number = 0; i !== data.length; i++) {
@@ -352,6 +396,9 @@ class DoubleAttributeProjection implements SimpleQuery {
                 }
             }
         }
+        if(identifiers && identifiers.subIdentifiers)
+            selectedIdentifiers.projectAttrPath([this.attr1,this.attr2], data,
+                                                identifiers);
         return r;
     }
 
@@ -396,23 +443,25 @@ class DoubleAttributeProjection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
 }
 
 class SimpleTrueSelection implements SimpleQuery {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (data_i !== false && data_i !== undefined) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
                 r.push(data_i);
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                 }
@@ -441,7 +490,7 @@ class SimpleTrueSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -455,15 +504,17 @@ class SingleAttributeTrueSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeTrueSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (isTrue(data_i[this.attr])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -501,22 +552,24 @@ class SingleAttributeTrueSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
 }
     
 class SimpleFalseSelection implements SimpleQuery {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
-
+        
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (data_i === false || data_i === undefined) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -546,7 +599,7 @@ class SimpleFalseSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -560,17 +613,19 @@ class SingleAttributeFalseSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeFalseSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object") {
                 var data_i_attr: any = data_i[this.attr];
                 if (isFalse(data_i_attr) && !isEmptyOS(data_i_attr)) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(data_i);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -612,7 +667,7 @@ class SingleAttributeFalseSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -626,15 +681,17 @@ class SingleAttributePresentFalseSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeFalseSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && isFalse(data_i[this.attr])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -672,7 +729,7 @@ class SingleAttributePresentFalseSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -698,17 +755,19 @@ class SimpleValueSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleValueSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: SimpleValue = this.comp;
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (data_i === comp ||
                 (data_i instanceof RangeValue && data_i.match(comp))) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -739,7 +798,7 @@ class SimpleValueSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -753,18 +812,20 @@ class SimpleSubstringSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleSubstringSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var substr: SubStringQuery = this.substr;
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         if (substr.strings.length === 1) {
             var re: RegExp = substr.regexps[0];
             for (var i: number = 0; i !== data.length; i++) {
                 var data_i: any = data[i];
                 if (typeof(data_i) !== "object" && re.test(String(data_i))) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(data_i);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -775,9 +836,8 @@ class SimpleSubstringSelection implements SimpleQuery {
             for (var i: number = 0; i !== data.length; i++) {
                 var data_i: any = data[i];
                 if (typeof(data_i) !== "object" && substr.match(String(data_i))) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(data_i);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -816,7 +876,7 @@ class SimpleSubstringSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -830,15 +890,17 @@ class ElementReferenceSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"ElementReferenceSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (data_i instanceof ElementReference && data_i.element === this.element) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -876,7 +938,7 @@ class ElementReferenceSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -892,16 +954,18 @@ class SingleAttributeSimpleValueSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeSimpleValueSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
-                  simpleValueMatchInOS(data_i[this.attr], this.comp)) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                simpleValueMatchInOS(data_i[this.attr], this.comp)) {
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -955,6 +1019,7 @@ class SingleAttributeSimpleValueSelection implements SimpleQuery {
         if (!(cacheId in result.simpleQueryCache.cache)) {
             var data: any[] = result.value;
             var ids: any[] = result.identifiers;
+            var subIds: any[] = result.subIdentifiers;
             var cache: {[value: string]: SortedCacheElement[]} = {};
             var hasRange: boolean = false;
             for (var i: number = 0; i < result.value.length && !hasRange; i++) {
@@ -970,14 +1035,16 @@ class SingleAttributeSimpleValueSelection implements SimpleQuery {
                                 key: undefined,
                                 value: d,
                                 index: i,
-                                identifier: ids === undefined? undefined: ids[i]
+                                identifier: ids === undefined? undefined: ids[i],
+                                subIdentifier: subIds === undefined? undefined: subIds[i],
                             });
                         } else {
                             cache[p] = [{
                                 key: undefined,
                                 value: d,
                                 index: i,
-                                identifier: ids === undefined? undefined: ids[i]
+                                identifier: ids === undefined? undefined: ids[i],
+                                subIdentifier: subIds === undefined? undefined: subIds[i],
                             }];
                         }
                     }
@@ -987,16 +1054,22 @@ class SingleAttributeSimpleValueSelection implements SimpleQuery {
         }
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         var cacheId: string = "simplevalue_" + this.attr;
         this.checkCache(result);
         var cache: any = result.simpleQueryCache.cache[cacheId];
 
         if (cache !== undefined) {
+            if(selectedIdentifiers)
+                selectedIdentifiers.init(!!result.identifiers,
+                                         !!result.subIdentifiers);
             return SortedCacheElement.extractResults(result,selectedIdentifiers,
                                                      cache[this.comp]);
         } else {
-            return this.execute(result.value, result.identifiers, selectedIdentifiers, selectedPositions, undefined);
+            return this.execute(result.value,
+                                new SubIdentifiers(result.identifiers,
+                                                   result.subIdentifiers),
+                                selectedIdentifiers, selectedPositions, undefined);
         }
     }
 }
@@ -1009,15 +1082,17 @@ class SingleAttributeSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var d: any = data[i];
             if (typeof(d) === "object" && !isEmptyOS(d[this.attr])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1056,7 +1131,7 @@ class SingleAttributeSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1070,15 +1145,17 @@ class SingleAttributeAbsentSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeAbsentSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) !== "object" || isEmptyOS(data_i[this.attr])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1117,7 +1194,7 @@ class SingleAttributeAbsentSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1143,7 +1220,7 @@ class SingleAttributeSimpleValueMultipleSelection implements SimpleQuery {
         }
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: {[key: string]: boolean} = this.comp;
         var compOS: any[] = this.compOS;
@@ -1152,6 +1229,10 @@ class SingleAttributeSimpleValueMultipleSelection implements SimpleQuery {
             this.init();
             comp = this.comp;
         }
+
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
@@ -1162,9 +1243,8 @@ class SingleAttributeSimpleValueMultipleSelection implements SimpleQuery {
                                   return v.match(c);
                               }));
                   })) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1231,7 +1311,7 @@ class SingleAttributeSimpleValueMultipleSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1247,17 +1327,19 @@ class SingleAttributeSimpleValueInvSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeSimpleValueInvSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: SimpleValue = this.comp;
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
-                  !onlySimpleValueInOS(data_i[this.attr], comp)) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                !onlySimpleValueInOS(data_i[this.attr], comp)) {
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1300,7 +1382,7 @@ class SingleAttributeSimpleValueInvSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1326,7 +1408,7 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
         }
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: {[key: string]: boolean} = this.comp;
         var compOS: any[] = this.compOS;
@@ -1335,6 +1417,10 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
             this.init();
             comp = this.comp;
         }
+
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
@@ -1345,9 +1431,8 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
                                   return v.match(c);
                               }));
                   })) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1421,7 +1506,7 @@ class SingleAttributeSimpleValueInvMultipleSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1437,18 +1522,20 @@ class SingleAttributeSubStringQuery implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeSubStringQuery"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
                   data_i[this.attr].some((v: string) => {
                       return this.substr.match(v);
                   })) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1494,7 +1581,7 @@ class SingleAttributeSubStringQuery implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1505,6 +1592,7 @@ class SortedCacheElement {
     value: any;
     index: number;
     identifier: any;
+    subIdentifier: any;
 
     static compareIndices(a: SortedCacheElement, b: SortedCacheElement): number {
         return a.index - b.index;
@@ -1518,6 +1606,10 @@ class SortedCacheElement {
         return a.identifier;
     }
 
+    static extractSubIdentifier(a: SortedCacheElement): any {
+        return a.subIdentifier;
+    }
+
     static compareNumericKeys1(a: SortedCacheElement, b: number): number {
         return a.key - b;
     }
@@ -1527,30 +1619,39 @@ class SortedCacheElement {
     }
 
     // TODO: add selected positions to output!!!
-    static extractResults(result: Result, ids: any[], cache: SortedCacheElement[]): any[] {
+    static extractResults(result: Result, ids: SubIdentifiers, cache: SortedCacheElement[]): any[] {
         if (cache === undefined) {
             return constEmptyOS;
         }
         if (ids !== undefined) {
-            Array.prototype.push.apply(ids, cache.map(SortedCacheElement.extractIdentifier));
+            if(ids.identifiers !== undefined)
+                Array.prototype.push.apply(ids.identifiers, cache.map(SortedCacheElement.extractIdentifier));
+            if(ids.subIdentifiers !== undefined)
+            Array.prototype.push.apply(ids.subIdentifiers, cache.map(SortedCacheElement.extractSubIdentifier));
         }
         return cache.map(SortedCacheElement.extractValue);
     }
 
-    static extractResultRange(result: Result, ids: any[], cache: SortedCacheElement[], low: number, high: number): any[] {
+    static extractResultRange(result: Result, ids: SubIdentifiers, cache: SortedCacheElement[], low: number, high: number): any[] {
         if (high <= low) {
             return constEmptyOS;
         }
         if (low === 0 && high === result.value.length) {
             if (ids !== undefined) {
-                Array.prototype.push.apply(ids, result.identifiers);
+                if(ids.identifiers !== undefined)
+                    Array.prototype.push.apply(ids.identifiers, result.identifiers);
+                if(ids.subIdentifiers !== undefined)
+                    Array.prototype.push.apply(ids.subIdentifiers, result.subIdentifiers);
             }
             return result.value;
         }
         var cacheSlice: SortedCacheElement[] = cache.slice(low, high);
         cacheSlice.sort(SortedCacheElement.compareIndices);
         if (ids !== undefined) {
-            Array.prototype.push.apply(ids, cacheSlice.map(SortedCacheElement.extractIdentifier));
+            if(ids.identifiers !== undefined)
+                Array.prototype.push.apply(ids.identifiers, cacheSlice.map(SortedCacheElement.extractIdentifier));
+            if(ids.subIdentifiers !== undefined)
+                Array.prototype.push.apply(ids.subIdentifiers, cacheSlice.map(SortedCacheElement.extractSubIdentifier));
         }
         return cacheSlice.map(SortedCacheElement.extractValue);
     }
@@ -1574,7 +1675,7 @@ class SimpleRangeSelection implements SimpleQuery {
         return allowSimpleQueryCache;
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -1607,7 +1708,8 @@ class SimpleRangeSelection implements SimpleQuery {
                     return typeof(a) === "number" && !isNaN(a);
                 }).
                 map(function(a: any, i: number): SortedCacheElement {
-                    return { value: a, key: a, index: i, identifier: undefined};
+                    return { value: a, key: a, index: i, identifier: undefined,
+                             subIdentifier: undefined };
                 }).
                 sort(SortedCacheElement.compareNumericKeys2);
         }
@@ -1626,7 +1728,7 @@ class SimpleRangeSelection implements SimpleQuery {
 
     /// When the cache is complete, the low and high index of the slice on the
     /// cache are determined, and the result extracted from it.
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         this.checkCache(result);
         if (this.lowestIndexInCache !== undefined) {
             var low: number = this.comp.min === -Infinity? 0:
@@ -1639,35 +1741,42 @@ class SimpleRangeSelection implements SimpleQuery {
                                                                this.highestIndexInCache + 1:
                                                                this.highestIndexInCache):
                                -this.highestIndexInCache - 1;
+            if(selectedIdentifiers)
+                selectedIdentifiers.init(!!result.identifiers,
+                                         !!result.subIdentifiers);
             return SortedCacheElement.extractResultRange(result, selectedIdentifiers, result.simpleQueryCache.cache["range"], low, high);
         } else {
-            return this.execute(result.value, result.identifiers, selectedIdentifiers, selectedPositions, undefined);
+            return this.execute(result.value,
+                                new SubIdentifiers(result.identifiers,
+                                                   result.subIdentifiers),
+                                selectedIdentifiers, selectedPositions, undefined);
         }
     }
 }
 
 class SimpleRangeCCSelection extends SimpleRangeSelection {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var low: number = this.comp.min;
         var high: number = this.comp.max;
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var d: any = data[i];
             if (d instanceof RangeValue) {
                 if (this.comp.match(d)) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
                 }
             } else if (low <= d && d <= high) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1702,27 +1811,28 @@ class SimpleRangeCCSelection extends SimpleRangeSelection {
 }
 
 class SimpleRangeCOSelection extends SimpleRangeSelection {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var low: number = this.comp.min;
         var high: number = this.comp.max;
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var d: any = data[i];
             if (d instanceof RangeValue) {
                 if (this.comp.match(d)) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
                 }
             } else if (low <= d && d < high) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1757,27 +1867,28 @@ class SimpleRangeCOSelection extends SimpleRangeSelection {
 }
 
 class SimpleRangeOCSelection extends SimpleRangeSelection {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var low: number = this.comp.min;
         var high: number = this.comp.max;
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var d: any = data[i];
             if (d instanceof RangeValue) {
                 if (this.comp.match(d)) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
                 }
             } else if (low < d && d <= high) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1812,27 +1923,28 @@ class SimpleRangeOCSelection extends SimpleRangeSelection {
 }
 
 class SimpleRangeOOSelection extends SimpleRangeSelection {
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var low: number = this.comp.min;
         var high: number = this.comp.max;
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var d: any = data[i];
             if (d instanceof RangeValue) {
                 if (this.comp.match(d)) {
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(d);
                     if (selectedPositions !== undefined) {
                         selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
                     }
                 }
             } else if (low < d && d < high) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(d);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1884,7 +1996,7 @@ class SimpleValueMultipleSelection implements SimpleQuery {
         }
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: {[key: string]: boolean} = this.comp;
         var compOS: any[] = this.compOS;
@@ -1893,15 +2005,18 @@ class SimpleValueMultipleSelection implements SimpleQuery {
             this.init();
             comp = this.comp;
         }
+
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (data_i in comp || (data_i instanceof RangeValue &&
                                    compOS.some(function(c: any): boolean {
                                        return data_i.match(c);
                                    }))) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -1974,6 +2089,7 @@ class SimpleValueMultipleSelection implements SimpleQuery {
         if (!(cacheId in result.simpleQueryCache.cache)) {
             var data: any[] = result.value;
             var ids: any[] = result.identifiers;
+            var subIds: any[] = result.subIdentifiers;
             var cache: {[value: string]: SortedCacheElement[]} = {};
             var hasRange: boolean = false;
             for (var i: number = 0; i < result.value.length && !hasRange; i++) {
@@ -1984,14 +2100,16 @@ class SimpleValueMultipleSelection implements SimpleQuery {
                             key: undefined,
                             value: d,
                             index: i,
-                            identifier: ids === undefined? undefined: ids[i]
+                            identifier: ids === undefined? undefined: ids[i],
+                            subIdentifier: subIds === undefined? undefined: subIds[i]
                         });
                     } else {
                         cache[d] = [{
                             key: undefined,
                             value: d,
                             index: i,
-                            identifier: ids === undefined? undefined: ids[i]
+                            identifier: ids === undefined? undefined: ids[i],
+                            subIdentifier: subIds === undefined? undefined: subIds[i]
                         }];
                     }
                 } else if (d instanceof RangeValue) {
@@ -2003,7 +2121,7 @@ class SimpleValueMultipleSelection implements SimpleQuery {
         }
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         this.checkCache(result);
         var cache: {[value: string]: SortedCacheElement[]} = result.simpleQueryCache.cache["simplevalue"];
         if (cache !== undefined) {
@@ -2016,9 +2134,17 @@ class SimpleValueMultipleSelection implements SimpleQuery {
                     valuesSeen.add(d);
                 }
             }
+            if(selectedIdentifiers)
+                selectedIdentifiers.init(!!result.identifiers,
+                                         !!result.subIdentifiers);
             return SortedCacheElement.extractResults(result, selectedIdentifiers, cacheList);
         } else {
-            return this.execute(result.value, result.identifiers, selectedIdentifiers, selectedPositions, undefined);
+            var identifiers: SubIdentifiers = undefined;
+            if(result.identifiers || result.subIdentifiers) {
+                identifiers = new SubIdentifiers(result.identifiers,
+                                                 result.subIdentifiers);
+            }
+            return this.execute(result.value, identifiers, selectedIdentifiers, selectedPositions, undefined);
         }
     }
 }
@@ -2041,7 +2167,7 @@ class SimpleValueInvMultipleSelection implements SimpleQuery {
         }
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var comp: {[key: string]: boolean} = this.comp;
         var compOS: any[] = this.compOS;
@@ -2050,6 +2176,10 @@ class SimpleValueInvMultipleSelection implements SimpleQuery {
             this.init();
             comp = this.comp;
         }
+
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (!(data_i in comp ||
@@ -2057,9 +2187,8 @@ class SimpleValueInvMultipleSelection implements SimpleQuery {
                    compOS.some(function(c: any): boolean {
                        return data_i.match(c);
                    })))) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -2122,7 +2251,7 @@ class SimpleValueInvMultipleSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -2147,7 +2276,7 @@ class ElementReferenceMultipleSelection implements SimpleQuery {
         }
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
         var elements: {[key: string]: boolean} = this.elements;
 
@@ -2155,12 +2284,15 @@ class ElementReferenceMultipleSelection implements SimpleQuery {
             this.init();
             elements = this.elements;
         }
+
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             if (data[i] instanceof ElementReference &&
-                  data[i].element in elements) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                data[i].element in elements) {
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data[i]);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -2213,7 +2345,7 @@ class ElementReferenceMultipleSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -2231,18 +2363,20 @@ class SingleAttributeRangeSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SingleAttributeRangeSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var data_i: any = data[i];
             if (typeof(data_i) === "object" && this.attr in data_i &&
                   data_i[this.attr].some((d: any): boolean => {
                       return this.comp.match(d);
                   })) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data_i);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -2298,6 +2432,7 @@ class SingleAttributeRangeSelection implements SimpleQuery {
         if (!(cacheId in result.simpleQueryCache.cache)) {
             var data: any[] = result.value;
             var ids: any[] = result.identifiers;
+            var subIds: any[] = result.subIdentifiers;
             var cache: SortedCacheElement[] = [];
             var hasRange: boolean = false;
             // var multipleValuesPerElement: boolean = false;
@@ -2312,7 +2447,8 @@ class SingleAttributeRangeSelection implements SimpleQuery {
                                 key: p_j,
                                 value: d,
                                 index: i,
-                                identifier: ids === undefined? undefined: ids[i]
+                                identifier: ids === undefined? undefined: ids[i],
+                                subIdentifier: subIds === undefined? undefined: subIds[i]
                             });
                         } else if (p_j instanceof RangeValue) {
                             hasRange = true;
@@ -2340,7 +2476,7 @@ class SingleAttributeRangeSelection implements SimpleQuery {
         }
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         this.checkCache(result);
         if (this.lowestIndexInCache !== undefined) {
             var low: number = this.comp.min === -Infinity? 0:
@@ -2353,9 +2489,16 @@ class SingleAttributeRangeSelection implements SimpleQuery {
                                                                this.highestIndexInCache + 1:
                                                                this.highestIndexInCache):
                                -this.highestIndexInCache - 1;
+            if(selectedIdentifiers)
+                selectedIdentifiers.init(!!result.identifiers,
+                                         !!result.subIdentifiers);
             return SortedCacheElement.extractResultRange(result, selectedIdentifiers, result.simpleQueryCache.cache["range_" + this.attr], low, high);
         } else {
-            return this.execute(result.value, result.identifiers, selectedIdentifiers, selectedPositions, undefined);
+            var identifiers: SubIdentifiers = undefined;
+            if(result.identifiers || result.subIdentifiers)
+                identifiers = new SubIdentifiers(result.identifiers,
+                                                 result.subIdentifiers);
+            return this.execute(result.value, identifiers, selectedIdentifiers, selectedPositions, undefined);
         }
     }
 }
@@ -2579,16 +2722,18 @@ class SimpleQueryInterpretedQuery implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleQueryInterpretedQuery"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             var q: any = interpretedQuery(this.query, data[i]);
             if (q !== undefined) {
                 if (q === data[i]) { // It's a selection
-                    if (identifiers !== undefined) {
-                        selectedIdentifiers.push(identifiers[i]);
-                    }
+                    if(identifiers !== undefined)
+                        addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(q);
                 } else {
                     if (q instanceof Array) {
@@ -2630,7 +2775,7 @@ class SimpleQueryInterpretedQuery implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -2645,14 +2790,16 @@ class SimpleOrSelection implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleOrSelection"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             if (this.testSingle(data[i])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data[i]);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -2696,7 +2843,7 @@ class SimpleOrSelection implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -2711,11 +2858,11 @@ class SimpleQueryChain implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleQueryChain"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = data;
-        var r_ids: any[] = identifiers;
+        var r_ids: SubIdentifiers = identifiers;
         var r_dataPos: DataPosition[] = dataPositions;
-        var r_selIds: any[];
+        var r_selIds: SubIdentifiers;
         var r_selPos: DataPosition[];
 
         for (var i: number = 0; r.length !== 0 && i < this.simpleQueries.length; i++) {
@@ -2723,7 +2870,7 @@ class SimpleQueryChain implements SimpleQuery {
                 r_selIds = selectedIdentifiers;
                 r_selPos = selectedPositions;
             } else {
-                r_selIds = identifiers === undefined? undefined: [];
+                r_selIds = identifiers === undefined? undefined: new SubIdentifiers(undefined,undefined);
                 r_selPos = selectedPositions === undefined? undefined: [];
             }
             r = this.simpleQueries[i].execute(r, r_ids, r_selIds, r_selPos, r_dataPos);
@@ -2768,7 +2915,7 @@ class SimpleQueryChain implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
@@ -2783,14 +2930,16 @@ class SimpleNegation implements SimpleQuery {
         if (dbgCreateList !== undefined) dbgCreateList.push({cls:"SimpleNegation"});
     }
 
-    execute(data: any[], identifiers: any[], selectedIdentifiers: any[], selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
+        if(identifiers !== undefined)
+            initIdentitySelection(identifiers, selectedIdentifiers);
+        
         for (var i: number = 0; i !== data.length; i++) {
             if (this.testSingle(data[i])) {
-                if (identifiers !== undefined) {
-                    selectedIdentifiers.push(identifiers[i]);
-                }
+                if(identifiers !== undefined)
+                    addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                 r.push(data[i]);
                 if (selectedPositions !== undefined) {
                     selectedPositions.push(dataPositions !== undefined? dataPositions[i]: new DataPosition(i, 1));
@@ -2835,7 +2984,7 @@ class SimpleNegation implements SimpleQuery {
         return false;
     }
 
-    executeAndCache(result: Result, selectedIdentifiers: any[], selectedPositions: DataPosition[]): any[] {
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
         Utilities.error("do not call");
         return undefined;
     }
