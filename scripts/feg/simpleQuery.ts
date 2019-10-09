@@ -2725,17 +2725,43 @@ class SimpleQueryInterpretedQuery implements SimpleQuery {
     execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var r: any[] = [];
 
-        if(identifiers !== undefined)
+        var subIds: any[] = identifiers ? identifiers.subIdentifiers : undefined;
+        var projIds: SubIdentifiers;
+        
+        if(this.query !== _ && !queryIsSelection(this.query)) {
+            // projection
+            if(subIds && subIds.length > 0) {
+                selectedIdentifiers.init(true,true);
+                projIds = new SubIdentifiers(undefined,undefined);
+            }
+        } else if(identifiers !== undefined)
             initIdentitySelection(identifiers, selectedIdentifiers);
         
         for (var i: number = 0; i !== data.length; i++) {
-            var q: any = interpretedQuery(this.query, data[i]);
+            if(projIds !== undefined)
+                projIds.init(true,true);
+            var q: any = interpretedQuery(this.query, data[i],
+                                          subIds ? [subIds[i]] : undefined, projIds);
             if (q !== undefined) {
                 if (q === data[i]) { // It's a selection
                     if(identifiers !== undefined)
                         addIdentityOfSelected(i, identifiers, selectedIdentifiers);
                     r.push(q);
                 } else {
+                    if(projIds) { // projection with sub-identifiers
+                        if(projIds.identifiers !== undefined &&
+                           projIds.identifiers.length > 0) {
+                            selectedIdentifiers.identifiers.length = r.length;
+                            selectedIdentifiers.identifiers =
+                                cconcat(selectedIdentifiers.identifiers, projIds.identifiers);
+                        }
+                        if(projIds.subIdentifiers !== undefined &&
+                           projIds.subIdentifiers.length > 0) {
+                            selectedIdentifiers.subIdentifiers.length = r.length;
+                            selectedIdentifiers.subIdentifiers =
+                                cconcat(selectedIdentifiers.subIdentifiers, projIds.subIdentifiers);
+                        }
+                    }
                     if (q instanceof Array) {
                         if (q.length === 1) {
                             r.push(q[0]);

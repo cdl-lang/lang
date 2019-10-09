@@ -913,6 +913,25 @@ class SubIdentifiers {
         return new SubIdentifiers(undefined, [ids]);
     }
 
+    // return the 'short' representation of this object: if it has both
+    // identifiers and sub-identifiers, return the object itself, if it only
+    // has identifiers, return them as an array, and if there is a single
+    // sub-identifier (and no identifiers) returns that sub-identifier
+    // (it must be an A-V).
+
+    shortForm(): any {
+        if(this.identifiers !== undefined && this.identifiers.length > 0) {
+            if(this.subIdentifiers !== undefined &&
+               this.subIdentifiers.length > 0)
+                return this;
+            return this.identifiers;
+        } else if(this.subIdentifiers !== undefined &&
+                  this.subIdentifiers.length == 1) {
+            return this.subIdentifiers[0];
+        } else
+            return this;
+    }
+    
     // make this object's identities equal to the projection on attribute
     // 'attr' of the identifiers in 'ids'. 'data' is the (pre-projection)
     // data on which 'ids' are defined. This is needed in order to determine

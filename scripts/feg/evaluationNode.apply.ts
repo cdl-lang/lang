@@ -1052,31 +1052,11 @@ class EvaluationApply extends EvaluationFunctionApplication
             this.result.value = this.simpleQuery.execute(data,
                 dataIds, ids, this.selectedPositions, undefined);
         } else if ("query" in this) {
-            r = constEmptyOS;
-            if(ids)
-                ids.init(!!dataIds.identifiers, !!dataIds.subIdentifiers);
-            // Apply complex query, build list of identities and selected positions
-            for (var i: number = 0; i !== data.length; i++) {
-                var queryResult: any = interpretedQuery(this.query, data[i]);
-                if (queryResult !== undefined) {
-                    if (dataIds !== undefined) {
-                        if(dataIds.identifiers)
-                            ids.identifiers.push(dataIds.identifiers[i]);
-                        if(dataIds.subIdentifiers)
-                            ids.subIdentifiers.push(dataIds.subIdentifiers[i]);
-                    }
-                    if (!(queryResult instanceof Array) || queryResult.length !== 0) {
-                        Array.prototype.push.apply(r, queryResult);
-                    }
-                    if (this.prototype.writable) {
-                        this.selectedPositions.push(new DataPosition(i, 
-                               queryResult instanceof Array? queryResult.length:
-                               queryResult !== undefined? 1: 0));
-                    }
-                }
-            }
+            // it may be that this code is never called, since under normal
+            // conditions setSimpleQuery() above is always successful.
             this.result.copyLabelsMinusDataSource(this.arguments[0]);
-            this.result.value = r;
+            var sq: SimpleQuery = new SimpleQueryInterpretedQuery(this.query);
+            this.result.value = sq.execute(data, dataIds, ids, this.selectedPositions, undefined);
         } else {
             if (this.prototype.writable) {
                 this.selectedPositions = [];

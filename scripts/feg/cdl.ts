@@ -1660,32 +1660,54 @@ function interpretedBoolMatch(q: any, v: any): boolean {
 }
 
 // Can't mix selections and projections in an os.
-function interpretedQuery(q: any, v: any): any {
+function interpretedQuery(q: any, v: any, subIds?: any[], selectedIds?: SubIdentifiers): any {
 
     // Returns object that describes match
     // - sel: result is selection
     // - res: the resulting values
+    // - ids: identifiers and sub-identifiers. Returned only from a projection.
     // - or undefined when there is no match
     // So lmatch({x: 1}, [{x:1},{x:2},{y:1}]) returns { sel: true,
     // res: [{x:1}]}, and lmatch({x: _}, [{x:1},{x:2},{y:1}]) returns
     // {sel: false, res: [1, 2]}.
-    function lmatch(q: any, v: any): { sel: boolean; res: any; } {
+    function lmatch(q: any, v: any, subIds?: any[]): { sel: boolean; res: any; ids?: SubIdentifiers } {
         var arres: any[];
         var isSel: boolean;
-        var m: {sel:boolean;res:any;}, m1: {sel:boolean;res:any;}, i: number;
+        var m: {sel:boolean;res:any;ids?:SubIdentifiers}, m1: {sel:boolean;res:any;ids?:SubIdentifiers}, i: number;
 
         if (q === _) {
             return { sel: false, res: v };
         }
         if (v instanceof Array) {
             arres = [];
+            var projIds: SubIdentifiers = undefined;
             for (i = 0; i !== v.length; i++) {
-                m1 = lmatch(q, v[i]);
+                m1 = lmatch(q, v[i],
+                            subIds !== undefined ? [subIds[i]] : undefined);
                 if (m1 !== undefined) {
+                    if(m1.ids !== undefined) {
+                        if(projIds === undefined)
+                            projIds = new SubIdentifiers([],[]);
+                        if(m1.ids.identifiers &&
+                           m1.ids.identifiers.length > 0) {
+                            projIds.identifiers.length = arres.length;
+                            projIds.identifiers =
+                                cconcat(projIds.identifiers, m1.ids.identifiers);
+                        }
+                        if(m1.ids.subIdentifiers &&
+                           m1.ids.subIdentifiers.length > 0) {
+                            projIds.subIdentifiers.length = arres.length;
+                            projIds.subIdentifiers =
+                                cconcat(projIds.subIdentifiers, m1.ids.subIdentifiers);
+                        }
+                    }
                     arres = arres.concat(m1.res);
                     isSel = m1.sel; // Only last one...
                 }
             }
+            if(projIds !== undefined && (projIds.identifiers.length > 0 ||
+                                         projIds.subIdentifiers.length > 0))
+                return {sel: isSel, res: arres, ids: projIds};
             return isSel !== undefined? {sel: isSel, res: arres}: undefined;
         }
         switch (typeof(q)) {
@@ -1694,8 +1716,11 @@ function interpretedQuery(q: any, v: any): any {
                 if (q.length === 0) {
                     return undefined;
                 }
-                if (q.length === 1 && q[0] === _) {
-                    return { sel: false, res: v };
+                if (q.length === 1) {
+                    if(q[0] === _)
+                        return { sel: false, res: v };
+                    else
+                        return lmatch(q[0],v,subIds);
                 }
                 arres = [];
                 for (i = 0; i !== q.length; i++) {
@@ -1746,33 +1771,35 @@ function interpretedQuery(q: any, v: any): any {
             if (!(v instanceof Object)) {
                 return undefined;
             }
+            if(subIds !== undefined && subIds.length > 0 && subIds[0] !== undefined)
+                return lmatchObjWithIds(q, v, subIds);
             var res = {sel: true, res: v};
             var nrMatchingAttributes: number = 0;
             var prevMatchingAttribute: string;
             for (var attr in q) {
+                // undefined attribute values should be treated as non-existent
+                if (q[attr] === undefined)
+                    continue;
                 if (!(attr in v)) {
                     return undefined;
                 }
-                if (q[attr] !== undefined) {
-                    // undefined attribute values should be treated as non-existent
-                    m = lmatch(q[attr], v[attr]);
-                    if (m === undefined) {
-                        return undefined;
-                    }
-                    if (!m.sel) {
-                        nrMatchingAttributes++;
-                        if (nrMatchingAttributes === 1) {
-                            res.sel = false;
-                            res.res = m.res;
-                            prevMatchingAttribute = attr;
-                        } else if (nrMatchingAttributes === 2) {
-                            var obj: any = {};
-                            obj[prevMatchingAttribute] = res.res;
-                            obj[attr] = m.res;
-                            res.res = obj;
-                        } else {
-                            res.res[attr] = m;
-                        }
+                m = lmatch(q[attr], v[attr]);
+                if (m === undefined) {
+                    return undefined;
+                }
+                if (!m.sel) {
+                    nrMatchingAttributes++;
+                    if (nrMatchingAttributes === 1) {
+                        res.sel = false;
+                        res.res = m.res;
+                        prevMatchingAttribute = attr;
+                    } else if (nrMatchingAttributes === 2) {
+                        var obj: any = {};
+                        obj[prevMatchingAttribute] = res.res;
+                        obj[attr] = m.res;
+                        res.res = obj;
+                    } else {
+                        res.res[attr] = m;
                     }
                 }
             }
@@ -1787,19 +1814,125 @@ function interpretedQuery(q: any, v: any): any {
         }
     }
 
-    var m: { sel: boolean; res: any; };
+    // assumes there are sub-identifiers, and that the query and v are an A-V.
+    // Returns the same object as lmatch
+    function lmatchObjWithIds(q: any, v: any, subIds?: any[]): { sel: boolean; res: any; ids?: SubIdentifiers }
+    {
+        var res: {sel:boolean;res:any;ids?:SubIdentifiers} =
+            {sel: true, res: v};
+        var m: {sel:boolean;res:any;ids?:SubIdentifiers};
+        var nrMatchingAttributes: number = 0;
+        var prevMatchingAttribute: string;
+        for (var attr in q) {
+            // undefined attribute values should be treated as non-existent
+            if (q[attr] === undefined)
+                continue;
+            if (!(attr in v)) {
+                return undefined;
+            }
+            var idsUnderAttr: any[] = subIds[0][attr];
+            var attrIds: any[] = undefined;
+            var attrSubIds: any[] = undefined;
+            if(idsUnderAttr === undefined) {
+                m = lmatch(q[attr], v[attr]);
+            } else if(idsUnderAttr instanceof SubIdentifiers) {
+                attrIds = idsUnderAttr.identifiers; // perhaps undefined
+                attrSubIds = idsUnderAttr.subIdentifiers;
+                m = lmatch(q[attr], v[attr], attrSubIds);
+            } else if(!(idsUnderAttr instanceof Array)) { // is an A-V
+                attrSubIds = [idsUnderAttr];
+                m = lmatch(q[attr], v[attr],attrSubIds);
+            } else {
+                attrIds = idsUnderAttr; // is an array
+                m = lmatch(q[attr], v[attr]);
+            }
+            if (m === undefined) {
+                return undefined;
+            }
+            if(m.sel)
+                continue;
+            var resIds: SubIdentifiers = undefined;
+            if(q[attr] === _) {
+                if(attrIds !== undefined || attrSubIds !== undefined)
+                    resIds = new SubIdentifiers(attrIds, attrSubIds);
+            } else
+                resIds = m.ids;
+            nrMatchingAttributes++;
+            if (nrMatchingAttributes === 1) {
+                res.sel = false;
+                res.res = m.res;
+                prevMatchingAttribute = attr;
+                res.ids = resIds;
+            } else if (nrMatchingAttributes === 2) {
+                var obj: any = {};
+                obj[prevMatchingAttribute] = res.res;
+                obj[attr] = m.res;
+                res.res = obj;
+                if(res.ids) {
+                    var resSubIds: any[] = [{}];
+                    resSubIds[0][prevMatchingAttribute] = res.ids.shortForm();
+                    res.ids = new SubIdentifiers(undefined,resSubIds);
+                }
+                if(resIds) {
+                    if(!res.ids)
+                        res.ids = new SubIdentifiers(undefined,[{}]);
+                    res.ids.subIdentifiers[0][attr] = resIds.shortForm();
+                }
+            } else {
+                res.res[attr] = m;
+                if(resIds) {
+                    if(!res.ids)
+                        res.ids = new SubIdentifiers(undefined,[{}]);
+                    res.ids.subIdentifiers[0][attr] = resIds.shortForm();
+                }
+            }
+        }
+        return res;
+    }
+    
+    var m: { sel: boolean; res: any; ids?: SubIdentifiers };
     if (v instanceof Array) {
         var res: any[] = [];
-        for (var i: number = 0; i !== v.length; i++) {
-            m = lmatch(q, v[i]);
-            if (m !== undefined) {
-                res = res.concat(m.res);
+        if(subIds !== undefined && selectedIds !== undefined) {
+            selectedIds.init(true,true);
+            for (var i: number = 0; i !== v.length; i++) {
+                m = lmatch(q, v[i],
+                           subIds[i] !== undefined ? [subIds[i]] : undefined);
+                if (m !== undefined) {
+                    if(m.ids !== undefined) {
+                        if(m.ids.identifiers !== undefined) {
+                            selectedIds.identifiers.length = res.length;
+                            selectedIds.identifiers =
+                                cconcat(selectedIds.identifiers, m.ids.identifiers);
+                        }
+                        if(m.ids.subIdentifiers !== undefined) {
+                            selectedIds.subIdentifiers.length = res.length;
+                            selectedIds.subIdentifiers =
+                                cconcat(selectedIds.subIdentifiers, m.ids.subIdentifiers);
+                        }
+                     }
+                    res = res.concat(m.res);
+                    
+                }
+            }
+        } else {
+            for (var i: number = 0; i !== v.length; i++) {
+                m = lmatch(q, v[i]);
+                if (m !== undefined) {
+                    res = res.concat(m.res);
+                }
             }
         }
         return res;
     } else {
-        m = lmatch(q, v);
-        return m === undefined? undefined: m.res;
+        m = lmatch(q, v, subIds);
+        if(m === undefined)
+            return undefined;
+        if(selectedIds && m.ids !== undefined) {
+            selectedIds.identifiers = m.ids.identifiers;
+            selectedIds.subIdentifiers = m.ids.subIdentifiers;
+        }
+        return m.res;
     }
 }
 
@@ -1809,19 +1942,54 @@ function interpretedQueryWithIdentifiers(q: any, v: any, allIds: SubIdentifiers,
     if (!(v instanceof Array)) {
         v = [v];
     }
-    if(selectedIds && allIds)
-        selectedIds.init(!!allIds.identifiers,!!allIds.subIdentifiers);
+    var subIds: any[];
+    var projIds: SubIdentifiers = undefined;
+    var isProjection: boolean = false;
+    if(selectedIds && allIds) {
+        if(q !== _ && !queryIsSelection(q)) {
+            isProjection = true;
+            subIds = allIds.subIdentifiers;
+            if(subIds !== undefined && subIds.length > 0) {
+                projIds = new SubIdentifiers(undefined,undefined);
+                selectedIds.init(true,true);
+            }
+        } else
+            selectedIds.init(!!allIds.identifiers,!!allIds.subIdentifiers);
+    }
     
     for (var i: number = 0; i !== v.length; i++) {
-        var m: any = interpretedQuery(q, v[i]);
+        if(projIds !== undefined)
+            projIds.init(true,true);
+        var m: any = interpretedQuery(q, v[i], subIds ? [subIds[i]] : undefined,
+                                      projIds);
         if (m !== undefined) {
-            res.push(m);
             if(allIds) {
-                if(allIds.identifiers)
-                    selectedIds.identifiers.push(allIds.identifiers[i]);
-                if(allIds.subIdentifiers)
-                    selectedIds.subIdentifiers.push(allIds.subIdentifiers[i]);
+                if(projIds) { // projection with sub-identifiers
+                    if(projIds.identifiers !== undefined &&
+                       projIds.identifiers.length > 0) {
+                        selectedIds.identifiers.length = res.length;
+                        selectedIds.identifiers =
+                            cconcat(selectedIds.identifiers, projIds.identifiers);
+                    }
+                    if(projIds.subIdentifiers !== undefined &&
+                       projIds.subIdentifiers.length > 0) {
+                        selectedIds.subIdentifiers.length = res.length;
+                        selectedIds.subIdentifiers =
+                            cconcat(selectedIds.subIdentifiers, projIds.subIdentifiers);
+                    }
+                } else if(!isProjection) { // selection
+                    if(allIds.identifiers)
+                        selectedIds.identifiers.push(allIds.identifiers[i]);
+                    if(allIds.subIdentifiers)
+                        selectedIds.subIdentifiers.push(allIds.subIdentifiers[i]);
+                }
             }
+            if(!(m instanceof Array))
+                res.push(m);
+            else if(m.length === 1)
+                res.push(m[0]);
+            else
+                res = res.concat(m);
         }
     }
     return res;
@@ -1923,11 +2091,11 @@ function queryIsSelection(query: any): boolean {
         return true;
     }
     for (var attr in query) {
-        if (queryIsSelection(query[attr])) {
-            return true;
+        if (!queryIsSelection(query[attr])) {
+            return false;
         }
     }
-    return false;
+    return true;
 }
 
 function extractProjectionPaths(query: any): string[][] {
