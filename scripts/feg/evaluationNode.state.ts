@@ -1199,7 +1199,14 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
          return merge;
     }
 
-    if (attributes.push === true) {
+    if(position.identified !== undefined) {
+        // 'identified' is an array with the positions of the values
+        // which have the same identity as the write target.
+        newValue = position.identified.map(x => newValue[x]);
+    }
+    
+    if (attributes.push === true ||
+        (position.index == 0 && position.length == 0)) {
         // No need to update positions
         assert(position.path === undefined, "meaningless?");
         return os.concat(newValue);
@@ -1225,10 +1232,25 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
             repl = newValue;
             break;
           case WriteMode.merge:
-            repl = newValue.length !== 1? newValue:
-                mergeCopyValue(newValue,
-                               os.slice(index, index + position.length),
-                               attributes, undefined);
+            if(newValue === undefined || newValue.length === 0)
+                break; // non-atomic o()
+            if(position.identified &&
+               (position.length > 1 || newValue.length > 1)) {
+                // more than two values to be merged together
+                // (all have the same identity),
+                var variants: any[] = os.slice(index, index + position.length).
+                    map(x => new Result(x));
+                for(var i = 0 ; i < newValue.length ; ++i)
+                    variants.push(new Result(newValue[i]));
+                variants.reverse(); // highest priority should be first
+                repl = mergeVariants(variants, undefined, undefined, 0,
+                                     variants.length, undefined).value;
+            } else {
+                repl = newValue.length > 1 ? newValue :
+                    mergeCopyValue(newValue,
+                                   os.slice(index, index + position.length),
+                                   attributes, undefined);
+            }
             break;
         }
         if (position.addedAttributes !== undefined) {

@@ -1591,6 +1591,9 @@ class ToMergeEvaluationNode implements Watcher {
         if (this.toExpression.isQualified() &&
               this.mergeExpression.isQualified()) {
             var shouldBreak: boolean = this.shouldDebugBreak();
+            var idPositions: { matched: DataPosition[],
+                               noMatch: DataPosition[] } =
+                this.getIdentifiedWritePositions();
             // merge attributes which apply to all element in the written value,
             // even if it is an ordered set with multiple elements.
             // When merging by identities, the merge attributes are takes
@@ -1608,9 +1611,13 @@ class ToMergeEvaluationNode implements Watcher {
             if (shouldBreak)
                 breakIntoDebugger();
             gWriteAction = this.writeNode.name + ":" + this.caseName;
-            this.toExpression.write(this.mergeExpression.result, // apply removeEmptyOSFromAV?
-                                    WriteMode.merge, mergeAttributes, undefined,
-                                    true);
+            this.toExpression.write(this.mergeExpression.result,
+                                    WriteMode.merge, mergeAttributes,
+                                    idPositions.matched, true);
+            if(idPositions.noMatch !== undefined)
+                this.toExpression.write(this.mergeExpression.result,
+                                        WriteMode.merge, mergeAttributes,
+                                        idPositions.noMatch, true);
             gWriteAction = undefined;
         }
         this.mergeExpression.deactivate(this, false);
@@ -1618,6 +1625,70 @@ class ToMergeEvaluationNode implements Watcher {
         this.active = false;
     }
 
+    // aligns 'to' and 'merge' elements by identities, if the 'merge'
+    // value is identified. It returns an object storing two arrays of
+    // DataPosition elements:
+    // {
+    //    matched: <positions of 'to' identities matched by 'merge' identities>
+    //    noMatch: <(0,0) position for unmatched 'merge' identities>
+    // }
+    getIdentifiedWritePositions(): { matched: DataPosition[],
+                                     noMatch: DataPosition[] }
+    {
+        var mergeIdentifiers = this.mergeExpression.result.identifiers;
+        if(mergeIdentifiers === undefined || mergeIdentifiers.length == 0)
+            return { matched: undefined, noMatch: undefined }; // no identification
+        var toIdentifiers = this.toExpression.result.identifiers;
+        if(toIdentifiers === undefined || toIdentifiers.length === 0) {
+            // all elements should be appended (no identity match)
+            return { matched: undefined, noMatch: [new DataPosition(0,0)] };
+        }
+
+        var byId: Map<any,{ to: number[], merge: number[] }> =
+            new Map<any,{ to: number[], merge: number[] }>();
+
+        for(var i: number = 0, l: number = toIdentifiers.length ; i < l ; ++i){
+            var id: any = toIdentifiers[i];
+            if(id === undefined || typeof(id) == "object")
+                continue;
+            var idEntry: { to: number[], merge: number[] } = byId.get(id);
+            if(idEntry === undefined) {
+                idEntry = { to: [i], merge: [] };
+                byId.set(id,idEntry);
+            } else
+                idEntry.to.push(i);
+        }
+
+        var noMatch: number[] = [];
+        var writePos: DataPosition[] = [];
+        
+        for(var i: number = 0, l: number = mergeIdentifiers.length ; i < l ; ++i){
+            var id: any = mergeIdentifiers[i];
+            var idEntry: { to: number[], merge: number[] };
+            if(id === undefined || typeof(id) == "object" ||
+               (idEntry = byId.get(id)) === undefined) {
+                noMatch.push(i);
+            } else {
+                if(idEntry.merge.length === 0) {
+                    // first match, create position entries.
+                    for(var j: number = 0, m: number = idEntry.to.length ; j < m ; ++j) {
+                        writePos.push(new DataPosition(idEntry.to[j],1,undefined,undefined,undefined,idEntry.merge));
+                    }
+                }
+                idEntry.merge.push(i);
+            }
+        }
+        
+        writePos.sort((a,b):number => { return a.index == b.index ? a.length - b.length : a.index - b.index })
+
+        return {
+            matched: writePos.length > 0 ? writePos : undefined,
+            noMatch: noMatch.length > 0 ?
+                [new DataPosition(0,0,undefined,undefined,undefined, noMatch)] :
+                undefined
+        }
+    }
+    
     shouldDebugBreak(): boolean {
         // This bit is ugly, but I don't see the need to add more information
         // to the objects just to make this code a bit prettier
@@ -3806,7 +3877,7 @@ class DisplayArea extends CoreArea {
                 }
             }
         }
-        
+
         var needToScheduleGeometryTask: boolean = false;
         if (!hasDefinedValues) {
             needToScheduleGeometryTask =

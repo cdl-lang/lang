@@ -245,10 +245,11 @@ class DataPosition {
     /// Attributes added during writing; since DataPosition only describes one
     /// level, this is just a mapping for current level attributes.
     addedAttributes: {[attr: string]: any};
-    /// Identity of the element(s) being (over)written.
-    identity: any;
+    // Positions in the merged data which were matched by identity to be written
+    // at this position.
+    identified?: number[];
 
-    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identity?: any) {
+    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[]) {
         this.index = index;
         this.length = length;
         if (path !== undefined && path.length > 1) {
@@ -265,14 +266,14 @@ class DataPosition {
         if (addedAttributes !== undefined) {
             this.addedAttributes = addedAttributes;
         }
-        if (identity !== undefined) {
-            this.identity = identity;
+        if (identified !== undefined) {
+            this.identified = identified;
         }
     }
 
     copy(): DataPosition {
         return new DataPosition(this.index, this.length, this.path, this.sub,
-                              shallowCopy(this.addedAttributes), this.identity);
+                              shallowCopy(this.addedAttributes), this.identified);
     }
 
     addPath(path: string[], sub: DataPosition[]): DataPosition {
@@ -289,14 +290,7 @@ class DataPosition {
 
     copyWithOffset(offset: number): DataPosition {
         return new DataPosition(this.index - offset, this.length, this.path,
-                                this.sub, this.addedAttributes, this.identity);
-    }
-
-    copyWithIdentity(identity: any): DataPosition {
-        assert(this.identity === undefined || this.identity === identity,
-               "identity should not be overwritten");
-        return new DataPosition(this.index, this.length, this.path,
-                                this.sub, this.addedAttributes, identity);
+                                this.sub, this.addedAttributes, this.identified);
     }
 
     copyWithAddedAttributes(attrs: any): DataPosition {
@@ -312,13 +306,13 @@ class DataPosition {
             addedAttributes[attr] = attrs[attr];
         }
         return new DataPosition(this.index, this.length, this.path,
-                                this.sub, addedAttributes, this.identity);
+                                this.sub, addedAttributes, this.identified);
     }
 
     static staticToString(dp: DataPosition): string {
         return dp.path === undefined? "(" + dp.index + ", " + dp.length + ")":
             "(" + dp.index + ", " + dp.length + ", " + dp.path.join(".") + 
-            (dp.identity === undefined? "": ", " + dp.identity) + "=" +
+            (dp.identified === undefined? "": ", <" + dp.identified.join() + "> ") + "=" +
             dp.sub.map(DataPosition.staticToString).join(";") + ")";
     }
 

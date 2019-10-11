@@ -217,31 +217,9 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
             return uvo;
         }
     }
-
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
-        var identifiedPositions: DataPosition[] = undefined;
-
-        if (positions !== undefined && typeof(this.identificationAttribute) === "string") {
-            identifiedPositions = positions.map(pos_i => {
-                if (pos_i.identity !== undefined) {
-                    var pos_i_id = pos_i.copy();
-                    if (pos_i_id.addedAttributes === undefined) {
-                        pos_i_id.addedAttributes = {};
-                    }
-                    pos_i_id.addedAttributes[<string>this.identificationAttribute] =
-                        ensureOS(pos_i_id.identity);
-                    pos_i_id.identity = undefined;
-                    pos_i_id.index = undefined;
-                    return pos_i_id;
-                } else {
-                    return pos_i;
-                }
-            });
-        } else if (positions !== undefined) {
-            assert(this.identificationQuery === undefined, "TODO: writing for complex identification");
-        }
         if (this.inputs[1] !== undefined) {
-            return this.inputs[1].write(result, mode, attributes, identifiedPositions, reportDeadEnd);
+            return this.inputs[1].write(result, mode, attributes, positions, reportDeadEnd);
         }
         return false;
     }

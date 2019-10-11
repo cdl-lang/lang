@@ -1415,9 +1415,6 @@ class EvaluationVariant extends EvaluationNode
     // Writes to the first matching qualifier, assuming it implements writing.
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (0 <= this.firstActive && this.firstActive < this.variantInputs.length) {
-            if (positions !== undefined && "identifiers" in this.result) {
-                positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
-            }
             return this.variantInputs[this.firstActive].write(result, mode, attributes, positions, reportDeadEnd);
         } else {
             this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
@@ -1744,9 +1741,6 @@ class EvaluationVariant1 extends EvaluationNode
     // Writes to the first matching qualifier, assuming it implements writing...
     write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.qualifiedVariant) {
-            if (positions !== undefined && "identifiers" in this.result) {
-                positions = positions.map(pos => pos.copyWithIdentity(this.result.identifiers[pos.index]));
-            }
             return this.variantInput.write(result, mode, attributes, positions, reportDeadEnd);
         } else {
             this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
