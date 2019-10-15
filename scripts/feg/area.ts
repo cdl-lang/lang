@@ -1594,16 +1594,6 @@ class ToMergeEvaluationNode implements Watcher {
             var idPositions: { matched: DataPosition[],
                                noMatch: DataPosition[] } =
                 this.getIdentifiedWritePositions();
-            // merge attributes which apply to all element in the written value,
-            // even if it is an ordered set with multiple elements.
-            // When merging by identities, the merge attributes are takes
-            // directly from the result object (as they may apply to each
-            // element separately).
-            var mergeAttributes: MergeAttributes =
-                (this.mergeExpression.result.mergeAttributes &&
-                 this.mergeExpression.result.mergeAttributes.length == 1) ?
-                this.mergeExpression.result.mergeAttributes[0] :
-                new MergeAttributes(undefined,undefined);
             if (debugWrites || shouldBreak)
                 gSimpleLog.log("write", this.writeNode.name, this.caseName,
                             vstringify(this.mergeExpression.result.value),
@@ -1612,12 +1602,11 @@ class ToMergeEvaluationNode implements Watcher {
                 breakIntoDebugger();
             gWriteAction = this.writeNode.name + ":" + this.caseName;
             this.toExpression.write(this.mergeExpression.result,
-                                    WriteMode.merge, mergeAttributes,
-                                    idPositions.matched, true);
+                                    WriteMode.merge, idPositions.matched, true);
             if(idPositions.noMatch !== undefined)
                 this.toExpression.write(this.mergeExpression.result,
-                                        WriteMode.merge, mergeAttributes,
-                                        idPositions.noMatch, true);
+                                        WriteMode.merge, idPositions.noMatch,
+                                        true);
             gWriteAction = undefined;
         }
         this.mergeExpression.deactivate(this, false);
@@ -1639,6 +1628,7 @@ class ToMergeEvaluationNode implements Watcher {
         if(mergeIdentifiers === undefined || mergeIdentifiers.length == 0)
             return { matched: undefined, noMatch: undefined }; // no identification
         var toIdentifiers = this.toExpression.result.identifiers;
+        var toSubIdentifiers = this.toExpression.result.subIdentifiers;
         if(toIdentifiers === undefined || toIdentifiers.length === 0) {
             // all elements should be appended (no identity match)
             return { matched: undefined, noMatch: [new DataPosition(0,0)] };
@@ -1672,7 +1662,10 @@ class ToMergeEvaluationNode implements Watcher {
                 if(idEntry.merge.length === 0) {
                     // first match, create position entries.
                     for(var j: number = 0, m: number = idEntry.to.length ; j < m ; ++j) {
-                        writePos.push(new DataPosition(idEntry.to[j],1,undefined,undefined,undefined,idEntry.merge));
+                        var toPos: number = idEntry.to[j];
+                        writePos.push(new DataPosition(
+                            toPos,1,undefined,undefined,undefined,idEntry.merge,
+                            toSubIdentifiers ? toSubIdentifiers[toPos] : undefined));
                     }
                 }
                 idEntry.merge.push(i);

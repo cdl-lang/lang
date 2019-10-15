@@ -928,7 +928,7 @@ class EvaluationAreaProjection extends EvaluationNode {
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var areaData: any = this.inputs[0] !== undefined &&
             this.inputs[0].result.value;
         var pos: number = 0;
@@ -957,7 +957,7 @@ class EvaluationAreaProjection extends EvaluationNode {
                     areaDataPosition = [
                         new DataPosition(0, this.values[i].size())
                     ];
-                    if(exportNode.write(result, mode, attributes,
+                    if(exportNode.write(result, mode,
                                         areaDataPosition, reportDeadEnd))
                         success = true;
                 }
@@ -974,8 +974,7 @@ class EvaluationAreaProjection extends EvaluationNode {
                 exportNode = area.getExport(this.exportId);
                 assert(exportNode !== undefined,
                        "if result is defined, exportNode must be too");
-                if(exportNode.write(result, mode, attributes,
-                                    positions, reportDeadEnd))
+                if(exportNode.write(result, mode, positions, reportDeadEnd))
                     return true;
             }
             // fall to dead-end message below
@@ -1002,7 +1001,7 @@ class EvaluationAreaProjection extends EvaluationNode {
                         areaDataPosition.push(dp.copyWithOffset(accumLength));
                         pos++;
                     }
-                    if(exportNode.write(result, mode, attributes,
+                    if(exportNode.write(result, mode,
                                         areaDataPosition, reportDeadEnd))
                        success = true;
                 }
@@ -1182,7 +1181,7 @@ class EvaluationClassOfArea extends EvaluationAreaProjection {
         return !valueEqual(oldValue, this.result.value);
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         this.reportDeadEndWrite(reportDeadEnd,
                                 "cannot write through classOfArea");
         return false;

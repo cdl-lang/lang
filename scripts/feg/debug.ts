@@ -287,18 +287,18 @@ function setGlobalDefault(pathStr: any, value: any, mode?: string): void {
     var globalDefaultsNode: EvaluationWrite =
         <EvaluationWrite> globalEvaluationNodes[globalDefaultsNodeIndex];
     var writeResult: Result = new Result(normalizeObject(value));
-    var mergeAttributes: MergeAttributes = new MergeAttributes(
-        mode === "push", mode === "atomic").
-        extendWithPath(path);
+    if(mode === "push" || mode === "atomic")
+        writeResult.mergeAttributes = [new MergeAttributes(
+            mode === "push", mode === "atomic").extendWithPath(path)];
     var pct: PositionChangeTracker = new PositionChangeTracker();
 
     for (var i: number = path.length - 1; i >= 0; i--) {
         position = [new DataPosition(0, 1, [path[i]], position)];
     }
     globalDefaultsNode.write(
-        writeResult, WriteMode.merge, mergeAttributes, position, true);
+        writeResult, WriteMode.merge, position, true);
     gGlobalDefaultChangeList = determineWrite(gGlobalDefaultChangeList,
-                  writeResult, WriteMode.merge, mergeAttributes, position, pct);
+                  writeResult, WriteMode.merge, position, pct);
     gGlobalDefaultChangeList[pathStr] = value;
     evaluationQueue.releaseLatched();
     if (!globalDefaultsNode.isActive()) {

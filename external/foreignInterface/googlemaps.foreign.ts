@@ -291,9 +291,9 @@ class GoogleMapsFI extends ForeignInterface {
         this.ready = false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
-        var newValue = determineWrite([], result, mode, attributes, positions, pct);
+        var newValue = determineWrite([], result, mode, positions, pct);
         var newMapOptions: any = undefined;
 
         for (var i: number = 0; i < newValue.length; i++) {

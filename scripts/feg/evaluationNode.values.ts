@@ -248,7 +248,7 @@ class EvaluationOrderedSet extends EvaluationNode {
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.constant) {
             Utilities.warn("dead ended write: writing to constant os at " + gWriteAction);
             return false;
@@ -257,8 +257,7 @@ class EvaluationOrderedSet extends EvaluationNode {
         if (positions === undefined) {
             for (var i: number = 0; i < this.elements.length; i++) {
                 if (this.inputs[i] !== undefined) {
-                    if(this.inputs[i].write(result, mode, attributes, undefined,
-                                            false))
+                    if(this.inputs[i].write(result, mode, undefined, false))
                         success = true;
                 }
             }
@@ -268,8 +267,7 @@ class EvaluationOrderedSet extends EvaluationNode {
             // the end.
             for (var i: number = this.elements.length - 1; i >= 0 ; --i) {
                 if (this.inputs[i] !== undefined &&
-                    this.inputs[i].write(result, mode, attributes, positions,
-                                         reportDeadEnd))
+                    this.inputs[i].write(result, mode, positions,reportDeadEnd))
                     return true;
             }
             // fall through to dead-end message below
@@ -291,7 +289,7 @@ class EvaluationOrderedSet extends EvaluationNode {
                         pos++;
                     }
                     if (this.inputs[i] !== undefined) {
-                        if(this.inputs[i].write(result, mode, attributes, elementDataPosition, reportDeadEnd))
+                        if(this.inputs[i].write(result, mode, elementDataPosition, reportDeadEnd))
                             success = true;
                     }
                 }

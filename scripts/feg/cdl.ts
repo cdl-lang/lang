@@ -2724,11 +2724,26 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
     
     var valuesById: Result[][] = []; // ordering as in the result of the merge
     var ids = []; // the identifier of each entry to be merged 
-    var posById: Map<any,any> = new Map();
-    var mergedValues = []; // array of merged values
-    var allMergeAttributes = []; // array of resulting merge attributes
-    var allSubIdentifiers = []; // array of resulting sub-identifiers (if any)
-        
+    var posById: Map<any,number> = new Map();
+    // in case every variant has the same merge attributes for all elements 
+    var mergedMergeAttributes: MergeAttributes = undefined;
+
+    // create the merged merge attributes, if each variant has the same
+    // merge attributes for all elements.
+    for(i = 0 ; i < mergeWithIdentities.length ; ++i) {
+        var attributes: MergeAttributes[] =
+            mergeWithIdentities[i].mergeAttributes;
+        if(attributes === undefined || attributes.length == 0)
+            continue;
+        if(attributes.length > 1) {
+            // different elements have different merge attributes
+            mergedMergeAttributes = undefined;
+            break;
+        }
+        mergedMergeAttributes = mergedMergeAttributes === undefined ?
+            attributes[0] : mergedMergeAttributes.copyMerge(attributes[0]);
+    }
+    
     // loop over variants in ascending order of priorities.
     for(i = mergeWithIdentities.length - 1 ; i >= 0 ; --i) {
         var variant: Result = mergeWithIdentities[i];
@@ -2736,6 +2751,8 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
         var identities: any[] = variant.identifiers ? variant.identifiers : [];
         var value: any = (variant.value instanceof Array) ?
             variant.value : [variant.value];
+        var hasMultipleMergeAttributes: boolean =
+            (!!variant.mergeAttributes && variant.mergeAttributes.length > 1);
 
         for(var j: number = 0 ; j < value.length ; ++j) {
             var identity: any = identities[j];
@@ -2743,22 +2760,10 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
             var subIdentifiers: any = undefined;
             
             if(variant.mergeAttributes !== undefined)
-                mergeAttributes = variant.mergeAttributes.length == 1 ? 
-                variant.mergeAttributes[0] : variant.mergeAttributes[j];
+                mergeAttributes = hasMultipleMergeAttributes ? 
+                variant.mergeAttributes[j] : variant.mergeAttributes[0];
             if(variant.subIdentifiers !== undefined)
                 subIdentifiers = variant.subIdentifiers[j];
-
-            if(subIdentifiers === undefined &&
-               (identity === undefined || typeof(identity) == "object")) {
-                // no identity, so the value is not merged with anything,
-                // insert it at the right place in the merged result
-                mergedValues[valuesById.length] = value[j];
-                ids.length++;
-                if(mergeAttributes)
-                    allMergeAttributes[valuesById.length] = mergeAttributes; 
-                valuesById.length++; // reserve the position
-                continue;
-            }
             
             // may have to merge this value with other values
             var labeledValue = new Result(value[j]);
@@ -2766,15 +2771,20 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
                 labeledValue.mergeAttributes = [mergeAttributes];
             if(subIdentifiers !== undefined)
                 labeledValue.subIdentifiers = [subIdentifiers];
-            
-            var pos: number = posById.get(identity);
+
+            var hasIdentity: boolean =
+                (identity !== undefined && typeof(identity) !== "object");
+            var pos: number = hasIdentity ? posById.get(identity) : undefined;
             if(pos !== undefined)
                 valuesById[pos].push(labeledValue);
             else {
                 pos = valuesById.length;
                 valuesById.push([labeledValue]);
-                ids.push(identity);
-                posById.set(identity, pos);
+                if(hasIdentity) {
+                    ids.push(identity);
+                    posById.set(identity, pos);
+                } else
+                    ids.length++;
             }
         }
     }
@@ -2782,7 +2792,10 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
     // now, merge the array of values at each position (highest priority
     // values are at end).
 
-    var mergedIds: any[] = undefined;
+    var mergedValues = []; // array of merged values
+    var mergedIds: any[] = [];
+    var allMergeAttributes: MergeAttributes[] = [];
+    var allSubIdentifiers = []; // array of resulting sub-identifiers (if any)
     
     for(i = 0 ; i < valuesById.length ; ++i) {
         if(!valuesById[i])
@@ -2798,25 +2811,33 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
                                                     undefined, undefined,
                                                     undefined, undefined);
         }
+        if(mergeResult.subIdentifiers)
+            allSubIdentifiers.length = mergedValues.length;
+        if(mergeResult.mergeAttributes && !mergedMergeAttributes) {
+            allMergeAttributes.length = mergedValues.length;
+            if(mergeResult.mergeAttributes.length > 1)
+                allMergeAttributes = cconcat(allMergeAttributes,
+                                             mergeResult.mergeAttributes);
+            else if(mergeResult.value instanceof Array)
+                for(var j = 0 ; j < mergeResult.value.length ; ++j)
+                    allMergeAttributes.push(mergeResult.mergeAttributes[0]);
+            else
+                allMergeAttributes.push(mergeResult.mergeAttributes[0]);
+        }
+            
         if(mergeResult.value instanceof Array) {
-            if(mergeResult.value.length > 1) {
-                if(mergedIds === undefined)
-                    mergedIds = ids.slice(0,i);   
-            }
             for(var j = 0 ; j < mergeResult.value.length ; ++j) { 
                 mergedValues.push(mergeResult.value[j]);
-                if(mergedIds !== undefined)
-                    mergedIds.push(ids[i]); // all have same identity
+                mergedIds.push(ids[i]); // all have same identity
+                if(mergeResult.subIdentifiers)
+                    allSubIdentifiers.push(mergeResult.subIdentifiers[j]);
             }
         } else {
-            mergedValues[i] = mergeResult.value;
-            if(mergedIds !== undefined)
-                mergedIds.push(ids[i]);
+            mergedValues.push(mergeResult.value);
+            mergedIds.push(ids[i]);
+            if(mergeResult.subIdentifiers !== undefined)
+                allSubIdentifiers.push(mergeResult.subIdentifiers[0]);
         }
-        if(mergeResult.mergeAttributes !== undefined)
-            allMergeAttributes[i] = mergeResult.mergeAttributes[0];
-        if(mergeResult.subIdentifiers !== undefined)
-            allSubIdentifiers[i] = mergeResult.subIdentifiers[0];
     }
 
     // create the new result object
@@ -2825,20 +2846,21 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
     else
         result.value = mergedValues;
 
-    if(allMergeAttributes.length > 0) {
+    if(mergedMergeAttributes !== undefined && mergedMergeAttributes.notEmpty())
+        result.mergeAttributes = [mergedMergeAttributes];
+    else if(allMergeAttributes.length > 0) {
         allMergeAttributes.length = mergedValues.length;
         result.mergeAttributes = allMergeAttributes;
     } else if(result.mergeAttributes !== undefined)
         result.mergeAttributes = undefined;
     
-    result.identifiers = mergedIds ? mergedIds : ids;
+    result.identifiers = mergedIds;
 
     if(allSubIdentifiers.length > 0) {
         allSubIdentifiers.length = mergedValues.length;
         result.subIdentifiers = allSubIdentifiers;
     } else if(result.subIdentifiers !== undefined)
         result.subIdentifiers = undefined;
-
     
     return result;
 }
@@ -3591,7 +3613,7 @@ abstract class ForeignInterface {
     displayElementVisible(): void {
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if(reportDeadEnd)
             Utilities.warn("dead-ended write: cannot write through foreign function: " + gWriteAction);
         return false;

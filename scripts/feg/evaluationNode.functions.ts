@@ -217,9 +217,9 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
             return uvo;
         }
     }
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.inputs[1] !== undefined) {
-            return this.inputs[1].write(result, mode, attributes, positions, reportDeadEnd);
+            return this.inputs[1].write(result, mode, positions, reportDeadEnd);
         }
         return false;
     }
@@ -959,8 +959,8 @@ class EvaluationSort extends EvaluationFunctionApplication
     }
 
     // TODO: reordering!!
-    // write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[]): void {
-    //     this.inputs[0].write(result, mode, attributes, positions);
+    // write(result: Result, mode: WriteMode, positions: DataPosition[]): void {
+    //     this.inputs[0].write(result, mode, positions);
     // }
 
     debugName(): string {
@@ -1369,7 +1369,7 @@ abstract class EvaluationPositionFunction extends EvaluationFunctionApplication
         super.deactivateInputs();
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var selectedPositions: DataPosition[] = 
             this.getSelectedPositions(positions);
 
@@ -1378,7 +1378,7 @@ abstract class EvaluationPositionFunction extends EvaluationFunctionApplication
                                     "empty selection by " + this.bif.name);
             return false;
         }
-        return this.getWritableInput().write(result, mode, attributes, selectedPositions, reportDeadEnd);
+        return this.getWritableInput().write(result, mode, selectedPositions, reportDeadEnd);
     }
 
     // Performs the actual position function.
@@ -3329,9 +3329,9 @@ class EvaluationCond extends EvaluationNode
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.selectedPos < this.altList.length) {
-            return this.altList[this.selectedPos].use.write(result, mode, attributes, positions, reportDeadEnd);
+            return this.altList[this.selectedPos].use.write(result, mode, positions, reportDeadEnd);
         } else {
             this.reportDeadEndWrite(reportDeadEnd, "no active condition");
             return false;
@@ -3558,9 +3558,8 @@ class EvaluationVerificationFunction extends EvaluationFunctionApplication {
         return true;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
-        return this.inputs[0].write(result, mode, attributes, positions,
-                                   reportDeadEnd);
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        return this.inputs[0].write(result, mode, positions, reportDeadEnd);
     }
 
     debugName(): string {
@@ -3590,9 +3589,8 @@ class EvaluationMakeDefined extends EvaluationFunctionApplication {
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
-        return this.inputs[0].write(result, mode, attributes, positions,
-                                   reportDeadEnd);
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        return this.inputs[0].write(result, mode, positions, reportDeadEnd);
     }
 
     debugName(): string {
@@ -4515,9 +4513,9 @@ class EvaluationRedirect extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
-        var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
+        var newValue: any = determineWrite([], result, mode, positions, pct);
 
         if (newValue.length === 1 && typeof(newValue[0]) === "string") {
             window.location.href = newValue[0];
@@ -4599,9 +4597,9 @@ class EvaluationSystemInfo extends EvaluationFunctionApplication {
             waitBusyTime: vtd("number")
         });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: true): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: true): boolean {
         var pct = new PositionChangeTracker();
-        var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
+        var newValue: any = determineWrite([], result, mode, positions, pct);
 
         if (newValue.length !== 1 || !EvaluationSystemInfo.writeObjType.matches(newValue)) {
             return false;
@@ -4670,7 +4668,7 @@ class EvaluationDownload extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var arg0: any = singleton(this.arguments[0].value);
         var arg1: any = singleton(this.arguments[1].value);
         var arg2: any[] = this.arguments[2] !== undefined? ensureOS(this.arguments[2].value): constEmptyOS;
@@ -4844,9 +4842,9 @@ class EvaluationPrintArea extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
-        var newValue: any[] = determineWrite([], result, mode, attributes, positions, pct);
+        var newValue: any[] = determineWrite([], result, mode, positions, pct);
 
         if (newValue.length === 1 && newValue[0] === true) {
             var message: EventObject = {
@@ -4905,7 +4903,7 @@ class EvaluationForeignInterfaceFunction extends EvaluationFunctionApplication {
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         console.log("TODO");
         return false;
     }
@@ -4970,9 +4968,9 @@ class EvaluationLoginInfo extends EvaluationFunctionApplication {
             email: [vtd("string"), vtd("undefined")]
         });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
-        var newValue: any = determineWrite([], result, mode, attributes, positions, pct);
+        var newValue: any = determineWrite([], result, mode, positions, pct);
         var createAccount: boolean = this.arguments[0] !== undefined &&
               interpretedBoolMatch({createAccount: _}, this.arguments[0].value);
 

@@ -407,7 +407,7 @@ class EvaluationStore extends EvaluationNode implements Latchable {
         evaluationQueue.latch(this);
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (positions !== undefined &&
             (positions.length !== 1 || positions[0].index !== 0)) {
             this.reportDeadEndWrite(reportDeadEnd,
@@ -421,13 +421,12 @@ class EvaluationStore extends EvaluationNode implements Latchable {
                 this.position === undefined? positions:
                 positions === undefined? [new DataPosition(this.position, 1)]:
                 [new DataPosition(this.position, 1, positions[0].path, positions[0].sub)];
-            return this.source.write(result, mode, attributes, sub,
-                                     reportDeadEnd);
+            return this.source.write(result, mode, sub, reportDeadEnd);
         } else {
             var topWrite: boolean = positions === undefined || positions[0].path === undefined;
             var curValue: any = this.latchedValue !== undefined?
                                 this.latchedValue: this.lastUpdate;
-            var newValue: any = determineWrite(curValue.value, result, mode, attributes, positions, new PositionChangeTracker());
+            var newValue: any = determineWrite(curValue.value, result, mode, positions, new PositionChangeTracker());
             if (debugWrites && newValue !== curValue.value) {
                 var cv: any = debugWritesString? cdlify(curValue): curValue;
                 var nv: any = debugWritesString? cdlify(newValue): newValue;
@@ -586,7 +585,7 @@ class EvaluationMessageQueue extends EvaluationStore {
         return this.messageQueue.length === 0;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (positions === undefined ||
               (positions.length === 1 &&
                positions[0].index === 0 && positions[0].path === undefined)) {
@@ -617,9 +616,9 @@ class EvaluationPointerStore extends EvaluationStore implements TimeSensitive {
     static writeObjType: ValueTypeDescription = 
         vtd("av", { display: vtd("av", { image: vtd("string") }) });
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var pct = new PositionChangeTracker();
-        var newValue: any = determineWrite([{}], result, mode, attributes, positions, pct);
+        var newValue: any = determineWrite([{}], result, mode, positions, pct);
 
         // Test for single value disabled
         if (EvaluationPointerStore.writeObjType.matches(newValue)) {
@@ -630,8 +629,7 @@ class EvaluationPointerStore extends EvaluationStore implements TimeSensitive {
             evaluationQueue.addTimeSensitiveNode(this);
             return true;
         } else {
-            return super.write(result, mode, attributes, positions,
-                               reportDeadEnd);
+            return super.write(result, mode, positions, reportDeadEnd);
         }
     }
 
@@ -669,7 +667,7 @@ class EvaluationDebugBreak extends EvaluationStore {
         this.dataSourceResultMode = false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         setGDebugBreak();
         return true;
     }
@@ -688,7 +686,7 @@ class EvaluationParam extends EvaluationStore {
         this.lastUpdate.copy(this.result);
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var self: EvaluationParam = this;
         var area: CoreArea = allAreaMonitor.getAreaById(this.areaId);
 
@@ -720,16 +718,16 @@ class EvaluationParam extends EvaluationStore {
         }
 
         // For writes to param:input, this functions unwraps the path in
-        // 'positions', and then possible AVs in value, and writes the terminal
-        // value to the appropriate source.
+        // 'positions', and then possible AVs in 'result', and writes
+        // the terminal value to the appropriate source.
         //   Writes to param:areaSetContent: are redirected towards the source,
         // with positions modified to indicated the position in the area set.
-        function unwrapPositions(value: any, path: string[], attributes: MergeAttributes, positions: DataPosition[]): boolean {
+        function unwrapPositions(result: Result, path: string[], positions: DataPosition[]): boolean {
             if (positions === undefined ||
                   (path.length === 1 && path[0] === "areaSetContent")) {
                 switch (path[0]) {
                   case "input":
-                    return updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(value)), value);
+                    return updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(result.value)), result.value);
                   case "areaSetContent":
                     var sub: DataPosition[] =
                         positions === undefined? [new DataPosition(self.position, 1)]:
@@ -738,8 +736,7 @@ class EvaluationParam extends EvaluationStore {
                     // each area has a single element in this ordered set,
                     // and this is where we write to.
                     sub[0].length = 1;
-                    return self.source.write(result, mode, attributes, sub,
-                                             reportDeadEnd);
+                    return self.source.write(result, mode, sub, reportDeadEnd);
                 default:
                     self.reportDeadEndWrite(reportDeadEnd,
                                             "in write to param in " +
@@ -749,25 +746,24 @@ class EvaluationParam extends EvaluationStore {
             } else if (positions !== undefined && positions.length === 1 &&
                   positions[0].index === 0 && positions[0].path !== undefined) {
                 return unwrapPositions(
-                    value, path.concat(positions[0].path[0]),
-                    attributes.popPathElement(positions[0].path[0]),
+                    result, path.concat(positions[0].path[0]),
                     positions[0].sub);
             } else if (positions !== undefined && positions.length === 1 &&
                        positions[0].index === 0 && positions[0].path === undefined) {
-                var v: any = getDeOSedValue(value);
+                var v: any = getDeOSedValue(result.value);
                 if (!(v instanceof Array) && isAV(v)) {
                     self.lastUpdate.value[0] = shallowCopy(self.lastUpdate.value[0]);
                     var success: boolean = true;
                     
                     for (var attrib in v) {
-                        if(!unwrapPositions(v[attrib], path.concat(attrib),
-                                            attributes.popPathElement(attrib),
+                        var attrResult: Result = result.popAttr(attrib);
+                        if(!unwrapPositions(attrResult, path.concat(attrib),
                                             undefined))
                             success = false;
                     }
                     return success;
                 } else {
-                    return unwrapPositions(value, path, attributes, undefined);
+                    return unwrapPositions(result.value, path, undefined);
                 }
             } else {
                 self.reportDeadEndWrite(reportDeadEnd,
@@ -777,8 +773,7 @@ class EvaluationParam extends EvaluationStore {
             }
         }
 
-        var success: boolean =
-            unwrapPositions(result.value, [], attributes, positions);
+        var success: boolean = unwrapPositions(result, [], positions);
 
         if (debugWrites) {
             console.log("write to param", cdlify(result.value));
@@ -960,7 +955,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
 
     // Determines and sets the result of the write operation without altering
     // any existing value.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var newValue: any;
         var curValue: any = this.latchedValue !== undefined?
                             this.latchedValue: this.lastUpdate;
@@ -969,7 +964,7 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
         // terminate the live update (if still alive) and determine
         // the new value
         this.unregisterInitialValue();
-        newValue = determineWrite(curValue, result, mode, attributes, positions, this.positionChangeTracker);
+        newValue = determineWrite(curValue, result, mode, positions, this.positionChangeTracker);
         if (debugWrites && newValue !== curValue) {
             var cv: any = debugWritesString? cdlify(curValue): curValue;
             var nv: any = debugWritesString? cdlify(newValue): newValue;
@@ -1126,14 +1121,14 @@ class EvaluationWrite extends EvaluationNode implements Latchable {
     }
 }
 
-function determineWrite(curValue: any, result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], pct: PositionChangeTracker) {
+function determineWrite(curValue: any, result: Result, mode: WriteMode, positions: DataPosition[], pct: PositionChangeTracker) {
     var newValue: any;
-    var resultValue: any = result.value === undefined? constEmptyOS: result.value;
 
     if (curValue === undefined) {
         curValue = [];
     }
     if (positions === undefined) {
+        var resultValue: any = result.value === undefined? constEmptyOS: result.value;
         if (pct.markShift(0, Infinity, resultValue, false, mode) === undefined) {
             Utilities.warn("dead-ended write: overwriting data: " + gWriteAction + " at " + gWriteAction);
             return;
@@ -1147,20 +1142,22 @@ function determineWrite(curValue: any, result: Result, mode: WriteMode, attribut
             if (resultValue instanceof Array && resultValue.length === 0) {
                 newValue = resultValue;
             } else {
-                newValue = mergeCopyValue(resultValue, curValue, attributes,
-                                          undefined);
+                var mergeAttributes: MergeAttributes =
+                    result.mergeAttributes && result.mergeAttributes.length == 1?
+                    result.mergeAttributes[0] : undefined;
+                newValue = mergeCopyValue(resultValue, curValue,
+                                          mergeAttributes, undefined);
             }
             break;
         }
     } else {
-        var repl: any = resultValue instanceof Array? resultValue: [resultValue];
         newValue = curValue;
         for (var i: number = 0; i !== positions.length; i++) {
             // This is inefficient if the number of positions is high, as
             // the whole structure is replaced on every iteration. In
             // practice, it won't have any effect, since there are no
             // massive writes.
-            newValue = updateValue(newValue, repl, positions[i], mode, attributes, pct);
+            newValue = updateValue(newValue, result, positions[i], mode, pct);
         }
     }
     return newValue;
@@ -1168,8 +1165,13 @@ function determineWrite(curValue: any, result: Result, mode: WriteMode, attribut
 
 // Merges newValue in the os in the place indicated by position, and returns
 // a new object with the result.
-function updateValue(os: any[], newValue: any[], position: DataPosition, mode: WriteMode, attributes: MergeAttributes, pct: PositionChangeTracker): any[] {
+function updateValue(os: any[], result: Result, position: DataPosition, mode: WriteMode, pct: PositionChangeTracker): any[] {
     var oldValue: any;
+    var newValue: any[] =
+        result.value === undefined? constEmptyOS: result.value;
+    var identifiers: any[] = result.identifiers;
+    var subIdentifiers: any[] = result.subIdentifiers;
+    var attributes: MergeAttributes[] = result.mergeAttributes;
     var repl: any;
     var attr: string;
     var positionLength: number;
@@ -1183,42 +1185,66 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
         return os.length;
     }
 
-    function addAttributes(target: any, added: any): any {
-         var merge: any = {};
+    function addAttributes(target: any[], added: any): any {
 
-         for (var attr in target) {
-             if (attr in added && !objectEqual(target[attr], added[attr])) {
-                 Utilities.warn("cannot merge added attributes");
-                 return undefined;
-             }
-             merge[attr] = target[attr];
-         }
-         for (var attr in added) {
-             merge[attr] = added[attr];
-         }
-         return merge;
+        if(added === undefined)
+            return target;
+
+        var merged: any[] = [];
+        
+        for(var i = 0, l = target.length ; i < l ; ++i) {
+        
+            var target_i: any = target[i];
+
+            if(typeof(target_i) !== "object")
+                merged.push(target_i);
+            else {
+                var merge_i: any = {};
+                for (var attr in target_i)
+                    merge_i[attr] = target_i[attr];
+                for (var attr in added) {
+                    if(!(attr in merge_i))
+                        merge_i[attr] = added[attr];
+                }
+
+                merged.push(merge_i);
+            }
+        }
+        return merged;
     }
 
     if(position.identified !== undefined) {
         // 'identified' is an array with the positions of the values
         // which have the same identity as the write target.
-        newValue = position.identified.map(x => newValue[x]);
-    }
-    
-    if (attributes.push === true ||
-        (position.index == 0 && position.length == 0)) {
-        // No need to update positions
-        assert(position.path === undefined, "meaningless?");
+        newValue = position.identified.map(n => newValue[n]);
+        if(attributes && attributes.length > 1)
+            attributes = position.identified.map(n => attributes[n]);
+        if(position.index == 0 && position.length == 0) {
+            // first, merge the new values by identity
+            var mergedNewValue: Result = new Result(newValue);
+            if(identifiers) {
+                mergedNewValue.identifiers =
+                    position.identified.map(n => identifiers[n]);
+            }
+            if(subIdentifiers) {
+                mergedNewValue.subIdentifiers =
+                    position.identified.map(n => subIdentifiers[n]);
+            }
+            if(identifiers) {
+                mergedNewValue = mergeByIdentities([mergedNewValue], undefined,
+                                                   undefined, 0, 1, undefined);
+                newValue = mergedNewValue.value;
+            }
+            if(position.addedAttributes)
+                newValue = addAttributes(newValue, position.addedAttributes);
+            return os.concat(newValue);
+        }
+    } else if(position.index == 0 && position.length == 0) { // append
+        if(position.addedAttributes)
+            newValue = addAttributes(newValue, position.addedAttributes);
         return os.concat(newValue);
     }
-    if (attributes.atomic === true) {
-        assert(position.path === undefined, "meaningless?");
-        if (pct.markShift(0, Infinity, newValue, false, mode) === undefined) {
-            Utilities.warn("dead-ended write (atomic): " + gWriteAction + " at " + gWriteAction);
-            return os;
-        }
-        return newValue;
-    }
+
     var index: number = position.addedAttributes === undefined?
                         pct.getIndex(position.index):
                         findAddedAttributes(position.addedAttributes);
@@ -1232,41 +1258,34 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
             repl = newValue;
             break;
           case WriteMode.merge:
-            if(newValue === undefined || newValue.length === 0)
-                break; // non-atomic o()
+            var mergeAttr: MergeAttributes;
             if(position.identified &&
                (position.length > 1 || newValue.length > 1)) {
                 // more than two values to be merged together
                 // (all have the same identity),
                 var variants: any[] = os.slice(index, index + position.length).
                     map(x => new Result(x));
-                for(var i = 0 ; i < newValue.length ; ++i)
+                for(var i = 0 ; i < newValue.length ; ++i) {
+                    mergeAttr = attributes === undefined ? undefined :
+                        (attributes.length==1 ? attributes[0] : attributes[i]);
                     variants.push(new Result(newValue[i]));
+                    if(mergeAttr)
+                        variants[variants.length-1].mergeAttributes = [mergeAttr];
+                }
                 variants.reverse(); // highest priority should be first
                 repl = mergeVariants(variants, undefined, undefined, 0,
                                      variants.length, undefined).value;
             } else {
-                repl = newValue.length > 1 ? newValue :
-                    mergeCopyValue(newValue,
-                                   os.slice(index, index + position.length),
-                                   attributes, undefined);
+                mergeAttr = (attributes && attributes.length === 1) ?
+                    attributes[0] : undefined;
+                repl = mergeCopyValue(newValue,
+                                      os.slice(index, index + position.length),
+                                      mergeAttr, undefined);
             }
             break;
         }
-        if (position.addedAttributes !== undefined) {
-            // Copy values before modifying
-            repl = repl.slice(0);
-            if (typeof(position.addedAttributes) === "object" &&
-                  !(position.addedAttributes instanceof Array)) {
-                // The selection query was an AV, not an os of simple values
-                for(var i = 0, l = repl.length ; i < l ; ++i)
-                    repl[i] = addAttributes(shallowCopy(repl[i]),
-                                            position.addedAttributes);
-            }
-            if (repl[0] === undefined) {
-                return os;
-            }
-        }
+        if (position.addedAttributes !== undefined)
+            repl = addAttributes(ensureOS(repl), position.addedAttributes);
         positionLength = position.length;
     } else {
         if (position.path.length !== 1) {
@@ -1280,24 +1299,19 @@ function updateValue(os: any[], newValue: any[], position: DataPosition, mode: W
         }
         repl = shallowCopyMinus(oldValue, attr);
         var subOS: any[] = attr in oldValue? oldValue[attr]: [];
-        var mAttr2: MergeAttributes = attributes.popPathElement(attr);
         var posChange: PositionChange = pct.markShift(index, 1, [{}], true, mode);
         if (posChange !== undefined) {
             var projPositionChangeTracker = posChange.markProjection(attr);
             for (var i: number = 0; i < position.sub.length; i++) {
                 var subPos: DataPosition = position.sub[i];
-                subOS = updateValue(subOS, newValue, subPos, mode, mAttr2, projPositionChangeTracker);
+                subOS = updateValue(subOS, result, subPos, mode, projPositionChangeTracker);
             }
         } else
             Utilities.warn("versus: " + gWriteAction);
         
         repl[attr] = subOS;
-        if (position.addedAttributes !== undefined) {
-            repl = addAttributes(repl, position.addedAttributes);
-            if (repl === undefined) {
-                return os;
-            }
-        }
+        if (position.addedAttributes !== undefined)
+            repl = addAttributes([repl], position.addedAttributes);
         positionLength = 1;
     }
     return os.slice(0, index).concat(repl).concat(os.slice(index + positionLength));

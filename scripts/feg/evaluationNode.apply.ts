@@ -34,7 +34,8 @@ function getSelectedWritePositionsNoPath(positions: DataPosition[], selectedPosi
         var indexedPositions: DataPosition[] = [];
         for (var i: number = 0; i !== positions.length; i++) {
             var sp: DataPosition = positions[i].copy();
-            if (sp.index !== undefined) {
+            if (sp.index !== undefined &&
+                (sp.index !== 0 || sp.length !== 0)) { // 0,0 is 'no match'
                 // The index is located inside the selected positions
                 sp.index = selectedPositions[positions[i].index].index;
             }
@@ -1121,12 +1122,12 @@ class EvaluationApply extends EvaluationFunctionApplication
         return false;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         var writePaths: string[][] = extractProjectionPaths(this.query);
         var selectedPositions: DataPosition[];
 
         if ("foreignInterface" in this) {
-            return this.foreignInterface.write(result, mode, attributes,
+            return this.foreignInterface.write(result, mode,
                                                positions, reportDeadEnd);
         }
         if (!("query" in this)) {
@@ -1142,23 +1143,16 @@ class EvaluationApply extends EvaluationFunctionApplication
 
         // Add projection path to positions (if such a path exists)
         var wrPath: string[] = writePaths !== undefined? writePaths[0]: undefined;
-        attributes = attributes.extendWithPath(wrPath);
         selectedPositions = wrPath === undefined?
             getSelectedWritePositionsNoPath(positions, this.selectedPositions):
             getSelectedWritePositionsWithPath(positions, this.selectedPositions, wrPath);
 
         // Handle empty selections: see EvaluationExecuteCompiledQuery
-        if (this.selectedPositions !== undefined &&
-              this.selectedPositions.length === 0) {
-            var positionsWithPath = selectedPositions.filter(
-                pos => pos.path.length !== 0
-            );
-            if (positionsWithPath.length < selectedPositions.length) {
-                assert(positionsWithPath.length === 0, "expecting all positions from the same source");
-                this.reportDeadEndWrite(reportDeadEnd,
-                                        "cannot write non-projections through empty selection");
-                return false;
-            }
+        if ((this.selectedPositions !== undefined &&
+             this.selectedPositions.length === 0) ||
+            (selectedPositions && (selectedPositions.length == 0 ||
+                                   selectedPositions[0].path === undefined ||
+                                   selectedPositions[0].path.length === 0))) {
             var selectionAttributes: any = this.getSelectionObject();
             if (selectionAttributes !== undefined) {
                 // Add selection to positions. E.g., if the query was {a: 1},
@@ -1169,8 +1163,17 @@ class EvaluationApply extends EvaluationFunctionApplication
                     ):
                     [new DataPosition(0, 0, undefined, undefined, selectionAttributes)];
             }
+        } else if(selectedPositions && selectedPositions.length > 0 &&
+                  selectedPositions[0].index == 0 &&
+                  selectedPositions[0].length == 0) {
+            // 'no match' position (must be first). Add attributes.
+            var selectionAttributes: any = this.getSelectionObject();
+            if(selectionAttributes) {
+                selectedPositions[0] = selectedPositions[0].
+                    copyWithAddedAttributes(selectionAttributes);
+            }
         }
-        return this.inputs[1].write(result, mode, attributes,
+        return this.inputs[1].write(result, mode,
                                     selectedPositions, reportDeadEnd);
     }
 

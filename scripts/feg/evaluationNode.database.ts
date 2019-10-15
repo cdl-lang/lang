@@ -1379,7 +1379,7 @@ class EvaluationDatabases extends EvaluationRemoteData
     }
 
     // Can only send one record at a time.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if ((positions === undefined ||
               (positions.length === 1 && positions[0].length === 1)) &&
               result !== undefined && result.value !== undefined &&
@@ -1400,7 +1400,7 @@ class EvaluationDatabases extends EvaluationRemoteData
                     currentPosValue = {};
                 }
                 var writeResult: any = stripArray(
-                    determineWrite([currentPosValue], result, mode, attributes,
+                    determineWrite([currentPosValue], result, mode,
                                    [offsetPosition], pct),
                     true);
                 this.updateMetaData(writeResult,

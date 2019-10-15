@@ -602,6 +602,45 @@ class Result {
             this.mergeAttributes[0] !== undefined &&
             this.mergeAttributes[0].push === true;
     }
+
+    // If the value of this result node is a single A-V, this function 
+    // returns a new result node which holds the value under the given
+    // attribute in the A-V. If the value is not a single A-V or if it does
+    // not have the given attribute, undefined is returned. This function
+    // also adjusts the merge attributes and the identifiers and
+    // sub-identifiers on the result.
+    
+    popAttr(attr: string): Result {
+        var value: any;
+        if(this.value instanceof Array) {
+            if(this.value.length !== 1)
+                return undefined;
+            value = this.value[0];
+        } else
+            value = this.value;
+        if(!isAV(value) || !(attr in value))
+            return undefined;
+
+        var attrResult: Result = new Result(ensureOS(value[attr]));
+
+        if(this.mergeAttributes && this.mergeAttributes.length == 1 &&
+           this.mergeAttributes[0]) {
+            var subMergeAttrs: MergeAttributes[] = this.mergeAttributes[0].
+                popPathElementSequence(attr, attrResult.value.length);
+            if(subMergeAttrs && subMergeAttrs.length > 0)
+                attrResult.mergeAttributes = subMergeAttrs;
+        }
+
+        if(this.subIdentifiers !== undefined) {
+            var projIdentifiers = new SubIdentifiers(undefined,undefined);
+            projIdentifiers.projectAttr(attr, ensureOS(this.value),
+                                        new SubIdentifiers(undefined,
+                                                           this.subIdentifiers));
+            attrResult.setSubIdentifiers(projIdentifiers);
+        }
+        
+        return attrResult;
+    }
 }
 
 enum WriteMode {

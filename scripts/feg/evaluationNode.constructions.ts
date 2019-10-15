@@ -145,13 +145,13 @@ class EvaluationBoolGate extends EvaluationNode
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (!this.open || this.b === undefined) {
             this.reportDeadEndWrite(reportDeadEnd,
                                     "writing to closed bool gate");
             return false;
         }
-        return this.b.write(result, mode, attributes, positions, reportDeadEnd);
+        return this.b.write(result, mode, positions, reportDeadEnd);
     }
 
     debugName(): string {
@@ -333,7 +333,7 @@ class EvaluationAV extends EvaluationNode {
         return true;
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.constant) {
             this.reportDeadEndWrite(reportDeadEnd, "writing to constant AV");
             return false;
@@ -357,10 +357,11 @@ class EvaluationAV extends EvaluationNode {
             }
             for (var attr in repl) {
                 if (attr in this.inputByAttr) {
-                    this.inputByAttr[attr].write(
-                        new Result(ensureOS(repl[attr])), mode,
-                        attributes.popPathElement(attr), undefined,
-                        reportDeadEnd);
+                    var attrResult: Result = result.popAttr(attr);
+                    if(!attrResult ||
+                       !this.inputByAttr[attr].write(attrResult, mode,
+                                                     undefined, reportDeadEnd))
+                        success = false;
                 } else {
                     // An AV itself can never be a write destination, so writing
                     // to a non-existing attribute is not allowed.
@@ -379,8 +380,7 @@ class EvaluationAV extends EvaluationNode {
                     success = false;
                 } else {
                     this.inputByAttr[positions[i].path[i]].write(
-                        result, mode, attributes, positions[i].sub,
-                        reportDeadEnd);
+                        result, mode, positions[i].sub, reportDeadEnd);
                 }
             }
         }
@@ -606,7 +606,7 @@ class EvaluationFunctionApplication extends EvaluationNodeWithArguments implemen
         }
     }
 
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if(this.bif.writeThroughToWritableInputs) {
             // Since this function is assumed not to be an extracting function,
             // the positions of its results have nothing to do with the
@@ -614,8 +614,7 @@ class EvaluationFunctionApplication extends EvaluationNodeWithArguments implemen
             // array (if given) can be ignored.
             var success: boolean = false;
             for (var i: number = 0; i < this.inputs.length; i++) {
-                if(this.inputs[i].write(result, mode, attributes, undefined,
-                                        false))
+                if(this.inputs[i].write(result, mode, undefined, false))
                     success = true;
             }
             if(!success)
@@ -1413,9 +1412,9 @@ class EvaluationVariant extends EvaluationNode
     }
     
     // Writes to the first matching qualifier, assuming it implements writing.
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (0 <= this.firstActive && this.firstActive < this.variantInputs.length) {
-            return this.variantInputs[this.firstActive].write(result, mode, attributes, positions, reportDeadEnd);
+            return this.variantInputs[this.firstActive].write(result, mode, positions, reportDeadEnd);
         } else {
             this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
             return false;
@@ -1739,9 +1738,9 @@ class EvaluationVariant1 extends EvaluationNode
     }
     
     // Writes to the first matching qualifier, assuming it implements writing...
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.qualifiedVariant) {
-            return this.variantInput.write(result, mode, attributes, positions, reportDeadEnd);
+            return this.variantInput.write(result, mode, positions, reportDeadEnd);
         } else {
             this.reportDeadEndWrite(reportDeadEnd, "no qualified variant");
             return false;

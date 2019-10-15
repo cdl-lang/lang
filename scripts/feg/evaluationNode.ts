@@ -248,8 +248,10 @@ class DataPosition {
     // Positions in the merged data which were matched by identity to be written
     // at this position.
     identified?: number[];
+    // sub-identfiers of the target ('to') position
+    toSubIdentifiers?: any[];
 
-    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[]) {
+    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[], toSubIdentifiers?: any) {
         this.index = index;
         this.length = length;
         if (path !== undefined && path.length > 1) {
@@ -269,11 +271,15 @@ class DataPosition {
         if (identified !== undefined) {
             this.identified = identified;
         }
+        if (toSubIdentifiers !== undefined) {
+            this.toSubIdentifiers = toSubIdentifiers;
+        }
     }
 
     copy(): DataPosition {
         return new DataPosition(this.index, this.length, this.path, this.sub,
-                              shallowCopy(this.addedAttributes), this.identified);
+                                shallowCopy(this.addedAttributes),
+                                this.identified, this.toSubIdentifiers);
     }
 
     addPath(path: string[], sub: DataPosition[]): DataPosition {
@@ -290,7 +296,8 @@ class DataPosition {
 
     copyWithOffset(offset: number): DataPosition {
         return new DataPosition(this.index - offset, this.length, this.path,
-                                this.sub, this.addedAttributes, this.identified);
+                                this.sub, this.addedAttributes, this.identified,
+                                this.toSubIdentifiers);
     }
 
     copyWithAddedAttributes(attrs: any): DataPosition {
@@ -306,7 +313,8 @@ class DataPosition {
             addedAttributes[attr] = attrs[attr];
         }
         return new DataPosition(this.index, this.length, this.path,
-                                this.sub, addedAttributes, this.identified);
+                                this.sub, addedAttributes, this.identified,
+                                this.toSubIdentifiers);
     }
 
     static staticToString(dp: DataPosition): string {
@@ -1059,7 +1067,7 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
      *                  ordered list of positions in the result to which the new value must be
      *                  written.
      */
-    write(result: Result, mode: WriteMode, attributes: MergeAttributes, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+    write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         this.reportDeadEndWrite(reportDeadEnd, this.prototype.idStr());
         return false;
     }
