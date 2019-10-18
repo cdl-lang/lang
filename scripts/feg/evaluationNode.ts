@@ -248,8 +248,9 @@ class DataPosition {
     // Positions in the merged data which were matched by identity to be written
     // at this position.
     identified?: number[];
-    // sub-identfiers of the target ('to') position
-    toSubIdentifiers?: any[];
+    // sub-identfiers of the target ('to') position (assumes this is only
+    // used when length is 1)
+    toSubIdentifiers?: any;
 
     constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[], toSubIdentifiers?: any) {
         this.index = index;

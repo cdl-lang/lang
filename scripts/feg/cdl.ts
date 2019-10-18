@@ -2491,6 +2491,10 @@ function isUnmergeable(v: any): boolean {
 // participate in the merge (some of the variants in this range may still
 // be inactive due to their qualifier). The variant with index
 // 'lastToMerge' is not merged.
+// If 'mergeInside' is true, elements of the same variant with the same
+// identity are merged together. Otherwise, elements with the same identity
+// from the same variant are not merged unless they are merged with
+// an element of the same identity in a lower priority variant.
 // Finally, 'result' could optionally be the Result object which should store
 // the result of the merge. If given, this object is modified by this function.
 // If this object is not given, a new Result object is created to store the
@@ -2501,7 +2505,7 @@ function isUnmergeable(v: any): boolean {
 function mergeVariants(variants: Result[], qualifiers: boolean[],
                        isVariantUnmergeable: boolean[],
                        firstToMerge: number, lastToMerge: number,
-                       result: Result): Result
+                       mergeInside: boolean, result: Result): Result
 {
     var nrMerges: number = 0;
     var attributes: MergeAttributes = undefined;
@@ -2540,20 +2544,36 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
             nextVariant = mergeByIdentities(variants, qualifiers,
                                             isVariantUnmergeable, i,
                                             lastToMerge,
+                                            mergeInside,
                                             nrMerges == 0 ?
                                             result : undefined);
             if(nrMerges == 0) // no previous merging, so this is it
                 return nextVariant;
             i = lastToMerge - 1; // make the loop quit when this pass is done
         }
-        
-        if(attributes && attributes.push && i < lastToMerge - 1) {
-            // merge all lower priority variants (if there is more than
-            // one of them) before performing the push below
+
+        var nextAttributes: MergeAttributes = undefined;
+
+        // merging without identities, only global merge attributes
+        // (for all value elements) apply
+        if(nextVariant.mergeAttributes !== undefined &&
+           nextVariant.mergeAttributes.length == 1)
+            nextAttributes = nextVariant.mergeAttributes[0];
+        // if there is a push, merge lower priority variants first, then
+        // push and only then merge with higher priority variants
+        if(((nextAttributes && nextAttributes.push === true) || 
+            (attributes && attributes.push === true)) && i < lastToMerge - 1) {
+            // merge all lower priority variants
             nextVariant = mergeVariants(variants, qualifiers,
                                         isVariantUnmergeable, i,
-                                        lastToMerge, undefined);
+                                        lastToMerge, mergeInside, undefined);
             i = lastToMerge - 1; // make the loop quit when this pass is done
+
+            if(nextVariant.mergeAttributes !== undefined &&
+               nextVariant.mergeAttributes.length == 1)
+                nextAttributes = nextVariant.mergeAttributes[0];
+            else
+                nextAttributes = undefined;
         }
 
         // merge the identifiers (if any) before merging the values
@@ -2587,11 +2607,7 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
             mergeValue = mergeValueOverwrite(mergeValue, nextVariant.value,
                                              attributes, isUnmergeable);
 
-        // merging without identities, only global merge attributes
-        // (for all value elements) apply
-        if(nextVariant.mergeAttributes !== undefined &&
-           nextVariant.mergeAttributes.length == 1) {
-            var nextAttributes: MergeAttributes = nextVariant.mergeAttributes[0];
+        if(nextAttributes !== undefined) {
             attributes = attributes ?
                 attributes.copyMerge(nextAttributes) : nextAttributes;
             if(rAttributes !== undefined)
@@ -2650,11 +2666,15 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
 // without using identities and only then is the result of this merge
 // merged (with identities) with the higher priority variants
 // (all of which have identities).
+// If 'mergeInside' is true, elements of the same variant with the same
+// identity are merged together. Otherwise, elements with the same identity
+// from the same variant are not merged unless they are merged with
+// an element of the same identity in a lower priority variant.
 
 function mergeByIdentities(variants: Result[], qualifiers: boolean[],
                            isVariantUnmergeable: boolean[],
                            firstToMerge: number, lastToMerge: number,
-                           result: Result): Result
+                           mergeInside: boolean, result: Result): Result
 {
     if(firstToMerge === undefined)
         firstToMerge = 0;
@@ -2688,27 +2708,21 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
         // add the result of this merge as the last variant in the list
         // of variants to merge by identities.
         var suffixMerge: Result;
-        // if this is the whole merge, can return it immediately in 'result'
-        var returnResult: Result = mergeWithIdentities.length == 0 ?
-            result : undefined;
-        if(variants[i].subIdentifiers === undefined) {
-            if(i == lastToMerge - 1) {
-                if(returnResult) {
-                    returnResult.copy(variants[i]);
-                    return returnResult;
-                }
-                return variants[i];
-            }
-            suffixMerge =
-                mergeVariants(variants, qualifiers, isVariantUnmergeable,
-                              i, lastToMerge, returnResult);
+        if(i == lastToMerge - 1) {
+            suffixMerge = variants[i];
         } else {
-            suffixMerge =
+            // if this is the whole merge, can return it immediately in 'result'
+            var returnResult: Result = mergeWithIdentities.length == 0 ?
+                result : undefined;
+
+            suffixMerge = (variants[i].subIdentifiers === undefined) ?
+                mergeVariants(variants, qualifiers, isVariantUnmergeable,
+                              i, lastToMerge, mergeInside, returnResult) :
                 mergeBySubIdentities(variants, qualifiers, isVariantUnmergeable,
-                                     i, lastToMerge, returnResult);
+                                     i, lastToMerge, mergeInside, returnResult);
+            if(mergeWithIdentities.length == 0)
+                return suffixMerge;
         }
-        if(mergeWithIdentities.length == 0)
-            return suffixMerge;
         mergeWithIdentities.push(suffixMerge);
     } else if(mergeWithIdentities.length == 0) {
         if(result) {
@@ -2719,12 +2733,17 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
             result = new Result();
         return result;
     }
+
+    if(mergeWithIdentities.length == 1 && !mergeInside) {
+        if(result) {
+            result.copy(mergeWithIdentities[0]);
+            return result;
+        } else
+            return mergeWithIdentities[0];
+    }
     
     // merge variants by identities.
     
-    var valuesById: Result[][] = []; // ordering as in the result of the merge
-    var ids = []; // the identifier of each entry to be merged 
-    var posById: Map<any,number> = new Map();
     // in case every variant has the same merge attributes for all elements 
     var mergedMergeAttributes: MergeAttributes = undefined;
 
@@ -2743,10 +2762,77 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
         mergedMergeAttributes = mergedMergeAttributes === undefined ?
             attributes[0] : mergedMergeAttributes.copyMerge(attributes[0]);
     }
+
+    var aligned = alignByIdentities(mergeWithIdentities, mergeInside);
+
+    // now, merge the array of values at each position (highest priority
+    // values are at end).
+
+    return mergeAlignedByIdentity(aligned.values, aligned.ids, aligned.subIds,
+                                  aligned.mergeAttrs, aligned.toMerge,
+                                  mergedMergeAttributes, result);
+}
+
+// Given variants that should be merged by identity, this function
+// aligns the elements of the variants with the positions at which they
+// need to be merged. After this, it only remains to merge the values
+// in each position in the ordered set.
+// If 'mergeInside' is true, two elements in the same variant which have the
+// same identity are merged. Otherwise, they remain unmerged unless both are
+// merged with a lower priority element of the same identity. 
+
+function alignByIdentities(variants: Result[], mergeInside: boolean): {
+    values: any[], ids: any[], subIds: any[], mergeAttrs: MergeAttributes[],
+    toMerge: Result[][] }
+{
+    var mergedValues: any[] = []; // values after merging
+    // index of variant from which the lowest priority value at this position
+    // is taken.
+    var sourceVariant: number[] = mergeInside ? undefined : [];
+    var ids: any[] = []; // the identifier of each entry to be merged
+    var subIds: any[] = []; // sub identifiers of each entry
+    var allMergeAttrs: any[] = []; // merge attributes after merging
+
+    function addNewPos(variant_i: number, value: any, identity: any,
+                       mergeAttr: MergeAttributes, subId: any): void
+    {
+        if(subId) {
+            if(subIds.length < mergedValues.length)
+                subIds.length = mergedValues.length;
+            subIds.push(subId);
+        }
+        if(mergeAttr){
+            if(allMergeAttrs.length < mergedValues.length)
+                allMergeAttrs.length = mergedValues.length;
+            allMergeAttrs.push(mergeAttr);
+        }
+        mergedValues.push(value);
+        ids.push(identity);
+        if(sourceVariant !== undefined)
+            sourceVariant.push(variant_i);
+    }
+
+    function makeLabeledValue(value: any, mergeAttr: MergeAttributes,
+                              subId: any): Result
+    {
+        var labeledValue: Result = new Result(value);
+        if(mergeAttr)
+            labeledValue.mergeAttributes = [mergeAttr];
+        if(subId)
+            labeledValue.subIdentifiers = [subId];
+        return labeledValue;
+    }
     
+    // for each ID, list of positions with that ID.
+    var posById: Map<any,number[]> = new Map();
+    var valuesById: Result[][] = []; // ordering as in the result of the merge
+    // [<pos. of pushed value, pos. after which it should be pushed>,...]
+    var pushed: number[][] = [];
+    var wasPushed: Set<number> = new Set();
+
     // loop over variants in ascending order of priorities.
-    for(i = mergeWithIdentities.length - 1 ; i >= 0 ; --i) {
-        var variant: Result = mergeWithIdentities[i];
+    for(var i: number = variants.length - 1 ; i >= 0 ; --i) {
+        var variant: Result = variants[i];
         // lowest priority variant may have no identities
         var identities: any[] = variant.identifiers ? variant.identifiers : [];
         var value: any = (variant.value instanceof Array) ?
@@ -2756,109 +2842,168 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
 
         for(var j: number = 0 ; j < value.length ; ++j) {
             var identity: any = identities[j];
-            var mergeAttributes: MergeAttributes = undefined;
+
+            var hasIdentity: boolean =
+                (identity !== undefined && typeof(identity) !== "object");
+            var pos: number[] = hasIdentity ? posById.get(identity) : undefined;
+            
+            var mergeAttr: MergeAttributes = undefined;
             var subIdentifiers: any = undefined;
             
             if(variant.mergeAttributes !== undefined)
-                mergeAttributes = hasMultipleMergeAttributes ? 
+                mergeAttr = hasMultipleMergeAttributes ? 
                 variant.mergeAttributes[j] : variant.mergeAttributes[0];
             if(variant.subIdentifiers !== undefined)
                 subIdentifiers = variant.subIdentifiers[j];
             
-            // may have to merge this value with other values
-            var labeledValue = new Result(value[j]);
-            if(mergeAttributes !== undefined)
-                labeledValue.mergeAttributes = [mergeAttributes];
-            if(subIdentifiers !== undefined)
-                labeledValue.subIdentifiers = [subIdentifiers];
-
-            var hasIdentity: boolean =
-                (identity !== undefined && typeof(identity) !== "object");
-            var pos: number = hasIdentity ? posById.get(identity) : undefined;
-            if(pos !== undefined)
-                valuesById[pos].push(labeledValue);
-            else {
-                pos = valuesById.length;
-                valuesById.push([labeledValue]);
-                if(hasIdentity) {
-                    ids.push(identity);
-                    posById.set(identity, pos);
-                } else
-                    ids.length++;
-            }
+            if(pos === undefined) {
+                addNewPos(i, value[j], identity, mergeAttr, subIdentifiers);
+                posById.set(identity, [mergedValues.length - 1]);
+            } else {
+                var wasMatched: boolean = false;
+                for(var pos_k of pos) {
+                    if(sourceVariant && sourceVariant[pos_k] == i)
+                        // same variant
+                        continue;
+                    wasMatched = true;
+                    if(mergeAttr && mergeAttr.push === true) {
+                        if(wasPushed.size > 0 && wasPushed.has(pos_k))
+                            // don't push behind a pushed value (already
+                            // pushed behind the push position).
+                            continue;
+                        addNewPos(i, value[j], identity, mergeAttr,
+                                  subIdentifiers);
+                        var newPos: number = mergedValues.length - 1;
+                        pos.push(newPos);
+                        pushed.push([newPos, pos_k]);
+                        wasPushed.add(newPos);
+                        continue;
+                    }
+                    
+                    if(valuesById[pos_k] === undefined) {
+                        // prepare first value at this position for merging
+                        valuesById[pos_k] = [
+                            makeLabeledValue(mergedValues[pos_k],
+                                             allMergeAttrs[pos_k],
+                                             subIds[pos_k])];
+                    }
+                    // prepare this value for merging
+                    valuesById[pos_k].push(
+                        makeLabeledValue(value[j], mergeAttr, subIdentifiers));
+                }
+                
+                // if no matching position was found, append to the list
+                if(!wasMatched) {
+                    addNewPos(i, value[j], identity, mergeAttr, subIdentifiers);
+                    pos.push(mergedValues.length - 1);
+                }
+            }            
         }
     }
 
-    // now, merge the array of values at each position (highest priority
-    // values are at end).
+    function moveToPushPos(vec: any[], fromPos: number, pushPos: number) {
+        if(vec.length <= pushPos)
+            return; // nothing to do
+        if(vec.length <= fromPos)
+            vec.length++;
+        var moved: any = vec[fromPos];
+        vec.copyWithin(pushPos+2, pushPos+1, fromPos);
+        vec[pushPos+1] = moved;
+    }
 
-    var mergedValues = []; // array of merged values
-    var mergedIds: any[] = [];
-    var allMergeAttributes: MergeAttributes[] = [];
-    var allSubIdentifiers = []; // array of resulting sub-identifiers (if any)
-    
-    for(i = 0 ; i < valuesById.length ; ++i) {
-        if(!valuesById[i])
-            continue;
-        var mergeResult: Result;
-        if(valuesById[i].length == 1 && !valuesById[i][0].subIdentifiers)
-            mergeResult = valuesById[i][0];
-        else {
-            // the list of values was constructed with the lowest priority
-            // elements first.
-            valuesById[i].reverse();
-            var mergeResult: Result = mergeVariants(valuesById[i], undefined,
-                                                    undefined, undefined,
-                                                    undefined, undefined);
-        }
-        if(mergeResult.subIdentifiers)
-            allSubIdentifiers.length = mergedValues.length;
-        if(mergeResult.mergeAttributes && !mergedMergeAttributes) {
-            allMergeAttributes.length = mergedValues.length;
-            if(mergeResult.mergeAttributes.length > 1)
-                allMergeAttributes = cconcat(allMergeAttributes,
-                                             mergeResult.mergeAttributes);
-            else if(mergeResult.value instanceof Array)
-                for(var j = 0 ; j < mergeResult.value.length ; ++j)
-                    allMergeAttributes.push(mergeResult.mergeAttributes[0]);
-            else
-                allMergeAttributes.push(mergeResult.mergeAttributes[0]);
-        }
-            
-        if(mergeResult.value instanceof Array) {
-            for(var j = 0 ; j < mergeResult.value.length ; ++j) { 
-                mergedValues.push(mergeResult.value[j]);
-                mergedIds.push(ids[i]); // all have same identity
-                if(mergeResult.subIdentifiers)
-                    allSubIdentifiers.push(mergeResult.subIdentifiers[j]);
+    if(pushed.length > 0) { // insert pushed elements into the right place
+        // apply push positions back to front.
+        pushed.sort((a,b) => { return a[1] - b[1]; });
+        var len: number = pushed.length;
+        for(var i: number = len - 1 ; i >= 0 ; --i) {
+            var pushPos = pushed[i][1];
+            var fromPos = pushed[i][0];
+            // how many elements were pushed before this 'fromPos'?
+            // (adjust 'fromPos' accordingly)
+            var before: number = i;
+            var after: number = len;
+            while(before + 1 < after) {
+                var mid: number = Math.floor((after + before) / 2);
+                if(fromPos > pushed[mid][1])
+                    before = mid;
+                else
+                    after = mid;
             }
-        } else {
-            mergedValues.push(mergeResult.value);
-            mergedIds.push(ids[i]);
-            if(mergeResult.subIdentifiers !== undefined)
-                allSubIdentifiers.push(mergeResult.subIdentifiers[0]);
+            fromPos += after - i - 1;
+            moveToPushPos(mergedValues, fromPos, pushPos);
+            moveToPushPos(ids, fromPos, pushPos);
+            if(subIds.length > 0)
+                moveToPushPos(subIds, fromPos, pushPos);
+            if(allMergeAttrs.length > 0)
+                moveToPushPos(allMergeAttrs, fromPos, pushPos);
+            if(valuesById.length > 0)
+                moveToPushPos(valuesById, fromPos, pushPos);
         }
+    }
+    
+    return {
+        values: mergedValues, // lowest priority value at each position
+        ids: ids, // identifier of each position
+        // sub identifiers of lowest priority value (at each position)
+        subIds: subIds,
+        // merge attributes of lowest priority value (at each position)
+        mergeAttrs: allMergeAttrs,
+        // at each position where a merge still needs to take place:
+        // a list of Result objects (lowest priority first)
+        toMerge: valuesById,
+    }
+}   
+
+// Given the output of the function alignByIdentities() (above) this
+// function performs the merge at each position in the ordered set
+// and returns the complete merged result. If 'result' is given, the
+// merge is returned in 'result'.
+
+function mergeAlignedByIdentity(values: any[], ids: any[], subIds: any[],
+                                mergeAttrs: MergeAttributes[],
+                                toMerge: Result[][],
+                                mergedMergeAttrs: MergeAttributes,
+                                result: Result): Result
+{
+    for(var i: number = 0, l: number = toMerge.length ; i < l ; ++i) {
+        var variants: Result[] = toMerge[i];
+        if(variants === undefined)
+            continue;
+        // the list was constructed with the lowest priority elements first.
+        variants.reverse();
+        // by the asumptions on the input, the result of this merge must be
+        // a single value.
+        var mergeResult: Result = mergeVariants(variants, undefined,
+                                                undefined, undefined,
+                                                undefined, true, undefined);
+        values[i] = (mergeResult.value instanceof Array) ?
+            mergeResult.value[0] : mergeResult.value;
+        if(mergeResult.subIdentifiers)
+            subIds[i] = mergeResult.subIdentifiers[0];
+        if(!mergedMergeAttrs && mergeResult.mergeAttributes &&
+           mergeResult.mergeAttributes.length > 0)
+            mergeAttrs[i] = mergeResult.mergeAttributes[0];
     }
 
     // create the new result object
     if(!result)
-        result = new Result(mergedValues);
+        result = new Result(values);
     else
-        result.value = mergedValues;
+        result.value = values;
 
-    if(mergedMergeAttributes !== undefined && mergedMergeAttributes.notEmpty())
-        result.mergeAttributes = [mergedMergeAttributes];
-    else if(allMergeAttributes.length > 0) {
-        allMergeAttributes.length = mergedValues.length;
-        result.mergeAttributes = allMergeAttributes;
+    if(mergedMergeAttrs !== undefined && mergedMergeAttrs.notEmpty())
+        result.mergeAttributes = [mergedMergeAttrs];
+    else if(mergeAttrs.length > 0) {
+        mergeAttrs.length = values.length;
+        result.mergeAttributes = mergeAttrs;
     } else if(result.mergeAttributes !== undefined)
         result.mergeAttributes = undefined;
     
-    result.identifiers = mergedIds;
+    result.identifiers = ids;
 
-    if(allSubIdentifiers.length > 0) {
-        allSubIdentifiers.length = mergedValues.length;
-        result.subIdentifiers = allSubIdentifiers;
+    if(subIds.length > 0) {
+        subIds.length = values.length;
+        result.subIdentifiers = subIds;
     } else if(result.subIdentifiers !== undefined)
         result.subIdentifiers = undefined;
     
@@ -2874,6 +3019,7 @@ function mergeByIdentities(variants: Result[], qualifiers: boolean[],
 function mergeBySubIdentities(variants: Result[], qualifiers: boolean[],
                               isVariantUnmergeable: boolean[],
                               firstToMerge: number, lastToMerge: number,
+                              mergeInside: boolean,
                               result: Result): Result
 {
     var firstVariant: Result = variants[firstToMerge];
@@ -2882,20 +3028,16 @@ function mergeBySubIdentities(variants: Result[], qualifiers: boolean[],
 
     // handle various special cases
 
-    if(firstValue !== undefined && firstValue.length > 1) {
-        // overwrites subsequent variants, but we must merge by
-        // sub-identifiers under each value in the OS.
-        mergedResult = mergeOSBySubIdentities(firstVariant);
-    } if(isUnmergeable(firstValue)) {
+    if(isUnmergeable(firstValue)) {
+        // overwrites subsequent variants
         mergedResult = firstVariant;
     } else if(firstVariant.isAtomic() || firstToMerge == lastToMerge - 1) {
-        mergedResult = mergeWithIdentitifiedPaths([firstVariant]);
+        mergedResult = firstVariant;
     } else if(firstVariant.isPush()) {
-        // merge the first variant (internally with itself)
-        firstVariant = mergeWithIdentitifiedPaths([firstVariant]);
         mergedResult =
             mergeVariants(variants, qualifiers, isVariantUnmergeable,
-                          firstToMerge + 1, lastToMerge, undefined);
+                          firstToMerge + 1, lastToMerge, mergeInside,
+                          undefined);
         // push the first (merged) variant after the merge of the remaining
         // variants (by the assumptions, firstVariant is a single A-V).
         if(!(mergedResult.value instanceof Array)) {
@@ -2921,7 +3063,7 @@ function mergeBySubIdentities(variants: Result[], qualifiers: boolean[],
         // Standard handling of merge with sub-identifiers
         return mergeAVWithSubIdentities(variants, qualifiers,
                                         isVariantUnmergeable, firstToMerge,
-                                        lastToMerge, result)
+                                        lastToMerge, mergeInside, result)
     }
     
     // return the merged result
@@ -2940,6 +3082,7 @@ function mergeBySubIdentities(variants: Result[], qualifiers: boolean[],
 function mergeAVWithSubIdentities(variants: Result[], qualifiers: boolean[],
                                   isVariantUnmergeable: boolean[],
                                   firstToMerge: number, lastToMerge: number,
+                                  mergeInside: boolean,
                                   result: Result): Result
 {
     // Set list of variants to merge with sub-identities.
@@ -2960,7 +3103,7 @@ function mergeAVWithSubIdentities(variants: Result[], qualifiers: boolean[],
             nextVariant =
                 mergeByIdentities(variants, qualifiers,
                                   isVariantUnmergeable, i, lastToMerge,
-                                  undefined);
+                                  mergeInside, undefined);
             if(!isUnmergeable(nextVariant.value))
                 mergeIntoFirst.push(nextVariant);
             break;
@@ -2977,7 +3120,7 @@ function mergeAVWithSubIdentities(variants: Result[], qualifiers: boolean[],
             // result can be merged
             nextVariant =
                 mergeVariants(variants, qualifiers, isVariantUnmergeable,
-                              i, lastToMerge, undefined);
+                              i, lastToMerge, mergeInside, undefined);
             if(!isUnmergeable(nextVariant.value))
                 mergeIntoFirst.push(nextVariant);
             break;
@@ -3101,7 +3244,7 @@ function mergeWithIdentitifiedPaths(variants: Result[]): Result
         // merge under the attribute
         var mergedAttr: Result =
             mergeByIdentities(attrVariants, undefined, undefined,
-                              0, attrVariants.length, undefined);
+                              0, attrVariants.length, false, undefined);
 
         if(mergedAttr.value !== undefined)
             mergedValue[attr] = mergedAttr.value;
@@ -3418,6 +3561,107 @@ function mergeCopyAV(a0: any, b0: any, attributes: MergeAttributes,
         }
     }
     return a0Repl? o: a0;
+}
+
+// When processing a write: aligns 'to' and 'merge' elements by identities,
+// if the 'merge' value is identified or sub-identified. It returns an object
+// storing two arrays of DataPosition elements:
+// {
+//    matched: <positions of 'to' identities matched by 'merge' identities>
+//    noMatch: <(0,0) position for unmatched 'merge' identities>
+// }
+// The positions also carry the sub-identities of the corresponding 'to'
+// element.
+
+function getIdentifiedWritePositions(merge: Result, to: Result): {
+    matched: DataPosition[], noMatch: DataPosition[] }
+{
+    var mergeIdentifiers = merge.identifiers;
+    if(mergeIdentifiers === undefined || mergeIdentifiers.length == 0) {
+        if(merge.subIdentifiers)
+            return getSubIdentifiedWritePositions(merge, to);
+        return { matched: undefined, noMatch: undefined }; // no identification
+    }
+    var toIdentifiers = to.identifiers;
+    var toSubIdentifiers = to.subIdentifiers;
+    if(toIdentifiers === undefined || toIdentifiers.length === 0) {
+        // all elements should be appended (no identity match)
+        return { matched: undefined, noMatch: [new DataPosition(0,0)] };
+    }
+
+    var byId: Map<any,{ to: number[], merge: number[] }> =
+        new Map<any,{ to: number[], merge: number[] }>();
+    
+    for(var i: number = 0, l: number = toIdentifiers.length ; i < l ; ++i){
+        var id: any = toIdentifiers[i];
+        if(id === undefined || typeof(id) == "object")
+            continue;
+        var idEntry: { to: number[], merge: number[] } = byId.get(id);
+        if(idEntry === undefined) {
+            idEntry = { to: [i], merge: [] };
+            byId.set(id,idEntry);
+        } else
+            idEntry.to.push(i);
+    }
+    
+    var noMatch: number[] = [];
+    var writePos: DataPosition[] = [];
+    
+    for(var i: number = 0, l: number = mergeIdentifiers.length ; i < l ; ++i){
+        var id: any = mergeIdentifiers[i];
+        var idEntry: { to: number[], merge: number[] };
+        if(id === undefined || typeof(id) == "object" ||
+           (idEntry = byId.get(id)) === undefined) {
+            noMatch.push(i);
+        } else {
+            if(idEntry.merge.length === 0) {
+                // first match, create position entries.
+                for(var j: number = 0, m: number = idEntry.to.length ; j < m ; ++j) {
+                    var toPos: number = idEntry.to[j];
+                    writePos.push(new DataPosition(
+                        toPos,1,undefined,undefined,undefined,idEntry.merge,
+                        toSubIdentifiers ? toSubIdentifiers[toPos] : undefined));
+                }
+            }
+            idEntry.merge.push(i);
+        }
+    }
+        
+    writePos.sort((a,b):number => { return a.index == b.index ? a.length - b.length : a.index - b.index })
+
+    return {
+        matched: writePos.length > 0 ? writePos : undefined,
+        noMatch: noMatch.length > 0 ?
+            [new DataPosition(0,0,undefined,undefined,undefined, noMatch)] :
+            undefined
+    }
+}
+
+// Called when the merged value has sub-identifiers but no identifiers.
+// If the 'to' value also has sub-identifiers, those sub-identifiers
+// are stored on the returned position objects (which are returned in
+// an object of the same structure as that returned by
+// getIdentifiedWritePositions()
+
+function getSubIdentifiedWritePositions(merge: Result, to: Result): {
+    matched: DataPosition[], noMatch: DataPosition[] }
+{
+    if(!to.subIdentifiers || to.subIdentifiers.length == 0)
+        return { matched: undefined, noMatch: undefined };
+    
+    var toValue: any[] = to.value;
+    var writePos: DataPosition[] = [];
+    var found: boolean = false;
+    
+    for(var i: number = 0, l: number = toValue.length ; i < l ; ++i){
+        var subIdentifiers = to.subIdentifiers[i];
+        if(subIdentifiers !== undefined)
+            found = true;
+        writePos.push(new DataPosition(
+            i,1,undefined,undefined,undefined,undefined,subIdentifiers));
+    }
+    
+    return { matched: found ? writePos: undefined, noMatch: undefined };
 }
 
 // Returns a normalized path for an area query, i.e. it prefixes a query path

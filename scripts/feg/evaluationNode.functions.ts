@@ -3429,8 +3429,11 @@ class EvaluationMerge extends EvaluationFunctionApplication {
         // reverse the order of the arguments (last argument has highest
         // priority and mergeVariants takes variants in decreasing order
         // of priority)
+        // if this.arguments.length == 1, elements with the same identity
+        // in the ordered set are merged together.
         mergeVariants(this.arguments.slice(0).reverse(), undefined, undefined,
-                      undefined, undefined, this.result);
+                      undefined, undefined, this.arguments.length == 1,
+                      this.result);
         
         return (!objectEqual(prevValue, this.result.value) ||
                 !objectEqual(prevMergeAttributes,

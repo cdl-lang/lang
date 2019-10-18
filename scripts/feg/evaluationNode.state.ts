@@ -1219,20 +1219,21 @@ function updateValue(os: any[], result: Result, position: DataPosition, mode: Wr
         newValue = position.identified.map(n => newValue[n]);
         if(attributes && attributes.length > 1)
             attributes = position.identified.map(n => attributes[n]);
+        if(subIdentifiers)
+            subIdentifiers = position.identified.map(n => subIdentifiers[n]);
         if(position.index == 0 && position.length == 0) {
-            // first, merge the new values by identity
-            var mergedNewValue: Result = new Result(newValue);
             if(identifiers) {
+                // first, merge the new values by identity
+                var mergedNewValue: Result = new Result(newValue);
                 mergedNewValue.identifiers =
                     position.identified.map(n => identifiers[n]);
-            }
-            if(subIdentifiers) {
-                mergedNewValue.subIdentifiers =
-                    position.identified.map(n => subIdentifiers[n]);
-            }
-            if(identifiers) {
+                if(attributes && attributes.length > 0)
+                    mergedNewValue.mergeAttributes = attributes;
+                if(subIdentifiers)
+                    mergedNewValue.subIdentifiers = subIdentifiers;
                 mergedNewValue = mergeByIdentities([mergedNewValue], undefined,
-                                                   undefined, 0, 1, undefined);
+                                                   undefined, 0, 1, true,
+                                                   undefined);
                 newValue = mergedNewValue.value;
             }
             if(position.addedAttributes)
@@ -1259,22 +1260,28 @@ function updateValue(os: any[], result: Result, position: DataPosition, mode: Wr
             break;
           case WriteMode.merge:
             var mergeAttr: MergeAttributes;
-            if(position.identified &&
-               (position.length > 1 || newValue.length > 1)) {
-                // more than two values to be merged together
-                // (all have the same identity),
+            if((position.toSubIdentifiers && subIdentifiers) ||
+               (position.identified &&
+                (position.length > 1 || newValue.length > 1))) {
+                // has sub-identifiers or more than two values to be merged
+                // together, all with the same identity.
                 var variants: any[] = os.slice(index, index + position.length).
                     map(x => new Result(x));
+                if(position.toSubIdentifiers) // position length must be 1
+                    variants[0].setSubIdentifers(position.toSubIdentifiers);
                 for(var i = 0 ; i < newValue.length ; ++i) {
                     mergeAttr = attributes === undefined ? undefined :
                         (attributes.length==1 ? attributes[0] : attributes[i]);
+                    var last: number = variants.length;
                     variants.push(new Result(newValue[i]));
                     if(mergeAttr)
-                        variants[variants.length-1].mergeAttributes = [mergeAttr];
+                        variants[last].mergeAttributes = [mergeAttr];
+                    if(subIdentifiers)
+                        variants[last].subIdentifiers = [subIdentifiers[i]];
                 }
                 variants.reverse(); // highest priority should be first
                 repl = mergeVariants(variants, undefined, undefined, 0,
-                                     variants.length, undefined).value;
+                                     variants.length, true, undefined).value;
             } else {
                 mergeAttr = (attributes && attributes.length === 1) ?
                     attributes[0] : undefined;

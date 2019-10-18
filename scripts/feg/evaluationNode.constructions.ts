@@ -356,19 +356,46 @@ class EvaluationAV extends EvaluationNode {
                 return false;
             }
             for (var attr in repl) {
-                if (attr in this.inputByAttr) {
-                    var attrResult: Result = result.popAttr(attr);
-                    if(!attrResult ||
-                       !this.inputByAttr[attr].write(attrResult, mode,
-                                                     undefined, reportDeadEnd))
-                        success = false;
-                } else {
+                if (!(attr in this.inputByAttr)) {
                     // An AV itself can never be a write destination, so writing
                     // to a non-existing attribute is not allowed.
                     this.reportDeadEndWrite(reportDeadEnd,
                                             "writing to non-existing attribute in non-writable AV");
                     success = false;
+                    continue;
                 }
+                var attrResult: Result = result.popAttr(attr);
+                if(!attrResult) {
+                    success = false;
+                    continue;
+                }
+                var idPositions: { matched: DataPosition[],
+                                   noMatch: DataPosition[] } = undefined;
+                var attrNode: EvaluationNode = this.inputByAttr[attr];
+                if(positions !== undefined && positions[0].toSubIdentifiers) {
+                    var toAttrSubIds: any =
+                        positions[0].toSubIdentifiers[attr];
+                    if(toAttrSubIds !== undefined) {
+                        var toAttrResult = new Result(attrNode.result.value);
+                        toAttrResult.setSubIdentifiers(toAttrSubIds);
+                        idPositions = getIdentifiedWritePositions(attrResult,
+                                                                  toAttrResult);
+                    }
+                }
+                if(idPositions && (idPositions.matched || idPositions.noMatch)){
+                    if(idPositions.matched) {
+                        if(!attrNode.write(attrResult, mode,
+                                           idPositions.matched, reportDeadEnd))
+                            success = false;
+                    }
+                    if(idPositions.noMatch) {
+                        if(!attrNode.write(attrResult, mode,
+                                           idPositions.noMatch, reportDeadEnd))
+                            success = false;
+                    }
+                } else if(!attrNode.write(attrResult, mode, undefined,
+                                          reportDeadEnd))
+                    success = false;
             }
         } else {
             // Write to attributes
@@ -1381,7 +1408,7 @@ class EvaluationVariant extends EvaluationNode
         } else {
             mergeVariants(this.variants, this.qualifiedVariants,
                           this.isVariantUnmergeable,
-                          this.firstActive, this.lastActive,
+                          this.firstActive, this.lastActive, false,
                           this.result);
             this.variantChange = {};
             return this.result.dataSource !== oldDatasource ||

@@ -1546,7 +1546,8 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
                     variants.push(new Result(consts[i].value));
                 var mergeResult: Result = mergeVariants(variants, undefined,
                                                         undefined, undefined,
-                                                        undefined, undefined);
+                                                        undefined, false,
+                                                        undefined);
                 var mergeValue: any = mergeResult.value;
                 if(mergeValue === undefined)
                     mergeValue = [];
