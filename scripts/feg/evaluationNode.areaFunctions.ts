@@ -684,6 +684,7 @@ class EvaluationAreaProjection extends EvaluationNode {
             }
         } else {
             var identifiers: any[] = undefined;
+            var subIdentifiers: any[] = undefined;
             var compiledQueries: {(v: any, args: any[]): any}[] = undefined;
             var queryArguments: SimpleQuery[][] = undefined;
             var nrQueryElements: number[] = undefined;
@@ -709,25 +710,33 @@ class EvaluationAreaProjection extends EvaluationNode {
                             nrQueryElements.length += xtraLen;
                         }
                         if (this.values[i].identifiers !== undefined) {
-                            if (identifiers === undefined) {
+                            if (identifiers === undefined)
                                 identifiers = [];
-                                for (var j: number = 0; j !== i; j++) {
-                                    Array.prototype.push.apply(identifiers, this.values[j].getIdentifiers());
-                                }
-                            }
+                            if(identifiers.length < res.length)
+                                identifiers.length = res.length;
                             Array.prototype.push.apply(identifiers, this.values[i].identifiers);
-                        } else if (identifiers !== undefined) {
-                            Array.prototype.push.apply(identifiers, this.values[i].getIdentifiers());
-                        }
+                        } else if (identifiers !== undefined)
+                            identifiers.length += v.length;
+
+                        if (this.values[i].subIdentifiers !== undefined) {
+                            if (subIdentifiers === undefined)
+                                subIdentifiers = [];
+                            if(subIdentifiers.length < res.length)
+                                subIdentifiers.length = res.length;
+                            Array.prototype.push.apply(subIdentifiers, this.values[i].subIdentifiers);
+                        } else if (subIdentifiers !== undefined)
+                            subIdentifiers.length += v.length;
+                        
                         Array.prototype.push.apply(res, v);
                     }
                 }
             }
             this.result.value = res;
             this.result.resetLabels();
-            if (identifiers !== undefined) {
+            if (identifiers !== undefined)
                 this.result.identifiers = identifiers;
-            }
+            if (subIdentifiers !== undefined)
+                this.result.subIdentifiers = subIdentifiers;
             if (compiledQueries !== undefined) {
                 this.result.compiledQuery = compiledQueries;
                 this.result.queryArguments = queryArguments;
