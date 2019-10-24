@@ -811,10 +811,10 @@ class SetChildController extends ChildController
                         childArea = this.template.isDisplayArea !== false?
                             new DisplayArea(this.template, this, setIndices,
                                             areaIdentifier, new Result([areaIdentifier]),
-                                            areaSetContent, this.dataEval, j):
+                                            areaSetContent, this.dataEval, i):
                             new CalculationArea(this.template, this, setIndices,
                                                 areaIdentifier, new Result([areaIdentifier]),
-                                                areaSetContent, this.dataEval, j);
+                                                areaSetContent, this.dataEval, i);
                         childArea.setComment(this.parent.areaId + ":set:" + this.name);
                         childArea.finishInstantiation();
                         this.identifier2area.set(areaIdentifier, childArea);

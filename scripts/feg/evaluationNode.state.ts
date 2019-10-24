@@ -1306,33 +1306,19 @@ function getMergedValues(result: Result, position: DataPosition): Result[]
         return [result]; // unchanged
 
     var newValue: any[] = ensureOS(result.value);
-    var attributes: MergeAttributes[] = result.mergeAttributes;
-    var identifiers: any[] = result.identifiers;
-    var subIdentifiers: any[] = result.subIdentifiers;
-    
     // 'identified' is an array with the positions of the values
     // which have the same identity as the write target.
     newValue = position.identified.map(n => newValue[n]);
+    
+    if(position.isAppend())
+        return [new Result(newValue)];
+    
+    var attributes: MergeAttributes[] = result.mergeAttributes;
+    var subIdentifiers: any[] = result.subIdentifiers;
     if(attributes && attributes.length > 1)
         attributes = position.identified.map(n => attributes[n]);
     if(subIdentifiers)
         subIdentifiers = position.identified.map(n => subIdentifiers[n]);
-    
-    if(position.isAppend()) {
-        var mergedNewValue: Result = new Result(newValue);
-        if(identifiers) {
-            mergedNewValue.identifiers =
-                position.identified.map(n => identifiers[n]);
-            if(attributes && attributes.length > 0)
-                mergedNewValue.mergeAttributes = attributes;
-            if(subIdentifiers)
-                mergedNewValue.subIdentifiers = subIdentifiers;
-            mergedNewValue = mergeByIdentities([mergedNewValue], undefined,
-                                               undefined, 0, 1, true,
-                                               undefined);
-        }
-        return [mergedNewValue];
-    }
 
     // return a result per element in the new value (as they all have the
     // same identity and are about to be merged with a single element in
