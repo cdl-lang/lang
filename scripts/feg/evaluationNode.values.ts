@@ -250,7 +250,7 @@ class EvaluationOrderedSet extends EvaluationNode {
 
     write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         if (this.constant) {
-            Utilities.warn("dead ended write: writing to constant os at " + gWriteAction);
+            this.reportDeadEndWrite(reportDeadEnd, "writing to constant os");
             return false;
         }
         var success: boolean = false;

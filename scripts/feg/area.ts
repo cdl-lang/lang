@@ -758,7 +758,9 @@ class SetChildController extends ChildController
     /** Creates children based on value */
     setDataResult(result: Result): void {
         var data: any[] = result.value === undefined? []: result.value;
-        var dataIds: any[] = result.value === undefined? undefined: result.identifiers;
+        var dataIds: any[] = (!this.useIdentity || result.value === undefined)?
+            undefined : result.identifiers;
+        var subIds: any[] = result.anonymize ? undefined : result.subIdentifiers;
         var prev: CoreArea = undefined;
         var areaIds: {[id: string]: boolean} = {};
         var childArea: CoreArea = undefined;
@@ -792,14 +794,16 @@ class SetChildController extends ChildController
         try {
             for (var i: number = 0, j: number = 0; i !== data.length; i++) {
                 var v: any = data[i];
-                var areaIdentifier: any =
-                    this.useIdentity && dataIds !== undefined? dataIds[i]: j;
+                var areaIdentifier: any = dataIds !== undefined? dataIds[i]: j;
+                var subIdentifier: any =
+                    subIds !== undefined ? subIds[i] : undefined;
                 if (!(areaIdentifier in areaIds)) {
                     // Only create or update areas for identifiers not yet seen
                     var areaSetContent: Result = new Result([v]);
-                    if (dataIds !== undefined) {
+                    if (dataIds !== undefined)
                         areaSetContent.identifiers = [areaIdentifier];
-                    }
+                    if(subIdentifier !== undefined)
+                        areaSetContent.subIdentifiers = [subIdentifier];
                     areaIds[areaIdentifier] = true;
                     if (!this.identifier2area.has(areaIdentifier)) {
                         var setIndices: any[] = this.setIndices.concat(
@@ -820,7 +824,7 @@ class SetChildController extends ChildController
                         var paramAttr = childArea.param !== undefined? childArea.param.attr:
                                         new Result([areaIdentifier]);
                         childArea.updateSetData(paramAttr, areaSetContent);
-                        childArea.updateSetPosition(this.dataEval, j);
+                        childArea.updateSetPosition(this.dataEval, i);
                         // globalEventQueue.clearPtrInArea(childArea);
                     }
                     areaRelationMonitor.addRelation(childArea.areaId, "index", [j]);
@@ -835,7 +839,8 @@ class SetChildController extends ChildController
                     j++;
                 } else {
                     childArea = this.identifier2area.get(areaIdentifier);
-                    childArea.addSetDataSameId(v);
+                    childArea.addSetDataSameId(v, dataIds ? areaIdentifier: undefined, subIdentifier);
+                    childArea.addSetPositionSameId(i);
                 }
             }
         } finally {
@@ -1950,7 +1955,7 @@ implements
 
     // Run-time environment of a core area
     controller: ChildController;
-    param: { attr: any; data: Result; source: EvaluationNode; position: number; };
+    param: { attr: any; data: Result; source: EvaluationNode; position: number[]; };
 
     /** External referencing to this core area; undefined when this areas has
      * been destroyed */
@@ -2043,7 +2048,7 @@ implements
                 attr: paramAttr.value,
                 data: paramData,
                 source: source,
-                position: position
+                position: [position]
             };
         }
 
@@ -2246,7 +2251,7 @@ implements
             // Add area set attribute and content to initial value
             paramInitValue.areaSetAttr = this.param.attr;
             paramInitValue.areaSetContent = this.param.data.value;
-            paramNode.setSource(this.param.source, this.param.position);
+            paramNode.setSources(this.param.source,this.param.position);
             paramNode.set(new Result([paramInitValue]));
         }
     }
@@ -2593,27 +2598,68 @@ implements
                 paramValue.areaSetContent = data.value;
             }
         }
+
         if (paramNode.isLatched && change) {
             var latchedValue = paramNode.latchedValue.value[0];
             latchedValue.areaSetAttr = attr;
             latchedValue.areaSetContent = data.value;
         }
         if (change) {
-            paramNode.set(new Result([paramValue]));
+            var newParam: Result = paramNode.lastUpdate.clone();
+            newParam.value = [paramValue];
+            if(data.identifiers || data.subIdentifiers)
+                newParam.addSubIdentifiersUnderAttr("areaSetContent",
+                                                    data.identifiers,
+                                                    data.subIdentifiers);
+            
+            paramNode.set(newParam);
         }
     }
 
     updateSetPosition(src: EvaluationNode, position: number): void {
         var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
 
-        this.param.position = position;
+        this.param.position = [position];
         paramNode.setSource(src, position);
     }
 
-    addSetDataSameId(value: any): void {
+    addSetDataSameId(value: any, identifier: any, subIdentifier: any): void {
         var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
+        this.param.data.value = this.param.data.value.concat(value);
+        
+        var identifiers: any[] = this.param.data.identifiers;
+        var subIdentifiers: any[] = this.param.data.subIdentifiers;
+        
+        if(identifier !== undefined || identifiers !== undefined) {
+            if(!identifiers)
+                identifiers = [];
+            else
+                identifiers = identifiers.slice(0);
+            identifiers.length = this.param.data.value.length;
+            if(identifier !== undefined)
+                identifiers[identifiers.length - 1] = identifier;
+        }
 
-        paramNode.pushToAreaSetContent(value);
+        if(subIdentifier !== undefined || subIdentifiers !== undefined) {
+            if(!subIdentifiers)
+                subIdentifiers = [];
+            else
+                subIdentifiers = subIdentifiers.slice(0);
+            subIdentifiers.length = this.param.data.value.length;
+            if(subIdentifier !== undefined)
+                subIdentifiers[subIdentifiers.length - 1] = subIdentifier;
+        }
+
+        if(identifiers !== undefined || subIdentifiers !== undefined)
+            this.param.data.setSubIdentifiers(identifiers, subIdentifiers);
+
+        paramNode.pushToAreaSetContent(value, identifiers, subIdentifiers);
+    }
+
+    addSetPositionSameId(position: number): void {
+        var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
+        this.param.position.push(position);
+        paramNode.pushToPositions(position);
     }
 
     getAreaParam(): Result {
@@ -3753,7 +3799,7 @@ class DisplayArea extends CoreArea {
     updateSetPosition(src: EvaluationNode, position: number): void {
         var paramNode = <EvaluationParam> this.evaluationNodes[0][areaParamIndex];
 
-        this.param.position = position;
+        this.param.position = [position];
         paramNode.setSource(src, position);
     }
 

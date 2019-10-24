@@ -325,35 +325,45 @@ class Result {
     }
 
     // sets both identifiers and sub-identifiers, depending on the input
-    // (which may be an array (identifiers only) an A-V (sub-identifiers
-    // only) or a SubIdentifiers object (both identifiers and sub-identifiers).
+    // (which, for the first argument, may be an array (identifiers only)
+    // an A-V (sub-identifiers only) or a SubIdentifiers object (both
+    // identifiers and sub-identifiers).
+    // If a second argument is provided, both arguments must be arrays
+    // (though any of the two may be undefined). In this case, the first
+    // argument should hold the identifiers (as in the single-argument case)
+    // while the second argument should hold the array of sub-identifiers.
     // Empty arrays are considered equivalent to undefined.
-    setSubIdentifiers(subIdentifiers: any): void {
-        if(subIdentifiers === undefined) {
+    
+    setSubIdentifiers(identifiers: any, subIdentifiers?: any[]): void {
+        if(identifiers === undefined) {
             if(this.identifiers)
                 this.identifiers = undefined;
-            if(this.subIdentifiers)
+            if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+                this.subIdentifiers = subIdentifiers;
+            else if(this.subIdentifiers)
                 this.subIdentifiers = undefined;
             return;
         }
-        if(subIdentifiers instanceof SubIdentifiers) {
-            if(subIdentifiers.identifiers && subIdentifiers.identifiers.length > 0)
-                this.identifiers = subIdentifiers.identifiers;
+        if(identifiers instanceof SubIdentifiers) {
+            if(identifiers.identifiers && identifiers.identifiers.length > 0)
+                this.identifiers = identifiers.identifiers;
             else if(this.identifiers !== undefined)
                 this.identifiers = undefined;
-            if(subIdentifiers.subIdentifiers && subIdentifiers.subIdentifiers.length > 0)
-                this.subIdentifiers = subIdentifiers.subIdentifiers;
+            if(identifiers.subIdentifiers && identifiers.subIdentifiers.length > 0)
+                this.subIdentifiers = identifiers.subIdentifiers;
             else if(this.subIdentifiers !== undefined)
                 this.subIdentifiers = undefined;
-        } else if(subIdentifiers instanceof Array) {
-            if(subIdentifiers.length > 0)
-                this.identifiers = subIdentifiers;
+        } else if(identifiers instanceof Array) {
+            if(identifiers.length > 0)
+                this.identifiers = identifiers;
             else if(this.identifiers !== undefined)
                 this.identifiers = undefined;
-            if(this.subIdentifiers)
+            if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+                this.subIdentifiers = subIdentifiers;
+            else if(this.subIdentifiers)
                 this.subIdentifiers = undefined;
         } else { // A-V and therefore represents sub-identifiers
-            this.subIdentifiers = [subIdentifiers];
+            this.subIdentifiers = [identifiers];
             if(this.identifiers)
                 this.identifiers = undefined;
         }
@@ -383,6 +393,10 @@ class Result {
 
         if(this.subIdentifiers === undefined)
             this.subIdentifiers = [{}];
+        else if(this.subIdentifiers[0] === undefined)
+            this.subIdentifiers[0] = {};
+        else
+            this.subIdentifiers[0] = shallowCopy(this.subIdentifiers[0]);
         this.subIdentifiers[0][attr] = attrSubIdentifiers; 
     }
     
@@ -526,6 +540,67 @@ class Result {
         }
         if ("subIdentifiers" in this && this.subIdentifiers !== undefined) {
             res.subIdentifiers = this.subIdentifiers.slice(pos, pos + length);
+        }
+        if ("anonymize" in this) {
+            res.anonymize = this.anonymize;
+        }
+        return res;
+    }
+
+    // Similar to sub(), but takes an ordered array of positions as input
+    // and returns a result object which consists of the subsequence
+    // of those positions in the current result object.
+    subs(pos: number[]): Result {
+        var res: Result = new Result();
+        if(pos === undefined) {
+            res.copy(this);
+            return res;
+        }
+        if(!(this.value instanceof Array)) {
+            if(pos[0] == 0)
+                res.copy(this);
+            else
+                res.value = [];
+            return res;
+        }
+
+        // don't extract beyond end of value
+        for(var k: number = pos.length - 1 ; k >= 0 ; --k) {
+            if(pos[k] < res.value.length) {
+                if(k < pos.length - 1)
+                    pos = pos.slice(0,k+1);
+                break;
+            }
+        }
+        if(pos.length === 0) {
+            res.value = [];
+            return res;
+        }
+        
+        res.value = pos.map(n => this.value[n]);
+
+        if ("compiledQuery" in this) {
+            res.compiledQuery = pos.map(n => this.compiledQuery[n]);
+            if ("queryArguments" in this) {
+                res.queryArguments = pos.map(n => this.queryArguments[n]);
+            }
+            if ("nrQueryElements" in this) {
+                res.nrQueryElements = pos.map(n => this.nrQueryElements[n]);
+            }
+            if ("writePaths" in this) {
+                res.writePaths = this.writePaths;
+            }
+        }
+        if("mergeAttributes" in this && this.mergeAttributes !== undefined){
+            res.mergeAttributes = this.mergeAttributes.length > 1 ?
+                pos.map(n => this.mergeAttributes[n]) :
+                this.mergeAttributes.slice(0)
+        }
+        if ("identifiers" in this && this.identifiers !== undefined) {
+            res.identifiers = pos.map(n => this.identifiers[n]);
+        }
+        if ("subIdentifiers" in this && this.subIdentifiers !== undefined) {
+            res.subIdentifiers = pos.map(n => this.subIdentifiers[n]);
         }
         if ("anonymize" in this) {
             res.anonymize = this.anonymize;

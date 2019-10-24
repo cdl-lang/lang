@@ -218,6 +218,28 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
         }
     }
     write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
+        
+        if(positions !== undefined && positions.length == 1 &&
+           positions[0].index == 0 && positions[0].length == 0) {
+            var addedIdentifier: any = positions[0].addedIdentifier;
+            if(addedIdentifier !== undefined) {
+                if(typeof(this.identificationAttribute) !== "string") {
+                    this.reportDeadEndWrite(
+                        reportDeadEnd,
+                        "complex identification: cannot add identifier " +
+                            addedIdentifier);
+                    return false;
+                }
+                var addedAttr: {[attr: string]: any} = {};
+                addedAttr[<string>this.identificationAttribute] =
+                    ensureOS(addedIdentifier);
+                var newPos: DataPosition =
+                    positions[0].copyWithAddedAttributes(addedAttr);
+                newPos.addedIdentifier = undefined;
+                positions = [newPos];
+            }
+        }
+        
         if (this.inputs[1] !== undefined) {
             return this.inputs[1].write(result, mode, positions, reportDeadEnd);
         }

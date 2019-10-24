@@ -207,10 +207,11 @@ class EvaluationStore extends EvaluationNode implements Latchable {
     isLatched: boolean = false;
 
     // Source points at the source of the data in this node. If position is
-    // defined, the data comes from that specific position. This is used for
-    // linking to a data element in an area set, or to function arguments.
+    // defined, the data comes from that/those specific position(s).
+    // This is used for linking to a data element in an area set,
+    // or to function arguments.
     source: EvaluationNode = undefined;
-    position: number = undefined;
+    position: number[] = undefined;
 
     // positionValidator: PositionValidator;
     positionChangeTracker: PositionChangeTracker = new PositionChangeTracker();
@@ -280,12 +281,20 @@ class EvaluationStore extends EvaluationNode implements Latchable {
         return false;
     }
 
-    pushToAreaSetContent(value: any): void {
-        if (value !== undefined) {
-            this.lastUpdate.value[0].areaSetContent =
-                this.lastUpdate.value[0].areaSetContent.concat(value);
-            this.markAsChanged();
-        }
+    pushToAreaSetContent(value: any, identifiers: any[],
+                         subIdentifiers: any[]): void
+    {
+        this.lastUpdate.value[0].areaSetContent =
+            this.lastUpdate.value[0].areaSetContent.concat(value);
+        if(identifiers !== undefined || subIdentifiers !== undefined)
+            this.lastUpdate.addSubIdentifiersUnderAttr("areaSetContent",
+                                                       identifiers,
+                                                       subIdentifiers);
+        this.markAsChanged();
+    }
+
+    pushToPositions(position: number): void {
+        this.position.push(position);
     }
 
     setDataSourceResultMode(dataSourceResultMode: boolean): void {
@@ -306,7 +315,13 @@ class EvaluationStore extends EvaluationNode implements Latchable {
 
     setSource(source: EvaluationNode, position: number): void {
         this.source = source;
-        this.position = position;
+        this.position = [position];
+    }
+
+    // to be used when 'position' is an array of positions
+    setSources(source: EvaluationNode, position: number[]): void {
+        this.source = source;
+        this.position = position === undefined ? undefined : position.slice(0);
     }
     
     updateInput(i: any, result: Result): void {
@@ -419,8 +434,9 @@ class EvaluationStore extends EvaluationNode implements Latchable {
             // error of the caller.
             var sub: DataPosition[] =
                 this.position === undefined? positions:
-                positions === undefined? [new DataPosition(this.position, 1)]:
-                [new DataPosition(this.position, 1, positions[0].path, positions[0].sub)];
+                positions === undefined?
+                [new DataPosition(this.position[0], 1)]:
+                [new DataPosition(this.position[0], 1, positions[0].path, positions[0].sub)];
             return this.source.write(result, mode, sub, reportDeadEnd);
         } else {
             var topWrite: boolean = positions === undefined || positions[0].path === undefined;
@@ -466,10 +482,7 @@ class EvaluationStore extends EvaluationNode implements Latchable {
 
     extractResult(r: Result): Result {
         return r === undefined? undefined:
-            this.position === undefined? r:
-            r.value instanceof Array && r.value.length > this.position? r.sub(this.position):
-            this.position === 0? r: // fall back if r === o() or a singleton
-            new Result([]);
+            this.position === undefined? r: r.subs(this.position);
     }
 
     debugName(): string {
@@ -717,6 +730,20 @@ class EvaluationParam extends EvaluationStore {
             return queryObject;
         }
 
+        // if the write requires the insertion of a new element and this
+        // area was created for an identifier, ad the element with that
+        // identifier (otherwise, don't add anything).
+        function addIdentifierToPos(positions: DataPosition[]): DataPosition[] {
+            if(positions.length !== 1 || positions[0].index !== 0 ||
+               positions[0].length !== 0)
+                return [];
+            if(!(area.controller instanceof SetChildController) ||
+               !(<SetChildController>area.controller).useIdentity)
+                return []; // not created for an identifier
+            var identifier: any = area.param.attr;
+            return [positions[0].copyWithAddedIdentifier(identifier)];
+        }
+        
         // For writes to param:input, this functions unwraps the path in
         // 'positions', and then possible AVs in 'result', and writes
         // the terminal value to the appropriate source.
@@ -729,13 +756,30 @@ class EvaluationParam extends EvaluationStore {
                   case "input":
                     return updateInputAttr(path[1], wrapPathAttr(path, 1, ensureOS(result.value)), result.value);
                   case "areaSetContent":
-                    var sub: DataPosition[] =
-                        positions === undefined? [new DataPosition(self.position, 1)]:
-                        [positions[0].copyWithOffset(positions[0].index - self.position)];
-                    // we are writing to the 'data' ordered set. By definition,
-                    // each area has a single element in this ordered set,
-                    // and this is where we write to.
-                    sub[0].length = 1;
+                    var sub: DataPosition[];
+                    if(positions === undefined)
+                        sub = self.position.map(n => new DataPosition(n, 1));
+                    else {
+                        sub = [];
+                        for(var i = 0 ; i < positions.length ; ++i) {
+                            for(var j = 0 ; j < positions[i].length ; ++j) {
+                                var newPos: DataPosition = positions[i].copy();
+                                newPos.length = 1;
+                                newPos.index =
+                                    self.position[positions[i].index + j];
+                                sub.push(newPos);
+                            }
+                        }
+                        if(sub.length == 0)
+                            // try insertion by identifier
+                            sub = addIdentifierToPos(positions);
+                        if(sub.length == 0) { // still empty
+                            self.reportDeadEndWrite(
+                                reportDeadEnd,
+                                "in write to areaSetContent " + self.local.getOwnId());
+                            return false;
+                        }
+                    }
                     return self.source.write(result, mode, sub, reportDeadEnd);
                 default:
                     self.reportDeadEndWrite(reportDeadEnd,
@@ -827,7 +871,7 @@ class EvaluationDefunParameter extends EvaluationStore {
 
     setSource(source: EvaluationNode, position: number): void {
         this.source = source;
-        this.position = position;
+        this.position = [position];
         this.constant = source.isConstant();
         if (this.constant) {
             this.set(source.result);
@@ -1166,15 +1210,6 @@ function determineWrite(curValue: any, result: Result, mode: WriteMode, position
 // Merges newValue in the os in the place indicated by position, and returns
 // a new object with the result.
 function updateValue(os: any[], result: Result, position: DataPosition, mode: WriteMode, pct: PositionChangeTracker): any[] {
-    var oldValue: any;
-    var newValue: any[] =
-        result.value === undefined? constEmptyOS: result.value;
-    var identifiers: any[] = result.identifiers;
-    var subIdentifiers: any[] = result.subIdentifiers;
-    var attributes: MergeAttributes[] = result.mergeAttributes;
-    var repl: any;
-    var attr: string;
-    var positionLength: number;
 
     function findAddedAttributes(addedAttributes: {[attr: string]: string}): number {
         for (var i: number = 0; i < os.length; i++) {
@@ -1185,7 +1220,7 @@ function updateValue(os: any[], result: Result, position: DataPosition, mode: Wr
         return os.length;
     }
 
-    function addAttributes(target: any[], added: any): any {
+    function addAttributes(target: any[], added: any): any[] {
 
         if(added === undefined)
             return target;
@@ -1213,113 +1248,148 @@ function updateValue(os: any[], result: Result, position: DataPosition, mode: Wr
         return merged;
     }
 
-    if(position.identified !== undefined) {
-        // 'identified' is an array with the positions of the values
-        // which have the same identity as the write target.
-        newValue = position.identified.map(n => newValue[n]);
-        if(attributes && attributes.length > 1)
-            attributes = position.identified.map(n => attributes[n]);
-        if(subIdentifiers)
-            subIdentifiers = position.identified.map(n => subIdentifiers[n]);
-        if(position.index == 0 && position.length == 0) {
-            if(identifiers) {
-                // first, merge the new values by identity
-                var mergedNewValue: Result = new Result(newValue);
-                mergedNewValue.identifiers =
-                    position.identified.map(n => identifiers[n]);
-                if(attributes && attributes.length > 0)
-                    mergedNewValue.mergeAttributes = attributes;
-                if(subIdentifiers)
-                    mergedNewValue.subIdentifiers = subIdentifiers;
-                mergedNewValue = mergeByIdentities([mergedNewValue], undefined,
-                                                   undefined, 0, 1, true,
-                                                   undefined);
-                newValue = mergedNewValue.value;
-            }
-            if(position.addedAttributes)
-                newValue = addAttributes(newValue, position.addedAttributes);
-            return os.concat(newValue);
-        }
-    } else if(position.index == 0 && position.length == 0) { // append
-        if(position.addedAttributes)
-            newValue = addAttributes(newValue, position.addedAttributes);
-        return os.concat(newValue);
-    }
-
     var index: number = position.addedAttributes === undefined?
                         pct.getIndex(position.index):
-                        findAddedAttributes(position.addedAttributes);
-    if (position.path === undefined || position.path.length === 0) {
-        if (pct.markShift(index, position.length, newValue, false, mode) === undefined) {
-            Utilities.warn("double write (term): " + gWriteAction);
-            return os;
-        }
+        findAddedAttributes(position.addedAttributes);
+    var repl: any[];
+    if(position.path !== undefined && position.path.length > 0) {
+        repl = updateSubPathValue(os, result, position, index, mode, pct);
+    } else {
+        // values to be merged at this position
         switch (mode) {
-          case WriteMode.replace:
-            repl = newValue;
+        case WriteMode.replace:
+            repl = ensureOS(result.value);
             break;
-          case WriteMode.merge:
-            var mergeAttr: MergeAttributes;
-            if((position.toSubIdentifiers && subIdentifiers) ||
-               (position.identified &&
-                (position.length > 1 || newValue.length > 1))) {
-                // has sub-identifiers or more than two values to be merged
-                // together, all with the same identity.
-                var variants: any[] = os.slice(index, index + position.length).
-                    map(x => new Result(x));
+        case WriteMode.merge:
+            var variants: Result[] = getMergedValues(result, position);
+            repl = [];
+            if(position.isAppend()) {
+                repl = ensureOS(variants[0].value);
+                break;
+            }
+            var numVariants = variants.length;
+            var mergeLength = position.identified ? 1 : position.length;
+            for(var i = 0 ; i < position.length ; i += mergeLength) {
+                variants[numVariants] =
+                    new Result(os.slice(index,index+mergeLength));
                 if(position.toSubIdentifiers) // position length must be 1
-                    variants[0].setSubIdentifers(position.toSubIdentifiers);
-                for(var i = 0 ; i < newValue.length ; ++i) {
-                    mergeAttr = attributes === undefined ? undefined :
-                        (attributes.length==1 ? attributes[0] : attributes[i]);
-                    var last: number = variants.length;
-                    variants.push(new Result(newValue[i]));
-                    if(mergeAttr)
-                        variants[last].mergeAttributes = [mergeAttr];
-                    if(subIdentifiers)
-                        variants[last].subIdentifiers = [subIdentifiers[i]];
-                }
-                variants.reverse(); // highest priority should be first
-                repl = mergeVariants(variants, undefined, undefined, 0,
-                                     variants.length, true, undefined).value;
-            } else {
-                mergeAttr = (attributes && attributes.length === 1) ?
-                    attributes[0] : undefined;
-                repl = mergeCopyValue(newValue,
-                                      os.slice(index, index + position.length),
-                                      mergeAttr, undefined);
+                    variants[numVariants].setSubIdentifiers(
+                        position.toSubIdentifiers);
+                repl = repl.concat(
+                    mergeVariants(variants, undefined, undefined, 0,
+                                  variants.length, false, undefined).value);
+            }
+            if (pct.markShift(index, position.length, repl, false, mode) ===
+                undefined) {
+                Utilities.warn("double write (term): " + gWriteAction);
+                return os;
             }
             break;
         }
-        if (position.addedAttributes !== undefined)
-            repl = addAttributes(ensureOS(repl), position.addedAttributes);
-        positionLength = position.length;
-    } else {
-        if (position.path.length !== 1) {
-            Utilities.warn("Cannot write across paths longer than 1"); // TODO
-            return os;
+    }
+    if (position.addedAttributes !== undefined)
+        repl = addAttributes(repl, position.addedAttributes);
+    if(position.isAppend())
+        return os.concat(repl);
+    return os.slice(0, index).concat(repl).concat(os.slice(index + position.length));
+}
+
+// Create the value(s) to be merged. If the merging is not by identifiers,
+// this simply returns the input result, but if merging is by identifiers,
+// the values with the right identifier need to be extracted. These
+// are returned as an array of Result objects, including all merge attributes,
+// identifiers and sub-identifiers, ordered in decreasing order of priority.
+
+function getMergedValues(result: Result, position: DataPosition): Result[]
+{
+    if(position.identified === undefined)
+        return [result]; // unchanged
+
+    var newValue: any[] = ensureOS(result.value);
+    var attributes: MergeAttributes[] = result.mergeAttributes;
+    var identifiers: any[] = result.identifiers;
+    var subIdentifiers: any[] = result.subIdentifiers;
+    
+    // 'identified' is an array with the positions of the values
+    // which have the same identity as the write target.
+    newValue = position.identified.map(n => newValue[n]);
+    if(attributes && attributes.length > 1)
+        attributes = position.identified.map(n => attributes[n]);
+    if(subIdentifiers)
+        subIdentifiers = position.identified.map(n => subIdentifiers[n]);
+    
+    if(position.isAppend()) {
+        var mergedNewValue: Result = new Result(newValue);
+        if(identifiers) {
+            mergedNewValue.identifiers =
+                position.identified.map(n => identifiers[n]);
+            if(attributes && attributes.length > 0)
+                mergedNewValue.mergeAttributes = attributes;
+            if(subIdentifiers)
+                mergedNewValue.subIdentifiers = subIdentifiers;
+            mergedNewValue = mergeByIdentities([mergedNewValue], undefined,
+                                               undefined, 0, 1, true,
+                                               undefined);
         }
-        attr = position.path[0];
-        oldValue = index < os.length? os[index]: {};
+        return [mergedNewValue];
+    }
+
+    // return a result per element in the new value (as they all have the
+    // same identity and are about to be merged with a single element in
+    // the existing value).
+
+    var variants: Result[] = [];
+    
+    for(var i = 0 ; i < newValue.length ; ++i) {
+        var pos = newValue.length - i - 1; // add in reverse order
+        var mergeAttr: MergeAttributes = attributes === undefined ? undefined :
+            (attributes.length == 1 ? attributes[0] : attributes[pos]);
+        variants.push(new Result(newValue[pos]));
+        if(mergeAttr)
+            variants[i].mergeAttributes = [mergeAttr];
+        if(subIdentifiers)
+            variants[i].subIdentifiers = [subIdentifiers[pos]];
+    }
+    return variants;
+}
+
+function updateSubPathValue(os: any[], result: Result, position: DataPosition, index: number, mode: WriteMode, pct: PositionChangeTracker): any[] {
+
+    if (position.path.length !== 1) {
+        Utilities.warn("Cannot write across paths longer than 1"); // TODO
+        return os.slice(index, index + position.length);
+    }
+    var attr: string = position.path[0];
+    var repl: any[] = [];
+    var maxIndex: number = Math.min(index + position.length, os.length);
+    var oldLength = index == maxIndex ? 0 : 1;
+    
+    do {
+        // insert new entry if adding beyond last replcement index
+        var oldValue: any = index < maxIndex ? os[index]: {};
         if (!(oldValue instanceof Object) || oldValue instanceof NonAV) {
             oldValue = {};
         }
-        repl = shallowCopyMinus(oldValue, attr);
+        var repl_i: any = shallowCopyMinus(oldValue, attr);
         var subOS: any[] = attr in oldValue? oldValue[attr]: [];
-        var posChange: PositionChange = pct.markShift(index, 1, [{}], true, mode);
+        var posChange: PositionChange =
+            pct.markShift(index, oldLength, [{}], true, mode);
         if (posChange !== undefined) {
             var projPositionChangeTracker = posChange.markProjection(attr);
             for (var i: number = 0; i < position.sub.length; i++) {
                 var subPos: DataPosition = position.sub[i];
-                subOS = updateValue(subOS, result, subPos, mode, projPositionChangeTracker);
+                subOS = updateValue(subOS, result, subPos, mode,
+                                    projPositionChangeTracker);
             }
-        } else
+            repl_i[attr] = subOS;
+        } else {
             Utilities.warn("versus: " + gWriteAction);
+            repl_i = oldValue; // keep the original value
+        }
         
-        repl[attr] = subOS;
-        if (position.addedAttributes !== undefined)
-            repl = addAttributes([repl], position.addedAttributes);
-        positionLength = 1;
-    }
-    return os.slice(0, index).concat(repl).concat(os.slice(index + positionLength));
+        repl.push(repl_i);
+        index++;
+    } while(index < maxIndex)
+
+    return repl;
 }

@@ -245,6 +245,9 @@ class DataPosition {
     /// Attributes added during writing; since DataPosition only describes one
     /// level, this is just a mapping for current level attributes.
     addedAttributes: {[attr: string]: any};
+    // Indicates that the write should add an entry with this identifier.
+    // This is similar to 'addedAttributes' but for identities.
+    addedIdentifier: any;
     // Positions in the merged data which were matched by identity to be written
     // at this position.
     identified?: number[];
@@ -252,7 +255,7 @@ class DataPosition {
     // used when length is 1)
     toSubIdentifiers?: any;
 
-    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[], toSubIdentifiers?: any) {
+    constructor(index: number, length: number, path?: string[], sub?: DataPosition[], addedAttributes?: {[attr: string]: any}, identified?: number[], toSubIdentifiers?: any, addedIdentifier?: any) {
         this.index = index;
         this.length = length;
         if (path !== undefined && path.length > 1) {
@@ -275,12 +278,20 @@ class DataPosition {
         if (toSubIdentifiers !== undefined) {
             this.toSubIdentifiers = toSubIdentifiers;
         }
+        if(addedIdentifier !== undefined) {
+            this.addedIdentifier = addedIdentifier;
+        }
     }
 
+    // this position indicates insertion at the end of the O-S.
+    isAppend(): boolean {
+        return this.index == 0 && this.length == 0
+    }
     copy(): DataPosition {
         return new DataPosition(this.index, this.length, this.path, this.sub,
                                 shallowCopy(this.addedAttributes),
-                                this.identified, this.toSubIdentifiers);
+                                this.identified, this.toSubIdentifiers,
+                                this.addedIdentifier);
     }
 
     addPath(path: string[], sub: DataPosition[]): DataPosition {
@@ -298,7 +309,7 @@ class DataPosition {
     copyWithOffset(offset: number): DataPosition {
         return new DataPosition(this.index - offset, this.length, this.path,
                                 this.sub, this.addedAttributes, this.identified,
-                                this.toSubIdentifiers);
+                                this.toSubIdentifiers, this.addedIdentifier);
     }
 
     copyWithAddedAttributes(attrs: any): DataPosition {
@@ -315,9 +326,16 @@ class DataPosition {
         }
         return new DataPosition(this.index, this.length, this.path,
                                 this.sub, addedAttributes, this.identified,
-                                this.toSubIdentifiers);
+                                this.toSubIdentifiers, this.addedIdentifier);
     }
 
+    copyWithAddedIdentifier(addedIdentifier: any): DataPosition {
+        return new DataPosition(this.index, this.length, this.path,
+                                this.sub, this.addedAttributes, this.identified,
+                                this.toSubIdentifiers, addedIdentifier);
+    }
+
+    
     static staticToString(dp: DataPosition): string {
         return dp.path === undefined? "(" + dp.index + ", " + dp.length + ")":
             "(" + dp.index + ", " + dp.length + ", " + dp.path.join(".") + 
@@ -1076,7 +1094,7 @@ abstract class EvaluationNode implements Watcher, Producer, Evaluator, TimeStati
     reportDeadEndWrite(reportDeadEnd: boolean, msg: string): void {
         if(!reportDeadEnd)
             return;
-        Utilities.warn("dead ended write: " + msg + " at " + gWriteAction);
+        Utilities.warn("dead end write: " + msg + " at " + gWriteAction);
     }
     
     // Returns true when the qualifiers enable a result. Only overruled in
