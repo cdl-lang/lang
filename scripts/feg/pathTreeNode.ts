@@ -3011,7 +3011,10 @@ function convertVariants(node: PathTreeNode, def: any, path: string[],
             qualifier = undefined;
             variant = elt;
         }
-        variants.push({qualifier: qualifier, variant: variant, pos: i});
+        variants.push({qualifier: qualifier, variant: variant,
+                       // position is fro the end, as we are about to reverse
+                       // the list (last is highest priority)
+                       pos: os.length - i - 1});
         if (localQualifiers.some(function(q1: any): boolean {
                 return cdlCompare(q1, qualifier) === 0;
             })) {
@@ -3024,6 +3027,7 @@ function convertVariants(node: PathTreeNode, def: any, path: string[],
         }
         localQualifiers.push(qualifier);
     }
+    variants.reverse(); // later has higher priority (unless less specific)
     sortVariants(variants);
     for (var i: number = 0; i !== variants.length; i++) {
         var variantQualifiers: CDLQualifierTerm[] = qualifiers;
@@ -3270,8 +3274,9 @@ function addInheritAtPath(node: PathTreeNode, obj: any, path: string[],
         // into one big class.
         var inheritedClasses: any[] = objClass instanceof MoonOrderedSet?
                                     objClass.os: [objClass];
-        // Add classes to tree in order of appearance
-        for (var i: number = 0; i !== inheritedClasses.length; i++) {
+        // Add classes to tree in reverse order of appearance (last is
+        // highest priroity)
+        for (var i: number = inheritedClasses.length - 1; i >= 0 ; i--) {
             var inh_i = inheritedClasses[i];
             var className: any;
             var newClassArguments: any;
