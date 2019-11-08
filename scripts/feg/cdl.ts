@@ -2527,7 +2527,8 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     for (var i: number = firstToMerge; i < lastToMerge; i++) {
         if ((qualifiers !== undefined && !qualifiers[i]) ||
             variants[i].value === undefined ||
-            (!variants[i].isAtomic() && isEmptyOS(variants[i].value)))
+            (isEmptyOS(variants[i].value) && !variants[i].isAtomic() &&
+             !variants[i].isPush()))
             continue;
 
         if (firstResult === undefined)
@@ -2561,20 +2562,21 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
             nextAttributes = nextVariant.mergeAttributes[0];
         // if there is a push, merge lower priority variants first, then
         // push and only then merge with higher priority variants
-        if(((nextAttributes && nextAttributes.push === true) || 
-            (attributes && attributes.push === true)) && i < lastToMerge - 1) {
-            // merge all lower priority variants
+        if(nextAttributes && nextAttributes.push === true &&
+             firstToMerge < i && i < lastToMerge - 1) {
+            // first merge this variant with all lower priority variants
             nextVariant = mergeVariants(variants, qualifiers,
                                         isVariantUnmergeable, i,
                                         lastToMerge, mergeInside, undefined);
             i = lastToMerge - 1; // make the loop quit when this pass is done
-
-            if(nextVariant.mergeAttributes !== undefined &&
-               nextVariant.mergeAttributes.length == 1)
-                nextAttributes = nextVariant.mergeAttributes[0];
-            else
-                nextAttributes = undefined;
-        }
+        } else if(attributes && attributes.push === true &&
+                  i < lastToMerge - 1) {
+            // merge all lower priority variants
+            nextVariant = mergeVariants(variants, qualifiers,
+                                        isVariantUnmergeable, i+1,
+                                        lastToMerge, mergeInside, undefined);
+            i = lastToMerge - 1; // make the loop quit when this pass is done
+        }        
 
         // merge the identifiers (if any) before merging the values
         if(mergedIdentifiers || nextVariant.identifiers ||
@@ -2647,6 +2649,20 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     result.value = mergeValue;
     if(rAttributes)
         attributes = rAttributes;
+    if((!attributes || attributes.atomic !== true) && i < lastToMerge - 1) {
+        // check whether any of the remaining variants is a 'push'. If it is,
+        // add the push merge directive
+        for(++i ; i < lastToMerge ; ++i) {
+            if(qualifiers !== undefined && !qualifiers[i])
+                continue;
+            if(variants[i] !== undefined && variants[i].isPush()) {
+                var pushAttributes = new MergeAttributes(true,undefined);
+                attributes = attributes ?
+                    attributes.copyMerge(pushAttributes) : pushAttributes;
+                break;
+            }
+        }
+    }
     if(attributes && attributes.notEmpty())
         result.mergeAttributes = [attributes];
     else if(result.mergeAttributes)
