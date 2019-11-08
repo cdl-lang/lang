@@ -2643,6 +2643,12 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     if(result === undefined)
         result = new Result();
 
+    if(nrMerges == 0) { // no merge, so empty result
+        result.value = result.dataSource !== undefined ?
+            emptyDataSourceResult : constEmptyOS;
+        return result;
+    }
+    
     if (nrMerges === 1) // no actual merge took place
         result.copyLabelsMinusDataSource(firstResult);
     
