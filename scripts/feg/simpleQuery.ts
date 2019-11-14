@@ -170,6 +170,44 @@ class IdentityQuery implements SimpleQuery {
     }
 }
 
+class SimpleTrivial implements SimpleQuery {
+    execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
+        if (identifiers !== undefined && selectedIdentifiers !== undefined) {
+            selectedIdentifiers.identifiers = identifiers.identifiers;
+            selectedIdentifiers.subIdentifiers = identifiers.subIdentifiers;
+        }
+
+        return data;
+    }
+
+    testSingle(data: any): boolean {
+        return true;
+    }
+
+    testOS(data: any[]): boolean {
+        return true;
+    }
+
+    isEqual(sq: SimpleQuery): boolean {
+        return sq instanceof SimpleTrivial;
+    }
+
+    // Note that we do not consider this operation a (strict) projection, but
+    // rather a (trivial) selection.
+    isProjection(): boolean {
+        return false;
+    }
+
+    canCache(): boolean {
+        return false;
+    }
+
+    executeAndCache(result: Result, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[]): any[] {
+        Utilities.error("do not call");
+        return undefined;
+    }
+}
+
 class SimplePassThrough implements SimpleQuery {
     execute(data: any[], identifiers: SubIdentifiers, selectedIdentifiers: SubIdentifiers, selectedPositions: DataPosition[], dataPositions: DataPosition[]): any[] {
         var dataIds: any[] = undefined;
@@ -2555,7 +2593,7 @@ function makeSimpleQuery(query: any, queryIds: any[]): SimpleQuery {
     if (!(query instanceof Array) && isAV(query)) {
         var keys: string[] = Object.keys(query);
         if (keys.length === 0) { // query = {}
-            sq = new SimplePassThrough();
+            sq = new SimpleTrivial();
         } else {
             var selections: SimpleQuery[] = [];
             var projection: SimpleQuery = undefined;
@@ -2624,7 +2662,7 @@ function makeSimpleQuery(query: any, queryIds: any[]): SimpleQuery {
     } else if (query instanceof Negation) {
         var nquery: any[] = query.queries;
         if (nquery.length === 0) { // query = n()
-            sq = new SimplePassThrough();
+            sq = new SimpleTrivial();
         } else {
             if (findSingleSimpleType(nquery) === "simple") {
                 sq = new SimpleValueInvMultipleSelection(nquery);
