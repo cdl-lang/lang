@@ -1472,6 +1472,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
         delete this.bodies;
         delete this.fun;
         delete this.parameters;
+        this.values = undefined;
     }
 
     addArgument(i: number, evalNode: EvaluationNode): void {

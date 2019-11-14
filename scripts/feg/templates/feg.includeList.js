@@ -129,9 +129,9 @@
 // %%include%%: <scripts/feg/evaluationNode.js>
 // %%include%%: <scripts/feg/evaluationNode.values.js>
 // %%include%%: <scripts/feg/evaluationNode.constructions.js>
+// %%include%%: <scripts/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/evaluationNode.functions.js>
 // %%include%%: <scripts/feg/evaluationNode.state.js>
-// %%include%%: <scripts/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/evaluationNode.areaFunctions.js>
 // %%include%%: <scripts/feg/evaluationNode.database.js>
 // %%include%%: <scripts/feg/dataParsers.js>

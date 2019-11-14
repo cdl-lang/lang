@@ -130,9 +130,9 @@
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.values.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.constructions.js>
+// %%include%%: <scripts/feg/minbuild/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.functions.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.state.js>
-// %%include%%: <scripts/feg/minbuild/feg/evaluationNode.apply.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.areaFunctions.js>
 // %%include%%: <scripts/feg/minbuild/feg/evaluationNode.database.js>
 // %%include%%: <scripts/feg/minbuild/feg/dataParsers.js>

@@ -19,10 +19,11 @@
 
 // When identifying a data source, this function passes along the original
 // data and stores the ids in the original indexer using XXX
-class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveDataSourceResult {
-    constant: boolean = true;
+class EvaluationIdentify extends EvaluationMap {
     arguments: Result[];
 
+    // is the identifying function a query or some other function?
+    identifyByQuery: boolean = true;
     // Single attribute used for identification projection
     // "" is equivalent to _
     // true is used for a constant identification
@@ -34,7 +35,6 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
         super(prototype, local);
         this.inputs = new Array(prototype.functionArguments.length);
-        this.arguments = new Array(prototype.functionArguments.length);
         this.result.value = emptyDataSourceResult;
         this.dataSourceAware = true;
     }
@@ -46,17 +46,123 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
         super.destroy();
     }
 
-    addArgument(i: number, evalNode: EvaluationNode): void {
-        this.inputs[i] = evalNode;
-        this.arguments[i] = evalNode.result;
-        if (!evalNode.isConstant()) {
-            this.constant = false;
-            evalNode.addWatcher(this, i, true, true, i === 1);
+    clearIdentifyingQuery(): void {
+        this.identificationAttribute = undefined;
+        this.identificationQuery = undefined;
+        this.unidentified = new WeakMap<any, string>(); // clear previous
+        this.constant = false;
+    }
+    
+    // called by EvaluationMap's addArgument()
+    setFunction(value: any): void {
+        
+        var sv = value instanceof Array && value.length === 1? value[0]: value;
+
+        if(sv instanceof DefunReference) {
+            // use map implementation
+            if(this.identifyByQuery) {
+                this.clearIdentifyingQuery();
+                this.identifyByQuery = false;
+            }
+            super.setFunction(value);
+            return;
+        }
+
+        // use special identification by query implementation 
+        if(!this.identifyByQuery) {
+            this.destroyFunctionNodes();
+            this.identifyByQuery = true;
+        }
+
+        this.constant = this.inputs[0] && this.inputs[0].isConstant() &&
+            this.inputs[1] && this.inputs[1].isConstant();
+        this.updateIdentificationQuery(value);
+    }
+        
+    // set the second argument (identified data) argument
+    setArgument(result: Result): void {
+        if(!this.identifyByQuery) {
+            super.setArgument(result);
+            return;
+        }
+        this.constant = this.inputs[0] && this.inputs[0].isConstant() &&
+            this.inputs[1] && this.inputs[1].isConstant();
+        
+        this.updateIdentifiedData(result);
+    }
+    
+    updateIdentificationQuery(queryDesc: any): void {
+
+        function getIdentificationAttribute(): string|boolean {
+            var v: any = queryDesc;
+            
+            if (v instanceof Array && v.length === 1)
+                v = v[0];
+            if (v === _)
+                return "";
+            if (typeof(v) !== "object" || v instanceof NonAV)
+                return v;
+            var attributes: string[] = Object.keys(v);
+            if (attributes.length !== 1)
+                return undefined;
+            var attr: string = attributes[0];
+            v = v[attr];
+            return v === _ || (v instanceof Array && v.length === 1 && v[0] === _)?
+                attr: undefined;
+        }
+
+        this.identificationAttribute = getIdentificationAttribute();
+        if (this.identificationAttribute === undefined) {
+            this.identificationQuery = makeSimpleQueryDefault(getDeOSedValue(queryDesc), undefined);
+        } else if (this.identificationQuery !== undefined) {
+            this.identificationQuery = undefined;
+        }
+        if (this.dataSourceResultMode) {
+            this.updateDataSourceIdentificationQuery();
         } else {
-            this.updateInput(i, evalNode.result);
+            // Evaluate again
+            this.markAsChanged();
         }
     }
 
+    updateIdentifiedData(result: Result): void {
+        if ("dataSource" in result) {
+            this.dataSourceResultMode = true;
+            this.result.value = result.value;
+            this.setDataSourceInput(result.dataSource);
+        } else {
+            this.dataSourceResultMode = false;
+            this.markAsChanged();
+        }
+    }
+
+    updateInput(i: any, result: Result): void {
+
+        var value: any = result !== undefined? result.value: undefined;
+        
+        if(i == 0 &&
+           this.identifyByQuery !==
+           !(getDeOSedValue(value) instanceof DefunReference)) {
+            this.setFunction(value);
+            return;
+        }
+        
+        if(!this.identifyByQuery) {
+            super.updateInput(i,result);
+            return;
+        }
+        
+        switch (i) {
+          case 0:
+            this.updateIdentificationQuery(value);
+            break;
+          case 1:
+            this.updateIdentifiedData(result);
+            break;
+        }
+    }
+
+    
     setDataSourceResultMode(dataSourceResultMode: boolean): void {
         this.inputs[1].setDataSourceResultMode(dataSourceResultMode);
         this.dataSourceResultMode = dataSourceResultMode;
@@ -70,17 +176,17 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
     setDataSourceInput(dataSource: DataSourceComposable): void {
         if (this.dataSourceInput !== dataSource) {
             this.dataSourceInput = dataSource;
-            this.updateIdentificationQuery();
+            this.updateDataSourceIdentificationQuery();
         }
     }
 
-    updateIdentificationQuery(): void {
+    updateDataSourceIdentificationQuery(): void {
         if (this.dataSourceIdentify !== undefined) {
             this.dataSourceIdentify.removeResultReceiver(this);
         }
         if (this.identificationAttribute === undefined) {
             this.dataSourceIdentify = undefined;
-            this.result.copy(this.arguments[1]);
+            this.result.copy(this.inputs[1].result);
         } else if (typeof(this.identificationAttribute) === "string") {
             // TODO: support for other identifications in data source
             this.dataSourceIdentify = 
@@ -99,55 +205,6 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
         this.dataSourceInput = undefined;
     }
 
-    updateInput(i: any, result: Result): void {
-
-        function getIdentificationAttribute(): string|boolean {
-            var v: any = result.value;
-
-            if (v instanceof Array && v.length === 1)
-                v = v[0];
-            if (v === _)
-                return "";
-            if (typeof(v) !== "object" || v instanceof NonAV)
-                return v;
-            var attributes: string[] = Object.keys(v);
-            if (attributes.length !== 1)
-                return undefined;
-            var attr: string = attributes[0];
-            v = v[attr];
-            return v === _ || (v instanceof Array && v.length === 1 && v[0] === _)?
-                attr: undefined;
-        }
-
-        this.arguments[i] = result;
-        switch (i) {
-          case 0:
-            this.identificationAttribute = getIdentificationAttribute();
-            if (this.identificationAttribute === undefined) {
-                this.identificationQuery = makeSimpleQueryDefault(getDeOSedValue(result.value), undefined);
-            } else if (this.identificationQuery !== undefined) {
-                this.identificationQuery = undefined;
-            }
-            if (this.dataSourceResultMode) {
-                this.updateIdentificationQuery();
-            } else {
-                // Evaluate again
-                this.markAsChanged();
-            }
-            break;
-          case 1:
-            if ("dataSource" in result) {
-                this.dataSourceResultMode = true;
-                this.result.value = result.value;
-                this.setDataSourceInput(result.dataSource);
-            } else {
-                this.dataSourceResultMode = false;
-                this.markAsChanged();
-            }
-            break;
-        }
-    }
-
     newDataSourceResult(v: any[]): void {
     }
 
@@ -155,15 +212,11 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
         assert(false, "should not be called");
     }
 
-    isConstant(): boolean {
-        return this.constant;
-    }
-
     eval(): boolean {
         if (!this.dataSourceResultMode) {
-            this.result.value = this.arguments[1].value;
-            this.result.copyLabels(this.arguments[1]);
-            this.result.identifiers = this.getIdentifiers(this.arguments[1].value);
+            this.result.value = this.inputs[1].result.value;
+            this.result.copyLabels(this.inputs[1].result);
+            this.result.identifiers = this.getIdentifiers(this.inputs[1].result.value);
         }
         return true;
     }
@@ -197,9 +250,22 @@ class EvaluationIdentify extends EvaluationNodeWithArguments implements ReceiveD
                 var id: any = getDeOSedValue(this.identificationQuery.execute([v], undefined, undefined, undefined, undefined));
                 return isSimpleType(id)? id: cdlifyNormalized(id);
             });
+        } else if(!this.identifyByQuery) {
+            if(this.values === undefined)
+                ids = undefined;
+            else
+                ids = this.values.map((r: Result): any => {
+                    var id: any = getDeOSedValue(r.value);
+                    return isSimpleType(id)? id: cdlifyNormalized(id);
+                });
         } else {
             ids = va.map((v: any): any => this.identificationAttribute);
         }
+        var valueLength = (this.result.value instanceof Array) ?
+            this.result.value.length : (this.result.value === undefined ? 0:1);
+                                        
+        if(ids.length !== valueLength)
+            ids.length = valueLength;
         return ids;
     }
 
