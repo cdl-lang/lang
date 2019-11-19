@@ -24,13 +24,14 @@ class EvaluationIdentify extends EvaluationMap {
 
     // is the identifying function a query or some other function?
     identifyByQuery: boolean = true;
+    // If this is defined, this is a simple value which is the identity
+    // to be assigned to all entries
+    identificationConstant: number|string|boolean = undefined;
     // Single attribute used for identification projection
     // "" is equivalent to _
-    // true is used for a constant identification
-    identificationAttribute: string|boolean = undefined;
+    identificationAttribute: string = undefined;
     identificationQuery: SimpleQuery;
-    unidentified: WeakMap<any, string> = new WeakMap<any, string>();
-    nextUniqueId: number = 0;
+    useAreaQuery: boolean = false;
 
     constructor(prototype: FunctionApplicationNode, local: EvaluationEnvironment) {
         super(prototype, local);
@@ -47,9 +48,13 @@ class EvaluationIdentify extends EvaluationMap {
     }
 
     clearIdentifyingQuery(): void {
-        this.identificationAttribute = undefined;
-        this.identificationQuery = undefined;
-        this.unidentified = new WeakMap<any, string>(); // clear previous
+        if(this.identificationConstant !== undefined)
+            this.identificationConstant = undefined;
+        if(this.identificationAttribute !== undefined)
+            this.identificationAttribute = undefined;
+        if(this.identificationQuery !== undefined)
+            this.identificationQuery = undefined;
+        this.useAreaQuery = false;
         this.constant = false;
     }
     
@@ -74,9 +79,9 @@ class EvaluationIdentify extends EvaluationMap {
             this.identifyByQuery = true;
         }
 
+        this.updateIdentificationQuery(value);
         this.constant = this.inputs[0] && this.inputs[0].isConstant() &&
             this.inputs[1] && this.inputs[1].isConstant();
-        this.updateIdentificationQuery(value);
     }
         
     // set the second argument (identified data) argument
@@ -93,15 +98,18 @@ class EvaluationIdentify extends EvaluationMap {
     
     updateIdentificationQuery(queryDesc: any): void {
 
-        function getIdentificationAttribute(): string|boolean {
+        function getIdentificationAttribute(): string {
             var v: any = queryDesc;
             
-            if (v instanceof Array && v.length === 1)
+            if (v instanceof Array) {
+                if(v.length !== 1)
+                    return undefined;
                 v = v[0];
+            }
             if (v === _)
                 return "";
             if (typeof(v) !== "object" || v instanceof NonAV)
-                return v;
+                return undefined;
             var attributes: string[] = Object.keys(v);
             if (attributes.length !== 1)
                 return undefined;
@@ -111,11 +119,23 @@ class EvaluationIdentify extends EvaluationMap {
                 attr: undefined;
         }
 
-        this.identificationAttribute = getIdentificationAttribute();
-        if (this.identificationAttribute === undefined) {
-            this.identificationQuery = makeSimpleQueryDefault(getDeOSedValue(queryDesc), undefined);
-        } else if (this.identificationQuery !== undefined) {
-            this.identificationQuery = undefined;
+        this.clearIdentifyingQuery();
+        
+        if(queryDesc instanceof Array && queryDesc.length == 1)
+            queryDesc = queryDesc[0];
+        if(typeof(queryDesc) === "number" || typeof(queryDesc) === "string" ||
+           typeof(queryDesc) === "boolean") {
+            this.identificationConstant = queryDesc;
+        } else if(this.inputs.length > 2) {
+            // this input exists only if the identify is a query applied to
+            // a set of areas and inputs[2] implements this query.
+            this.useAreaQuery = true;
+        } else {
+            this.identificationAttribute = getIdentificationAttribute();
+            if(this.identificationAttribute === undefined) {
+                this.identificationQuery =
+                    makeSimpleQueryDefault(singleton(queryDesc),undefined);
+            }
         }
         if (this.dataSourceResultMode) {
             this.updateDataSourceIdentificationQuery();
@@ -142,7 +162,7 @@ class EvaluationIdentify extends EvaluationMap {
         
         if(i == 0 &&
            this.identifyByQuery !==
-           !(getDeOSedValue(value) instanceof DefunReference)) {
+           !(singleton(value) instanceof DefunReference)) {
             this.setFunction(value);
             return;
         }
@@ -158,6 +178,9 @@ class EvaluationIdentify extends EvaluationMap {
             break;
           case 1:
             this.updateIdentifiedData(result);
+            break;
+          case 2: // area set query updated, re-evaluate
+            this.markAsChanged();
             break;
         }
     }
@@ -224,65 +247,78 @@ class EvaluationIdentify extends EvaluationMap {
     // Limited implementation for extracting identifiers from an os.
     // Any problem will turn the id for an element into a unique id.
     getIdentifiers(value: any): any[] {
+        if(value === undefined)
+            return [];
         var va: any = value instanceof Array? value: [value];
-        var ids: any[] = new Array(va.length);
+        
+        if(this.identificationConstant !== undefined) {
+            // assign this constant as the identity of all items
+            return va.map(()=>this.identificationConstant);
+        }
 
-        if (typeof(this.identificationAttribute) === "string") {
+        if(this.useAreaQuery) {
+            var ids: any[] = new Array(va.length);
+            var areaQuery: EvaluationNode = this.inputs[2];
+            if(areaQuery instanceof EvaluationVariant)
+                areaQuery = (<EvaluationVariant>areaQuery).getFirstActiveVariantInput();
+            else if(areaQuery instanceof EvaluationVariant1)
+                areaQuery = (<EvaluationVariant1>areaQuery).getFirstActiveVariantInput();
+            if(!(areaQuery instanceof EvaluationAreaProjection)) {
+                // query is selection, so the identifiers are area references
+                return ids; // empty identification
+            }
+            var areaProj: EvaluationAreaProjection =
+                <EvaluationAreaProjection>areaQuery;
+            var numInputAreas: number = areaProj.inputAreas.length;
+            for(var i=0, q_i=0 ; q_i < numInputAreas && i < va.length ; ++i) {
+                if(!(va[i] instanceof ElementReference) ||
+                   (<ElementReference>va[i]).element !==
+                   areaProj.inputAreas[q_i].element ||
+                   areaProj.values[q_i] === undefined)
+                    continue;
+                var id: any = singleton(areaProj.values[q_i].value);
+                ids[i] = isSimpleType(id) ? id : undefined;
+                q_i++;
+            }
+            return ids;
+        }
+        
+        if (this.identificationAttribute === "")
+            return va.map((x:any) => isSimpleType(x) ? x:  undefined );
+        
+        if(this.identificationAttribute !== undefined) {
+            // simple projection
+            var ids: any[] = new Array(va.length);
             for (var i: number = 0; i !== va.length; i++) {
-                if (this.identificationAttribute === "") {
-                    ids[i] = this.getUniqueId(va[i]);
-                } else {
-                    var id: any = va[i] instanceof ElementReference? va[i].getElement():
-                        va[i] instanceof Object? va[i][this.identificationAttribute]:
-                        this.getUniqueId(va[i]);
-                    if (id instanceof Array) {
-                        if (id.length === 1) {
-                            id = id[0];
-                        } else {
-                            id = this.getUniqueId(va[i]);
-                        }
-                    }
-                    ids[i] = id;
-                }
+                if(!isAV(va[i]))
+                    continue;
+                var id: any = singleton(va[i][this.identificationAttribute]);
+                ids[i] = isSimpleType(id) ? id : undefined;
             }
-        } else if (this.identificationQuery !== undefined) {
-            ids = va.map((v: any): any => {
-                var id: any = getDeOSedValue(this.identificationQuery.execute([v], undefined, undefined, undefined, undefined));
-                return isSimpleType(id)? id: cdlifyNormalized(id);
-            });
-        } else if(!this.identifyByQuery) {
-            if(this.values === undefined)
-                ids = undefined;
-            else
-                ids = this.values.map((r: Result): any => {
-                    var id: any = getDeOSedValue(r.value);
-                    return isSimpleType(id)? id: cdlifyNormalized(id);
-                });
-        } else {
-            ids = va.map((v: any): any => this.identificationAttribute);
         }
-        var valueLength = (this.result.value instanceof Array) ?
-            this.result.value.length : (this.result.value === undefined ? 0:1);
-                                        
-        if(ids.length !== valueLength)
-            ids.length = valueLength;
-        return ids;
+
+        if (this.identificationQuery !== undefined) {
+            return va.map((v: any): any => {
+                var id: any = singleton(this.identificationQuery.execute([v], undefined, undefined, undefined, undefined));
+                return isSimpleType(id) ? id : undefined;
+            });
+        }
+    
+        if(!this.identifyByQuery) {
+            if(this.values === undefined)
+                return new Array(va.length);
+            var ids: any[] = this.values.map((r: Result): any => {
+                var id: any = singleton(r.value);
+                return isSimpleType(id)? id: undefined;
+            });
+            if(ids.length !== va.length)
+                ids.length = va.length;
+            return ids;
+        }
+
+        return new Array(va.length); // empty identification
     }
 
-    getUniqueId(uvo: any): string { // the Unidentified Value Object
-        if (isAV(uvo)) {
-            if (!this.unidentified.has(uvo)) {
-                var nuid: string = "id_" + String(this.watcherId) +
-                    "_" + this.nextUniqueId++;
-                this.unidentified.set(uvo, nuid);
-            }
-            return this.unidentified.get(uvo);
-        } else if (uvo instanceof NonAV) {
-            return uvo.stringify();
-        } else {
-            return uvo;
-        }
-    }
     write(result: Result, mode: WriteMode, positions: DataPosition[], reportDeadEnd: boolean): boolean {
         
         if(positions !== undefined && positions.length == 1 &&

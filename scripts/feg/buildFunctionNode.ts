@@ -1886,6 +1886,7 @@ function specialFunctionArgumentProcessing(funDef: BuiltInFunction, functionArgu
     switch (funDef.name) {
       case "filter":
       case "map":
+      case "identify":  
       case "multiQuery":
       case "internalApply":
         if (functionArguments.length === 2) {

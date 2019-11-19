@@ -1409,8 +1409,9 @@ class ExpressionFunctionApplication extends ExpressionWithArguments {
         if (this.arguments.length === 1 && funDef === internalApply) {
             Utilities.syntaxError("function without arguments", false, this.toCdlString());
         }
+        var fun: FunctionNode;
         for (var i = 1; i !== this.arguments.length; i++) {
-            var fun = i === 1 && v1F !== undefined? v1F:
+            fun = i === 1 && v1F !== undefined? v1F:
                 buildSimpleFunctionNode(
                     this.arguments[i], undefined, origin, defun, undefined,
                     undefined, undefined, undefined, context);
@@ -1423,6 +1424,22 @@ class ExpressionFunctionApplication extends ExpressionWithArguments {
             localToArea = mergeLocality(localToArea, fun.localToArea);
             localToDefun = mergeDefunLocality(localToDefun, fun.localToDefun);
         }
+        // "identify" with a query applied to a set of areas must compile
+        // an area query (we add this as an extra argument).
+        if(funDef && funDef.name === "identify" && this.arguments.length == 3 &&
+           fun && fun.valueType.areas !== undefined &&
+           !(functionArguments[functionArguments.length - 2] instanceof
+             DefunNode)) {
+            var identification: ExpressionFunctionApplication =
+                new ExpressionFunctionApplication(
+                    this.arguments[1].expression,
+                    ExpressionType.functionApplication,
+                    [this.arguments[1],this.arguments[2]]);
+            fun = identification.buildFunctionNode(origin, defun, suppressSet,
+                                                   context);
+            functionArguments.push(fun);
+        }
+
         return FunctionApplicationNode.buildFunctionApplication(
             funDef, functionArguments,
             specialFunctionArgumentProcessing(

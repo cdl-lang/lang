@@ -1453,6 +1453,15 @@ class EvaluationVariant extends EvaluationNode
                this.firstActive < this.variantInputs.length;
     }
 
+    getFirstActiveVariantInput(): EvaluationNode {
+        for(var i = this.firstActive ; i < this.lastActive ; ++i) {
+            if(this.qualifiedVariants[i] &&
+               this.variantInputs[i])
+                return this.variantInputs[i];
+        }
+        return undefined;
+    }
+    
     debugName(): string {
         return "variant";
     }
@@ -1778,6 +1787,12 @@ class EvaluationVariant1 extends EvaluationNode
         return this.qualifiedVariant;
     }
 
+    getFirstActiveVariantInput(): EvaluationNode {
+        if(!this.qualifiedVariant)
+            return undefined;
+        return this.variantInput;
+    }
+    
     debugName(): string {
         return "variant1";
     }
