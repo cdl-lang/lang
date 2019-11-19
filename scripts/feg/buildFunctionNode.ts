@@ -2336,7 +2336,7 @@ function extractQueryComponentsFromAV(q: AVFunctionNode): QueryComponent[] {
         var val: FunctionNode = q.attributes[attr];
         var qPath: string[] = path0 !== undefined? [path0, attr]: [attr];
         if (val instanceof ConstNode) {
-            if (isProjector(val)) {
+            if (isProjector(val.value)) {
                 qComps.push(new QueryComponentProject(qPath));
             } else {
                 var qcs = new QueryComponentSelect(qPath, undefined, true, val);
