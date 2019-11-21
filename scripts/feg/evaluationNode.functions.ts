@@ -295,6 +295,7 @@ class EvaluationIdentify extends EvaluationMap {
                 var id: any = singleton(va[i][this.identificationAttribute]);
                 ids[i] = isSimpleType(id) ? id : undefined;
             }
+            return ids;
         }
 
         if (this.identificationQuery !== undefined) {
