@@ -2538,6 +2538,10 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
         // by merging the suffix of the sequence of variants.
         nextVariant = variants[i];
 
+        if(mergeInside && !nrMerges && i == lastToMerge - 1)
+            // 'mergeInside' can only apply to a single variant 
+            return mergeInsideVariant(nextVariant, result);
+        
         // If the next variant has identites, merge the lower priority
         // variants first.
         if(nextVariant.identifiers !== undefined ||
@@ -2679,6 +2683,53 @@ function mergeVariants(variants: Result[], qualifiers: boolean[],
     
     return result;
 }
+
+// Merge the elements of a single ordered set.
+// The result of the merge is placed in 'result' (if provided). The
+// result object returned is either equal to 'result' (if provided)
+// or a new result node created by this function.
+
+function mergeInsideVariant(variant: Result, result: Result): Result
+{
+    if(result === undefined)
+        result = new Result();
+        
+    if(!(variant.value instanceof Array) || variant.value.length <= 1) {
+        result.copyLabelsMinusDataSource(variant);
+        result.value = variant.value;
+        return result;
+    }
+
+    if(variant.identifiers)
+        return mergeByIdentities([variant], undefined, undefined, 0, 1,
+                                 true, result);
+    
+    // convert into sequence of result nodes and merge normally
+
+    var value: any = variant.value;
+    var elVariants: Result[] = new Array(value.length);
+    
+    for(var i: number = 0 ; i < value.length ; ++i)
+        elVariants[i] = new Result(value[i]);
+
+    if(variant.mergeAttributes && variant.mergeAttributes.length > 1) {
+        for(var i: number = 0 ; i < variant.mergeAttributes.length ; ++i) {
+            if(variant.mergeAttributes[i] !== undefined)
+                elVariants[i].mergeAttributes  = [variant.mergeAttributes[i]];
+        }
+    }
+    
+    if(variant.subIdentifiers !== undefined) {
+        for(var i: number = 0 ; i < variant.mergeAttributes.length ; ++i) {
+            if(variant.subIdentifiers[i] !== undefined)
+                elVariants[i].subIdentifiers  = [variant.subIdentifiers[i]];
+        }
+    }
+
+    return mergeVariants(elVariants, undefined, undefined, 0, elVariants.length,
+                         false, result);
+}
+
 
 // Merges 'variants' (given in decreasing order of priority) using
 // identities of elements in ordered sets to determine which elements

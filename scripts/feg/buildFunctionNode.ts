@@ -1537,16 +1537,25 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
             var consts: ConstNode[] = <ConstNode[]> args;            
             if (consts.length === 0) {
                 return new ConstNode([], emptyValueType, origExpr, undefined, wontChangeValue);
-            } else if (consts.length === 1) {
-                return consts[0];
             } else {
                 var variants: Result[] = [];
-                // last argument has highest priority
-                for(var i: number = consts.length - 1 ; i >= 0 ; --i)
-                    variants.push(new Result(consts[i].value));
+                if (consts.length === 1) {
+                    if(!(consts[0].value instanceof Array) ||
+                       consts[0].value.length <= 1)
+                        return consts[0];
+                    // last argument has highest priority
+                    var values: any[] = consts[0].value; 
+                    for(var i: number = values.length - 1 ; i >= 0 ; --i)
+                        variants.push(new Result(values[i]));
+                } else {
+                    // last argument has highest priority
+                    for(var i: number = consts.length - 1 ; i >= 0 ; --i)
+                        variants.push(new Result(consts[i].value));
+                }
                 var mergeResult: Result = mergeVariants(variants, undefined,
                                                         undefined, undefined,
-                                                        undefined, false,
+                                                        undefined,
+                                                        consts.length == 1,
                                                         undefined);
                 var mergeValue: any = mergeResult.value;
                 if(mergeValue === undefined)
