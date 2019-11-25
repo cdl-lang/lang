@@ -716,6 +716,15 @@ class Result {
         
         return attrResult;
     }
+
+    ensureOS(): any[] {
+        if(this.value === undefined)
+            this.value = constEmptyOS;
+        else if(!(this.value instanceof Array))
+            this.value = [this.value];
+        
+        return this.value;
+    }
 }
 
 enum WriteMode {

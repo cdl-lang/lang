@@ -1674,8 +1674,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
     setSingleParameter(from: number, to: number): void {
         for (var i: number = from; i < to; i++) {
             var paramValue: Result = new Result([this.arguments[i]]);
-            if (this.identifiers !== undefined &&
-                  this.identifiers[i] !== undefined) {
+            if (this.identifiers !== undefined) {
                 paramValue.identifiers = [this.identifiers[i]];
             }
             if (this.subIdentifiers !== undefined &&
@@ -1697,8 +1696,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
         if (this.nrActiveWatchers > 0 && this.bodies !== undefined) {
             for (var i: number = from; i < to; i++) {
                 var paramValue: Result = new Result([this.arguments[i]]);
-                if (this.identifiers !== undefined &&
-                      this.identifiers[i] !== undefined) {
+                if (this.identifiers !== undefined) {
                     paramValue.identifiers = [this.identifiers[i]];
                 }
                 if (this.subIdentifiers !== undefined &&
@@ -1733,6 +1731,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
         var oldSubIdentifiers: any[] = this.result.subIdentifiers;
         var r: any[];
         var ids: any[] = undefined;
+        var subIds: any[] = undefined;
 
         if ("fun" in this) {
             if (this.values !== undefined) {
@@ -1741,20 +1740,35 @@ class EvaluationMap extends EvaluationFunctionApplication {
                     if (this.values[i] !== undefined && this.values[i].value !== undefined) {
                         var v: Result = this.values[i];
                         if (v.value.length === 1) {
-                            if (v.identifiers !== undefined) {
+                            if (this.identifiers !== undefined) {
                                 if (ids === undefined) {
                                     ids = new Array<any>(r.length + 1);
                                 }
-                                ids[r.length] = v.identifiers[0];
+                                ids[r.length] = this.identifiers[i];
+                            }
+                            if(v.subIdentifiers !== undefined &&
+                               v.subIdentifiers[0] !== undefined) {
+                                if(subIds === undefined)
+                                    subIds = new Array<any>(r.length + 1);
+                                subIds[r.length] = v.subIdentifiers[0]; 
                             }
                             r.push(v.value[0]);
                         } else if (v.value.length > 1) {
-                            if (v.identifiers !== undefined) {
+                            if (this.identifiers !== undefined) {
                                 if (ids === undefined) {
                                     ids = new Array<any>(r.length + v.value.length);
                                 }
-                                for (var j: number = 0; j < v.identifiers.length; j++) {
-                                    ids[i + j] = v.identifiers[j];
+                                for (var j: number = 0; j < v.value.length; j++) {
+                                    ids[r.length + j] = this.identifiers[i];
+                                }
+                            }
+                            if(v.subIdentifiers !== undefined &&
+                               v.subIdentifiers.length > 0) {
+                                if (subIds === undefined) {
+                                    subIds = new Array<any>(r.length + v.value.length);
+                                }
+                                for (var j: number = 0; j < v.value.length; j++) {
+                                    subIds[r.length + j] = v.subIdentifiers[j];
                                 }
                             }
                             Array.prototype.push.apply(r, v.value);
@@ -1763,7 +1777,11 @@ class EvaluationMap extends EvaluationFunctionApplication {
                 }
                 this.result.copyLabelsMinusDataSource(this.inputs[1].result);
                 this.result.value = r;
-                this.result.setIdentifiers(ids);
+                if(ids && ids.length !== r.length)
+                    ids.length = r.length;
+                if(subIds && subIds.length !== r.length)
+                    subIds.length = r.length;
+                this.result.setSubIdentifiers(ids, subIds);
                 if (this.funResultIsConstant) {
                     this.destroyFunctionNodes();
                     this.funResultIsConstant = false;

@@ -3559,6 +3559,8 @@ class EvaluationMerge extends EvaluationFunctionApplication {
         mergeVariants(this.arguments.slice(0).reverse(), undefined, undefined,
                       undefined, undefined, this.arguments.length == 1,
                       this.result);
+
+        this.result.ensureOS();
         
         return (!objectEqual(prevValue, this.result.value) ||
                 !objectEqual(prevMergeAttributes,
