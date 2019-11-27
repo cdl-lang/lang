@@ -433,7 +433,7 @@ function intFuncAppl(expr: any): any {
         var exec = func instanceof ForeignJavaScriptObjectFunction?
                    EFForeignJavaScriptObjectFunction.make(undefined, bif):
                    EFForeignJavaScriptFunction.make(undefined, bif);
-        return exec.execute(args);
+        return exec.execute(args, undefined);
     } else if (!(func instanceof BuiltInFunction)) {
         if (args.length !== 1) {
             console.log("cannot interpret function", func);
@@ -443,7 +443,7 @@ function intFuncAppl(expr: any): any {
     }
     var funcName: string = (<BuiltInFunction>func).name;
     if (funcName in intFuncMap) {
-        return intFuncMap[funcName].execute(args);
+        return intFuncMap[funcName].execute(args, undefined);
     }
     switch (funcName) {
         case "areaOfClass":

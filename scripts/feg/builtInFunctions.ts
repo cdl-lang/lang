@@ -40,7 +40,8 @@ abstract class EFNSetOperator implements ExecutableFunction {
     /// undefined values in the result.
     abstract computeUndef(args: any[][]): any[];
 
-    execute(args: Result[]): any[] {
+    // ignores (and removes) identities (for now)
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var r: any[] = this.compute(args.map((r) => {
             return r === undefined || r.value === undefined?
                    constEmptyOS: r.value;
@@ -68,7 +69,7 @@ abstract class EFNSetOperator implements ExecutableFunction {
         }
         if (idsPtr === sids) {
             // None of the arguments is a set argument
-            return this.execute(args);
+            return this.execute(args, undefined);
         } else {
             res = [];
             for (var i: number = 0; i < sids.length; i++) {
@@ -373,7 +374,7 @@ class EFRounding implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var value: any[] = args[0].value;
         var exp: any[] = (args.length > 1) ? args[1].value : [0];
 
@@ -404,12 +405,16 @@ class EFRounding implements ExecutableFunction {
         } else {
             res = constEmptyOS;
         }
+        if(outIds) {
+            outIds.identifiers = args[0].identifiers;
+            outIds.subIdentifiers = args[0].subIdentifiers;
+        }
         return res;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Array.prototype.push.apply(ids, args[0].identifiers);
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -536,7 +541,7 @@ class EFCoordinates implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: any[]): any[] {
+    execute(args: any[], outIds: SubIdentifiers): any[] {
         var arg1: any = args[0].value;
         var res: {x: number[]; y: number[];}[] = [];
 
@@ -554,7 +559,7 @@ class EFCoordinates implements ExecutableFunction {
     }
 
     executeOS(args: any[]): any[] {
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -575,7 +580,7 @@ class EFArg implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         if (args.length !== 2 || args[0].value === undefined || args[1].value === undefined) {
             return constEmptyOS;
         }
@@ -599,7 +604,7 @@ class EFArg implements ExecutableFunction {
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.runtimeWarning("no OS implementation for EFArg");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -620,12 +625,12 @@ class EFPointer implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return EFPointer.res;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -650,7 +655,7 @@ class EFMe implements ExecutableFunction {
         this.me = undefined;
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return this.me;
     }
 
@@ -714,6 +719,20 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
         return undefined;
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void {
+        assert(false, "no derived implementation?");
+        return undefined;
+    }
+
+    addRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, outIds: SubIdentifiers): any {
+        assert(false, "no derived implementation?");
+        return undefined;
+    }
+
+    
     onlyFirstTarget(): boolean {
         return false;
     }
@@ -723,7 +742,7 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
     }
 
     // usage: [areaRelation] === [areaRelation, [me]]
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var areaId: string;
         if (args.length === 2) {
             // This implementation is not really good: it does a linear search
@@ -736,6 +755,9 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
                     for (var i: number = 0; i < collection.length; i++) {
                         for (var j: number = 0; j < targets.length; j++) {
                             if (objectEqual(collection[i], targets[j])) {
+                                this.getRelationIdentifiersAtPos(
+                                    args[0].identifiers, args[0].subIdentifiers,
+                                    i, collection.length, outIds);
                                 return this.getRelationAtPos(collection, i);
                             }
                         }
@@ -744,6 +766,9 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
                     for (var i: number = collection.length - 1; i >= 0; i--) {
                         for (var j: number = 0; j < targets.length; j++) {
                             if (objectEqual(collection[i], targets[j])) {
+                                this.getRelationIdentifiersAtPos(
+                                    args[0].identifiers, args[0].subIdentifiers,
+                                    i, collection.length, outIds);
                                 return this.getRelationAtPos(collection, i);
                             }
                         }
@@ -755,6 +780,10 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
                             if (objectEqual(collection[i], targets[j])) {
                                 var elt: any = this.getRelationElementAtPos(collection, i);
                                 if (elt !== undefined) {
+                                    this.addRelationIdentifiersAtPos(
+                                        args[0].identifiers,
+                                        args[0].subIdentifiers,
+                                        i, outIds),
                                     res.push(elt);
                                 }
                             }
@@ -816,7 +845,7 @@ class EFAreaRelation implements ExecutableFunction, Watcher {
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     updateInput(pos: any, result: Result): void {
@@ -940,6 +969,45 @@ class EFPrev extends EFAreaRelation {
         return collection[pos - 1];
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(pos <= 0)
+            return;
+        
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = [identifiers[pos - 1]]; // may be undefined
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = [subIdentifiers[pos - 1]];
+        else
+            outIds.subIdentifiers = undefined;
+    }
+
+    addRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, outIds: SubIdentifiers): void
+    {
+        if(pos <= 0)
+            return;
+        
+        if(identifiers !== undefined && identifiers.length > 0) {
+            if(outIds.identifiers === undefined)
+                outIds.identifiers = [];
+            outIds.identifiers.push(identifiers[pos - 1]); // may be undefined
+        }
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0) {
+            if(outIds.subIdentifiers === undefined)
+                outIds.subIdentifiers = [];
+            // may be undefined
+            outIds.subIdentifiers.push(subIdentifiers[pos - 1]);
+        }
+    }
+    
     undefinedSignalsNoChange(): boolean {
         return false;
     }
@@ -960,6 +1028,22 @@ class EFPrevStar extends EFAreaRelation {
         return collection.slice(0, pos + 1);
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = identifiers.slice(0, pos + 1);
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = subIdentifiers.slice(0, pos + 1);
+        else
+            outIds.subIdentifiers = undefined;
+    }
+    
     onlyLastTarget(): boolean {
         return true;
     }
@@ -984,6 +1068,25 @@ class EFPrevPlus extends EFAreaRelation {
         return collection.slice(0, pos);
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(pos <= 0)
+            return;
+        
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = identifiers.slice(0, pos);
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = subIdentifiers.slice(0, pos);
+        else
+            outIds.subIdentifiers = undefined;
+    }
+    
     onlyLastTarget(): boolean {
         return true;
     }
@@ -1012,6 +1115,42 @@ class EFNext extends EFAreaRelation {
         return collection[pos + 1];
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(pos >= valueLength - 1)
+            return;
+        
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = [identifiers[pos + 1]]; // may be undefined
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = [subIdentifiers[pos + 1]];
+        else
+            outIds.subIdentifiers = undefined;
+    }
+
+    addRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, outIds: SubIdentifiers): void
+    {
+        if(identifiers !== undefined && identifiers.length > 0) {
+            if(outIds.identifiers === undefined)
+                outIds.identifiers = [];
+            outIds.identifiers.push(identifiers[pos + 1]); // may be undefined
+        }
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0) {
+            if(outIds.subIdentifiers === undefined)
+                outIds.subIdentifiers = [];
+            // may be undefined
+            outIds.subIdentifiers.push(subIdentifiers[pos + 1]);
+        }
+    }
+    
     undefinedSignalsNoChange(): boolean {
         return false;
     }
@@ -1032,6 +1171,22 @@ class EFNextStar extends EFAreaRelation {
         return collection.slice(pos);
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = identifiers.slice(pos);
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = subIdentifiers.slice(pos);
+        else
+            outIds.subIdentifiers = undefined;
+    }
+    
     onlyFirstTarget(): boolean {
         return true;
     }
@@ -1056,6 +1211,26 @@ class EFNextPlus extends EFAreaRelation {
         return collection.slice(pos + 1);
     }
 
+    getRelationIdentifiersAtPos(identifiers: any[], subIdentifiers: any[],
+                                pos: number, valueLength: number,
+                                outIds: SubIdentifiers): void
+    {
+        if(pos >= valueLength - 1)
+            return;
+        
+        if(identifiers !== undefined && identifiers.length > 0)
+            outIds.identifiers = identifiers.slice(pos + 1);
+        else
+            outIds.identifiers = undefined;
+        
+        if(subIdentifiers !== undefined && subIdentifiers.length > 0)
+            // may be undefined
+            outIds.subIdentifiers = subIdentifiers.slice(pos + 1);
+        else
+            outIds.subIdentifiers = undefined;
+    }
+
+    
     onlyFirstTarget(): boolean {
         return true;
     }
@@ -1109,7 +1284,7 @@ class EFNot implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         assert(args[0].value === undefined || args[0].value instanceof Array,
                "argument not os");
         return boolValue(isFalseValue(args[0].value));
@@ -1140,7 +1315,7 @@ class EFDebugNodeToStr extends EFUnaryOperator {
         return undefined;
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return [cdlify(args[0].value)];
     }
 
@@ -1211,14 +1386,14 @@ class EFAllAreas implements ExecutableFunction, Watcher {
     // Further optimizations:
     // - make areaMonitor pass around ElementReferences instead of strings
     // - accumulate changes and return undefined when they cancel out
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         this.allAreas = this.input.value.map(makeElementReference); 
         return args.length === 0? this.allAreas: constEmptyOS;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -1329,7 +1504,7 @@ class EFBool implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return isTrueValue(args[0].value)? constTrueOS: constFalseOS;
     }
 
@@ -1383,7 +1558,7 @@ class EFSequence implements ExecutableFunction {
         return res;
     }
 
-    execute(args: any[]): any[] {
+    execute(args: any[], outIds: SubIdentifiers): any[] {
         return this.compute1(args[0].value, undefined);
     }
 
@@ -1446,7 +1621,7 @@ class EFNCompareAreasQuery implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var query: any[] = args[0].value,
             data: any[] = args[1].value;
         var res: any[];
@@ -1467,6 +1642,12 @@ class EFNCompareAreasQuery implements ExecutableFunction {
                 var m: any = data[i];
                 if (m instanceof ElementReference && !(m.getElement() in areaIds)) {
                     res.push(m);
+                    if(args[1].identifiers !== undefined &&
+                       args[1].identifiers.length > 0) {
+                        if(outIds.identifiers === undefined)
+                            outIds.identifiers = [];
+                        outIds.identifiers.push(args[1].identifiers[i]);
+                    }
                 }
             }
         }
@@ -1475,7 +1656,7 @@ class EFNCompareAreasQuery implements ExecutableFunction {
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -1494,7 +1675,7 @@ class EFEmpty implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arg1: any[] = args[0].value;
 
         return arg1 !== undefined && arg1.length === 0? constTrueOS: constFalseOS;
@@ -1525,7 +1706,7 @@ class EFNotEmpty implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arg1: any[] = args[0].value;
 
         return arg1 !== undefined &&
@@ -1557,7 +1738,7 @@ class EFSize implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arg1: any[] = args[0].value;
 
         return arg1 !== undefined? [arg1.length]: [0];
@@ -1643,7 +1824,7 @@ class EFConcatStr implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arr: any[] = args[0].value;
         var suffixes: any = args.length > 1? getDeOSedValue(args[1].value): undefined;
         var prefix: string, infix: string, postfix: string;
@@ -1688,7 +1869,7 @@ class EFConcatStr implements ExecutableFunction {
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -1707,7 +1888,7 @@ class EFNumberToString implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arr: any[] = args[0].value;
         var format: any = stripArray(args[1].value, true);
         var res: any[] = [];
@@ -1715,12 +1896,14 @@ class EFNumberToString implements ExecutableFunction {
         for (var i = 0; i < arr.length; i++) {
             res.push(EFNumberToString.convert(arr[i], format))
         }
+        if(args[0].identifiers !== undefined && args[0].identifiers.length > 0)
+            outIds.identifiers = args[0].identifiers; 
         return res;
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -1816,9 +1999,11 @@ class EFRange implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var arg1: any[] = args[0].value,
             arg2: any[] = args[1].value;
+        var identifiers: any[] = args[1].identifiers;
+        var subIdentifiers: any[] = args[1].subIdentifiers;
         var lowIndex: number;
         var highIndex: number;
  
@@ -1836,6 +2021,12 @@ class EFRange implements ExecutableFunction {
                 }
             }
             if (lowIndex !== undefined) {
+                if(identifiers && identifiers.length > 0)
+                    outIds.identifiers = identifiers.slice(lowIndex,
+                                                           highIndex + 1);
+                if(subIdentifiers && subIdentifiers.length > 0)
+                    outIds.subIdentifiers = subIdentifiers.slice(lowIndex,
+                                                                 highIndex + 1);
                 return arg2.slice(lowIndex, highIndex + 1);
             }
         }
@@ -1844,7 +2035,7 @@ class EFRange implements ExecutableFunction {
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
         Utilities.error("should not be called in setMode");
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     undefinedSignalsNoChange(): boolean {
@@ -1994,7 +2185,7 @@ class EFTestStore implements ExecutableFunction {
         return EFTestStore.singleton;
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         var res: {[label: string]: any} = {};
         var tt = EFTestStore.testStore;
         for (var label in tt) {
@@ -2004,7 +2195,7 @@ class EFTestStore implements ExecutableFunction {
     }
 
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[] {
-        return this.execute(args);
+        return this.execute(args, undefined);
     }
 
     static updateLabel(label: string, value: any): void {
@@ -2303,7 +2494,7 @@ class EFSingleValue implements ExecutableFunction {
         return constEmptyOS;
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return EFSingleValue.getSingleValue(args[0].value);
     }
 
@@ -2330,7 +2521,7 @@ class EFTimeStamp implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return [Date.now() / 1000];
     }
 

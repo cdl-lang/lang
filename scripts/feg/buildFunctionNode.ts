@@ -1377,7 +1377,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
             Utilities.error("unknown operator");
         }
         var exec = fun.factory(undefined, undefined);
-        return exec.execute([new Result(ensureOS(arg0.value))]);
+        return exec.execute([new Result(ensureOS(arg0.value))], undefined);
     }
 
     function applyBinaryNumFunc(name: string, args: ConstNode[]): number[] {
@@ -1388,7 +1388,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
         }
         var exec = fun.factory(undefined, undefined);
         return exec.execute([new Result(ensureOS(args[0].value)),
-                             new Result(ensureOS(args[1].value))]);
+                             new Result(ensureOS(args[1].value))], undefined);
 
     }
 
@@ -1424,7 +1424,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
                    EFForeignJavaScriptObjectFunction.make(undefined, bif):
                    EFForeignJavaScriptFunction.make(undefined, bif);
 
-        return exec.execute(args.map((arg: ConstNode) => new Result(ensureOS(arg.value))))
+        return exec.execute(args.map((arg: ConstNode) => new Result(ensureOS(arg.value))), undefined)
     }
 
     switch (funDef.name) {
@@ -1504,7 +1504,7 @@ function checkConstantResult(funDef: BuiltInFunction, args: FunctionNode[], orig
         if (constantArguments) {
             var exec: ExecutableFunction = numberToString.factory(undefined, undefined);
             var val: any[] = exec.execute([new Result(ensureOS((<ConstNode> args[0]).value)),
-                                           new Result(ensureOS((<ConstNode> args[1]).value))]);
+                                           new Result(ensureOS((<ConstNode> args[1]).value))], undefined);
             return new ConstNode(val, new ValueType().addString().addSize(val.length), origExpr, undefined, wontChangeValue);
         }
         break;

@@ -609,6 +609,8 @@ class EvaluationFunctionApplication extends EvaluationNodeWithArguments implemen
 
     eval(): boolean {
         var oldValue: any = this.result.value;
+        var oldIdentifiers: any[] = this.result.identifiers;
+        var oldSubIdentifiers: any[] = this.result.subIdentifiers;
         var newValue: any;
 
         this.inputHasChanged = this.bif.transientResult;
@@ -619,17 +621,22 @@ class EvaluationFunctionApplication extends EvaluationNodeWithArguments implemen
         }
         if (this.executableFunction instanceof EFNop)
             console.log("function", this.bif.name, "is nop");
-        newValue = this.executableFunction.execute(this.arguments);
+        var outIds = new SubIdentifiers(undefined, undefined);
+        newValue = this.executableFunction.execute(this.arguments, outIds);
         if (this.executableFunction.undefinedSignalsNoChange()) {
             if (newValue === undefined) {
                 return false;
             } else {
                 this.result.value = newValue;
+                this.result.setSubIdentifiers(outIds);
                 return true;
             }
         } else {
             this.result.value = newValue;
-            return !valueEqual(oldValue, newValue);
+            this.result.setSubIdentifiers(outIds);
+            return !valueEqual(oldValue, newValue) ||
+                !valueEqual(oldIdentifiers, this.result.identifiers) ||
+                !valueEqual(oldSubIdentifiers, this.result.subIdentifiers);
         }
     }
 

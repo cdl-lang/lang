@@ -117,7 +117,7 @@ interface ExecutableFunction {
     destroy(): void;
 
     // Non incremental update for a single value
-    execute(args: Result[]): any[];
+    execute(args: Result[], outIds: SubIdentifiers): any[];
 
     // Non incremental update for set mode
     executeOS(args: Result[], setMode: boolean[], ids: any[]): any[];
@@ -138,7 +138,7 @@ class EFNop implements ExecutableFunction {
     destroy(): void {
     }
 
-    execute(args: Result[]): any[] {
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
         return constEmptyOS;
     }
 
