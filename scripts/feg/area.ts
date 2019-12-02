@@ -773,6 +773,11 @@ class SetChildController extends ChildController
         function escapeString(id: string): string {
             return id; // typeof(id) === "number"? id: "<" + encodeURIComponent(id) + ">";
         }
+        function createAreaIdentifier(dataIds: any[], index: number) {
+            var id: any = dataIds[index];
+            return id === undefined ? ("undef" + index) :
+                (typeof(id) == "string" ? "_" + id : id);
+        }
 
         if (logValues && logPrototypes === undefined) {
             var abbrev: string = JSON.stringify(result.value);
@@ -794,33 +799,35 @@ class SetChildController extends ChildController
         try {
             for (var i: number = 0, j: number = 0; i !== data.length; i++) {
                 var v: any = data[i];
-                var areaIdentifier: any = dataIds !== undefined? dataIds[i]: j;
+                var areaIdentifier: any = dataIds !== undefined ? dataIds[i]:j;
+                var uniqueIdentifier: any = dataIds !== undefined ?
+                    createAreaIdentifier(dataIds,i) : j;
                 var subIdentifier: any =
                     subIds !== undefined ? subIds[i] : undefined;
-                if (!(areaIdentifier in areaIds)) {
+                if (!(uniqueIdentifier in areaIds)) {
                     // Only create or update areas for identifiers not yet seen
                     var areaSetContent: Result = new Result([v]);
                     if (dataIds !== undefined)
                         areaSetContent.identifiers = [areaIdentifier];
                     if(subIdentifier !== undefined)
                         areaSetContent.subIdentifiers = [subIdentifier];
-                    areaIds[areaIdentifier] = true;
-                    if (!this.identifier2area.has(areaIdentifier)) {
+                    areaIds[uniqueIdentifier] = true;
+                    if (!this.identifier2area.has(uniqueIdentifier)) {
                         var setIndices: any[] = this.setIndices.concat(
-                            escapeString(areaIdentifier));
+                            escapeString(uniqueIdentifier));
                         childArea = this.template.isDisplayArea !== false?
                             new DisplayArea(this.template, this, setIndices,
-                                            areaIdentifier, new Result([areaIdentifier]),
+                                            uniqueIdentifier, new Result([areaIdentifier]),
                                             areaSetContent, this.dataEval, i):
                             new CalculationArea(this.template, this, setIndices,
-                                                areaIdentifier, new Result([areaIdentifier]),
+                                                uniqueIdentifier, new Result([areaIdentifier]),
                                                 areaSetContent, this.dataEval, i);
                         childArea.setComment(this.parent.areaId + ":set:" + this.name);
                         childArea.finishInstantiation();
-                        this.identifier2area.set(areaIdentifier, childArea);
+                        this.identifier2area.set(uniqueIdentifier, childArea);
                     } else {
                         // Update only if the value differs
-                        childArea = this.identifier2area.get(areaIdentifier);
+                        childArea = this.identifier2area.get(uniqueIdentifier);
                         var paramAttr = childArea.param !== undefined? childArea.param.attr:
                                         new Result([areaIdentifier]);
                         childArea.updateSetData(paramAttr, areaSetContent);
@@ -838,7 +845,7 @@ class SetChildController extends ChildController
                     prev = childArea;
                     j++;
                 } else {
-                    childArea = this.identifier2area.get(areaIdentifier);
+                    childArea = this.identifier2area.get(uniqueIdentifier);
                     childArea.addSetDataSameId(v, dataIds ? areaIdentifier: undefined, subIdentifier);
                     childArea.addSetPositionSameId(i);
                 }
@@ -852,9 +859,9 @@ class SetChildController extends ChildController
             areaRelationMonitor.removeRelation(childArea.areaId, "next");
         }
         // Delete children no longer in area set
-        this.identifier2area.forEach((childArea: DisplayArea, areaIdentifier: any): void => {
-            if (!(areaIdentifier in areaIds)) {
-                this.destroyChildArea(childArea, areaIdentifier);
+        this.identifier2area.forEach((childArea: DisplayArea, uniqueIdentifier: any): void => {
+            if (!(uniqueIdentifier in areaIds)) {
+                this.destroyChildArea(childArea, uniqueIdentifier);
             }
         }, this);
         this.replaceElements(elements);

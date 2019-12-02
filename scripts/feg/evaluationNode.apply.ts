@@ -1561,13 +1561,7 @@ class EvaluationMap extends EvaluationFunctionApplication {
             this.bodies = new Array<EvaluationNode>(to);
             this.environments = new Array<LocalEvaluationEnvironment>(to);
             this.values = new Array<Result>(to);
-            if (!paramIsConstant) {
-                if (this.identifiers === undefined) {
-                    this.identifiers = new Array<any>(to);
-                } else {
-                    this.identifiers.length = to;
-                }
-            } else {
+            if (paramIsConstant) {
                 this.identifiers = this.inputs[1].result.identifiers;
                 this.subIdentifiers = this.inputs[1].result.subIdentifiers;
             }
