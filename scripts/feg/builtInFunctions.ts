@@ -34,18 +34,23 @@ abstract class EFNSetOperator implements ExecutableFunction {
 
     /// This function performs the computation on n arguments, suppressing
     /// undefined values.
-    abstract compute(args: any[][]): any[];
+    abstract compute(argResults: Result[], outIds: SubIdentifiers): any[];
 
     /// This function performs the computation on n arguments, but includes
     /// undefined values in the result.
     abstract computeUndef(args: any[][]): any[];
 
-    // ignores (and removes) identities (for now)
-    execute(args: Result[], outIds: SubIdentifiers): any[] {
-        var r: any[] = this.compute(args.map((r) => {
+    getArgValues(args: Result[]): any[][]
+    {
+        return args.map((r) => {
             return r === undefined || r.value === undefined?
                    constEmptyOS: r.value;
-        }));
+        })
+    }
+    
+    // ignores (and removes) identities (for now)
+    execute(args: Result[], outIds: SubIdentifiers): any[] {
+        var r: any[] = this.compute(args, outIds);
 
         return r === undefined? constEmptyOS: r;
     }
@@ -101,14 +106,24 @@ abstract class EFUnaryOperator extends EFNSetOperator {
     /// Function that implements the actual operation
     abstract op(a: any): any;
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        if(!argResults || argResults.length == 0)
+            return constEmptyOS;
+        var args: any[][] = this.getArgValues(argResults);
         if (args[0] !== undefined) {
             var arg: any = args[0];
             var res: any[] = [];
+            var identifiers: any[] = argResults[0].identifiers;
+            if(identifiers && identifiers.length > 0)
+                outIds.identifiers = [];
+            else
+                identifiers = undefined;
             for (var i: number = 0; i !== arg.length; i++) {
                 var r: any = this.op(arg[i]);
                 if (r !== undefined && (typeof(r) !== "number" || !isNaN(r))) {
                     res.push(r);
+                    if(identifiers !== undefined)
+                        outIds.identifiers.push(identifiers[i]);
                 }
             }
             return res;
@@ -137,7 +152,8 @@ abstract class EFBinaryOperator extends EFNSetOperator {
     /// Performs the actual computation
     abstract op(a: any, b: any): any;
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var arg1: any = args[0];
         var arg2: any = args[1];
         var res: any[];
@@ -1430,7 +1446,8 @@ class EFEqual extends EFNSetOperator {
         return EFEqual.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var arg1: any = args[0];
         var arg2: any = args[1];
 
@@ -1451,7 +1468,7 @@ class EFEqual extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 equal.factory = EFEqual.make;
@@ -1468,7 +1485,8 @@ class EFNotEqual extends EFBinaryOperator {
         return undefined;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var arg1: any = args[0];
         var arg2: any = args[1];
 
@@ -1489,7 +1507,7 @@ class EFNotEqual extends EFBinaryOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 notEqual.factory = EFNotEqual.make;
@@ -1584,12 +1602,13 @@ class EFOr extends EFNSetOperator {
         return EFOr.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         return boolValue(args.some(isTrueValue));
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 or.factory = EFOr.make;
@@ -1601,12 +1620,13 @@ class EFAnd extends EFNSetOperator {
         return EFAnd.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         return boolValue(args.every(isTrueValue));
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 and.factory = EFAnd.make;
@@ -2051,7 +2071,8 @@ class EFMax extends EFNSetOperator {
         return EFMax.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var max: any = undefined;
 
         for (var i: number = 0; i < args.length; i++) {
@@ -2070,7 +2091,7 @@ class EFMax extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 max.factory = EFMax.make;
@@ -2082,7 +2103,8 @@ class EFMin extends EFNSetOperator {
         return EFMin.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var min: any = undefined;
 
         for (var i: number = 0; i < args.length; i++) {
@@ -2101,7 +2123,7 @@ class EFMin extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 min.factory = EFMin.make;
@@ -2113,7 +2135,8 @@ class EFSum extends EFNSetOperator {
         return EFSum.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var sum: number = 0, elt: any;
 
         for (var i: number = 0; i !== args.length; i++) {
@@ -2131,7 +2154,7 @@ class EFSum extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 sum.factory = EFSum.make;
@@ -2221,12 +2244,16 @@ class EFReverse extends EFNSetOperator {
         return EFReverse.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults);
+        if(argResults[0] && argResults[0].identifiers &&
+           argResults[0].identifiers.length > 0)
+            outIds.identifiers = argResults[0].identifiers.slice(0).reverse();
         return args[0] !== undefined? args[0].slice(0).reverse(): constEmptyOS;
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 reverse.factory = EFReverse.make;
@@ -2238,7 +2265,8 @@ class EFDynamicAttribute extends EFNSetOperator {
         return EFDynamicAttribute.singleton;
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         var arg1: any[] = args[0], arg2: any[] = args[1], arg3: any[] = args[2];
         var res: any = undefined;
 
@@ -2266,7 +2294,7 @@ class EFDynamicAttribute extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 dynamicAttribute.factory = EFDynamicAttribute.make;
@@ -2760,7 +2788,8 @@ class EFForeignJavaScriptFunction extends EFNSetOperator {
         }
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         if (args.length === 0) {
             return this.call([]);
         } else {
@@ -2789,7 +2818,7 @@ class EFForeignJavaScriptFunction extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
 
@@ -2822,7 +2851,8 @@ class EFForeignJavaScriptObjectFunction extends EFNSetOperator {
         }
     }
 
-    compute(args: any[][]): any[] {
+    compute(argResults: Result[], outIds: SubIdentifiers): any[] {
+        var args: any[][] = this.getArgValues(argResults); 
         if (args.length === 0) {
             return constEmptyObject;
         } else {
@@ -2851,6 +2881,6 @@ class EFForeignJavaScriptObjectFunction extends EFNSetOperator {
     }
 
     computeUndef(args: any[][]): any[] {
-        return this.compute(args);
+        return this.compute(args.map(x => new Result(x)), undefined);
     }
 }
